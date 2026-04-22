@@ -50,7 +50,7 @@ A parallel 12V accessory wiring system for an antique car. Three ESP32 nodes tal
                 (+ ESP-NOW on WiFi channel 6 as fallback)
 ```
 
-All three nodes share the same firmware transport layer (`bus.h/.cpp`), web UI (`webui.h/.cpp`, `index_html.h`), and protocol definitions (`can_protocol.h`). Each node runs its own web console at `http://192.168.4.1` on the `AccessoryBus` WiFi network.
+All three nodes are compiled from the same unified sketch (`firmware/accessory_node/`). Which features compile in — relays, switches, LCD, Viper bridge, etc. — is controlled entirely by a per-node config header in `firmware/configs/`. Each node runs its own web console at `http://192.168.4.1` on the `AccessoryBus` WiFi network.
 
 ---
 
@@ -245,7 +245,7 @@ A resistor voltage divider scales 12–15 V down to the 0–3.3 V range that the
                      └── GPIO 34
 ```
 
-This gives a divider ratio of 5.545 (10k + 2.2k / 2.2k). Adjust `VBAT_DIVIDER_RATIO` in `relay_controller.ino` to match your actual resistors. Telemetry is reported in centvolts on CAN ID 0x300.
+This gives a divider ratio of 5.545 (10k + 2.2k / 2.2k). Adjust `VBAT_DIVIDER_RATIO` in `firmware/configs/relay_controller.h` to match your actual resistors. Telemetry is reported in centvolts on CAN ID 0x300.
 
 ### 4.5 Full Relay Controller Pin Summary
 
@@ -407,28 +407,9 @@ The system runs off a **dedicated accessory battery** isolated from the factory 
 
 Install arduino-esp32 in Arduino IDE: **File → Preferences → Additional boards manager URLs** → add `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`. Then **Tools → Board → Boards Manager**, search "esp32", install.
 
-### 8.2 Sync Shared Files First
+### 8.2 Configure the Target Node
 
-The six shared files live in `firmware/shared/`. Before compiling, sync them to each sketch folder. The easiest way is via the `Makefile`:
-
-```bash
-make sync       # copy shared/ → each sketch folder
-make all        # sync + compile all three nodes
-make check      # verify all copies match shared/
-```
-
-Or manually:
-
-```bash
-for f in can_protocol.h bus.h bus.cpp webui.h webui.cpp index_html.h; do
-  cp firmware/relay_controller/$f firmware/switch_panel/$f
-  cp firmware/relay_controller/$f firmware/viper_interface/$f
-done
-```
-
-### 8.3 Configure Each Sketch
-
-In each `.ino` file, set the transceiver mode before compiling:
+Each node has a config header in `firmware/configs/`. Open the appropriate one and set the transceiver mode:
 
 ```cpp
 #define USE_CAN_TRANSCEIVER 0   // bench mode — open-drain TX, pull-up required
@@ -438,27 +419,31 @@ In each `.ino` file, set the transceiver mode before compiling:
 
 All three nodes must agree on this setting.
 
-### 8.4 Compile and Upload
+### 8.3 Compile and Upload
 
-**arduino-cli:**
+The Makefile copies the right config header, then compiles the single unified sketch.
+
+**arduino-cli (recommended):**
 
 ```bash
 # Find your serial ports
 ls /dev/cu.usbserial-* /dev/cu.wchusbserial-* /dev/cu.SLAB_USBtoUART 2>/dev/null
 
-# Compile all three
-for n in relay_controller switch_panel viper_interface; do
-  arduino-cli compile --fqbn esp32:esp32:esp32 firmware/$n || break
-done
+# Compile all three nodes in sequence
+make all
 
 # Upload (substitute your actual port paths)
-arduino-cli upload -p /dev/cu.usbserial-XXXX --fqbn esp32:esp32:esp32 firmware/relay_controller
-arduino-cli upload -p /dev/cu.usbserial-YYYY --fqbn esp32:esp32:esp32 firmware/switch_panel
-arduino-cli upload -p /dev/cu.usbserial-ZZZZ --fqbn esp32:esp32:esp32 firmware/viper_interface
+make upload-relay_controller  PORT=/dev/cu.usbserial-XXXX
+make upload-switch_panel      PORT=/dev/cu.usbserial-YYYY
+make upload-viper_interface   PORT=/dev/cu.usbserial-ZZZZ
 ```
 
 **Arduino IDE:**
-Open each `.ino` in the IDE, select **Tools → Board → ESP32 Dev Module**, choose the correct port, and click Upload.
+Copy the desired config manually before opening the sketch:
+```bash
+cp firmware/configs/switch_panel.h firmware/accessory_node/node_config.h
+```
+Then open `firmware/accessory_node/accessory_node.ino`, select **Tools → Board → ESP32 Dev Module**, choose the correct port, and click Upload. Repeat for each node.
 
 ### 8.5 Monitor All Three Nodes Simultaneously
 
@@ -720,7 +705,7 @@ Both nodes must always match. A mismatch between `USE_CAN_TRANSCEIVER = 0` and `
 
 ### LCD Stays Blank
 
-- Try I2C address `0x3F` instead of `0x27` (change `LCD_I2C_ADDR` in `switch_panel.ino`).
+- Try I2C address `0x3F` instead of `0x27` (change `LCD_I2C_ADDR` in `firmware/configs/switch_panel.h` or `viper_interface.h`).
 - Confirm LCD VCC is on 5 V, not 3.3 V.
 - Use an I2C scanner sketch to confirm the backpack is visible on the bus.
 
@@ -744,4 +729,4 @@ Both nodes must always match. A mismatch between `USE_CAN_TRANSCEIVER = 0` and `
 
 ### GPIO 13 (SW6) Misbehaves at Boot
 
-GPIO 13 is a strapping pin on some ESP32 modules. If SW6 triggers spurious events during power-on, move it to another GPIO and update `INPUT_PINS` in `switch_panel.ino`.
+GPIO 13 is a strapping pin on some ESP32 modules. If SW6 triggers spurious events during power-on, move it to another GPIO and update `INPUT_PINS_INIT` in `firmware/configs/switch_panel.h`.

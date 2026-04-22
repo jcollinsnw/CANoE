@@ -16,46 +16,34 @@ A parallel 12V accessory wiring system for an antique car, built around three ES
 
 ```
 .
-├── CLAUDE.md                                 # this file
-├── Makefile                                  # sync shared files + compile/upload
-├── wiring-with-transceivers.svg              # production wiring diagram
-├── wiring-bench-mode.svg                     # bench wiring (no transceivers)
+├── CLAUDE.md                                   # this file
+├── Makefile                                    # configure + compile/upload
+├── wiring-with-transceivers.svg                # production wiring diagram
+├── wiring-bench-mode.svg                       # bench wiring (no transceivers)
 └── firmware/
-    ├── shared/                               # canonical copies of shared files
-    │   ├── can_protocol.h
-    │   ├── bus.h / bus.cpp
-    │   ├── webui.h / webui.cpp
-    │   └── index_html.h
-    ├── relay_controller/                     # ESP32 sketch: drives 6 relays
-    │   ├── relay_controller.ino
-    │   └── (shared files copied here by Makefile)
-    ├── switch_panel/                         # ESP32 sketch: reads 6 switches
-    │   ├── switch_panel.ino
-    │   └── (shared files copied here by Makefile)
-    └── viper_interface/                      # ESP32 sketch: Viper 5305V alarm bridge
-        ├── viper_interface.ino
-        ├── ViperESP2.h / ViperESP2.cpp       # Viper serial protocol library
-        └── (shared files copied here by Makefile)
+    ├── configs/                                # one header per physical node
+    │   ├── relay_controller.h
+    │   ├── switch_panel.h
+    │   └── viper_interface.h
+    └── accessory_node/                         # single unified sketch (all nodes)
+        ├── accessory_node.ino                  # setup() / loop() / frame dispatch
+        ├── node_config.h                       # ← overwritten by Makefile before each build
+        ├── node_state.h                        # extern g_relay_mirror, g_can_ok, g_menu_active
+        ├── can_protocol.h                      # CAN message IDs, enums, pack/unpack helpers
+        ├── bus.h / bus.cpp                     # dual-transport abstraction (TWAI + ESP-NOW)
+        ├── webui.h / webui.cpp                 # SoftAP + captive portal + HTTP + JSON API
+        ├── index_html.h                        # embedded single-page web UI
+        ├── mod_relay.h / mod_relay.cpp         # relay GPIO, watchdog, telemetry
+        ├── mod_lcd.h / mod_lcd.cpp             # HD44780 16×2 driver (PCF8574 I2C backpack)
+        ├── mod_switches.h / mod_switches.cpp   # switch inputs, encoder, LCD menu
+        ├── mod_viper.h / mod_viper.cpp         # Viper 5305V serial bridge (ViperESP2 inlined)
+        ├── mod_mpu6050.h / mod_mpu6050.cpp     # MPU-6050 accelerometer / shake detection
+        └── mod_dht22.h / mod_dht22.cpp         # AM2302 temperature/humidity sensor
 ```
 
-**Critical invariant:** the six "shared" files (`can_protocol.h`, `bus.h`, `bus.cpp`, `webui.h`, `webui.cpp`, `index_html.h`) must be byte-identical across **all three** sketch folders. The canonical copies live in `firmware/shared/`. Edit them there, then use the Makefile to sync and compile:
+**How it works:** `firmware/configs/<node>.h` defines which feature flags (`ENABLE_RELAY`, `ENABLE_LCD`, etc.) and pin assignments apply to that physical ESP32. The Makefile copies the right config to `node_config.h` before compiling, so the single sketch folder produces the correct firmware for each node. Every module's `.cpp` wraps its entire body in `#ifdef ENABLE_*` so unneeded modules compile to nothing.
 
-```bash
-make sync                    # copy shared/ → each sketch folder
-make all                     # sync + compile all three nodes
-make switch_panel            # sync + compile just switch_panel
-make check                   # verify all copies match shared/
-```
-
-If editing without Make, the manual sync one-liner still works:
-
-```bash
-for f in can_protocol.h bus.h bus.cpp webui.h webui.cpp index_html.h; do
-  cp firmware/shared/$f firmware/relay_controller/$f
-  cp firmware/shared/$f firmware/switch_panel/$f
-  cp firmware/shared/$f firmware/viper_interface/$f
-done
-```
+**Adding a new node:** create `firmware/configs/<new_node>.h` with the desired `ENABLE_*` flags and pin assignments, then add a target in the Makefile that copies it and compiles.
 
 ## Architecture overview
 
@@ -70,17 +58,26 @@ Three ESP32 nodes, each runs up to four things concurrently:
 
 ## Node identities
 
-| Node              | NODE_ID | Notes                                                     |
-|-------------------|---------|-----------------------------------------------------------|
-| switch_panel      | 0x01    | 6 switches on INPUT_PULLUP                                |
-| relay_controller  | 0x02    | 6 relays via ULN2803, battery telemetry                   |
-| viper_interface   | 0x03    | Viper 5305V alarm bridge via UART2 + level shifter        |
+| Node             | NODE_ID | Config file                      | Features                                         |
+|------------------|---------|----------------------------------|--------------------------------------------------|
+| switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_LCD, ENABLE_DHT22        |
+| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY                                     |
+| viper_interface  | 0x03    | configs/viper_interface.h        | ENABLE_VIPER, ENABLE_LCD, ENABLE_MPU6050         |
 
-Add new nodes by assigning a new NODE_ID and creating a new sketch folder that reuses `bus.h/.cpp`, `webui.h/.cpp`, `index_html.h`, and `can_protocol.h`.
+## Feature flags (defined in configs/*.h)
+
+| Flag              | Module              | Description                                           |
+|-------------------|---------------------|-------------------------------------------------------|
+| `ENABLE_RELAY`    | mod_relay           | 6 relay GPIO outputs, safety watchdog, battery ADC    |
+| `ENABLE_SWITCHES` | mod_switches        | 10 inputs (6 latching + 4 buttons), encoder, menu     |
+| `ENABLE_LCD`      | mod_lcd             | HD44780 16×2 via PCF8574 I2C backpack                 |
+| `ENABLE_VIPER`    | mod_viper           | Viper 5305V serial bridge over UART2                  |
+| `ENABLE_MPU6050`  | mod_mpu6050         | MPU-6050 shake detection, IMU data broadcast          |
+| `ENABLE_DHT22`    | mod_dht22           | AM2302 temperature/humidity broadcast                 |
 
 ## Pinout
 
-All nodes share the same CAN pins. Node-specific pins below.
+All nodes share the same CAN pins. Node-specific pins are defined in the config header.
 
 | Pin       | Role                                                           |
 |-----------|----------------------------------------------------------------|
@@ -106,6 +103,9 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x200  | SWITCH_EVENT      | `[switch_id, SwitchEvent]`                             |
 | 0x201  | ENCODER_EVENT     | `[EncoderEvent, count]`                                |
 | 0x300  | TELEMETRY         | `[vbat_cv_lo, vbat_cv_hi, i_da_lo, i_da_hi, vsol_cv_lo, vsol_cv_hi, flags, _]` |
+| 0x301  | ENV_DATA          | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` (0.1°C, 0.1%) |
+| 0x302  | IMU_DATA          | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` |
+| 0x303  | SHAKE_EVENT       | `[magnitude, axis_mask]`                               |
 | 0x400  | CONFIG_WRITE      | `[target, key, index, kind, arg, arg2_lo, arg2_hi, flags]` |
 | 0x401  | CONFIG_READ_REQ   | `[target, key, index]` (index 0xFF = all)              |
 | 0x402  | CONFIG_READ_RESP  | same layout as CONFIG_WRITE (flags byte unused)        |
@@ -133,7 +133,7 @@ Encoder events (0x201 data[0]): `0 ENC_ROTATE_CW`, `1 ENC_ROTATE_CCW`, `2 ENC_PR
 
 ## Bench vs transceiver mode
 
-At the top of each .ino:
+In `firmware/configs/<node>.h`:
 
 ```cpp
 #define USE_CAN_TRANSCEIVER 0  // 0 = bench, 1 = production with transceiver
@@ -161,26 +161,29 @@ Tested against Arduino-ESP32 **v2.x and v3.x**. The ESP-NOW receive callback sig
 Using arduino-cli:
 
 ```bash
-make all                     # sync shared files + compile all three nodes
-make switch_panel            # sync + compile just switch_panel
+make relay_controller                              # compile for relay controller
+make switch_panel                                  # compile for switch panel
+make viper_interface                               # compile for viper interface
+make all                                           # compile all three in sequence
 make upload-switch_panel PORT=/dev/cu.usbserial-XXXX
 make upload-relay_controller PORT=/dev/cu.usbserial-YYYY
 make upload-viper_interface PORT=/dev/cu.usbserial-ZZZZ
 make monitor PORT=/dev/cu.usbserial-XXXX
 ```
 
-Or directly without Make:
+Each `make <node>` target copies `firmware/configs/<node>.h` → `firmware/accessory_node/node_config.h` then compiles. `node_config.h` is intentionally not committed with a real config — the placeholder will error if you try to compile without running make first.
+
+Or compile directly without Make (after manually copying the config):
 
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32 firmware/relay_controller
-arduino-cli upload -p /dev/cu.usbserial-XXXX --fqbn esp32:esp32:esp32 firmware/relay_controller
+cp firmware/configs/relay_controller.h firmware/accessory_node/node_config.h
+arduino-cli compile --fqbn esp32:esp32:esp32 firmware/accessory_node
+arduino-cli upload -p /dev/cu.usbserial-XXXX --fqbn esp32:esp32:esp32 firmware/accessory_node
 ```
 
 List serial ports: `ls /dev/cu.usbserial-* /dev/cu.wchusbserial-* /dev/cu.SLAB_USBtoUART 2>/dev/null`
 
-Or open each .ino in Arduino IDE and use the GUI.
-
-Serial monitor at 115200 baud on each node for boot logs and `[cmd via can]` / `[cmd via wifi]` diagnostics. Nodes with `USE_WIFI 1` also expose serial output in the web UI's **Serial** tab (via `wlog()`/`wlogln()` — replacements for `Serial.printf`/`Serial.println` that tee to both UART and the web UI).
+Serial monitor at 115200 baud on each node for boot logs. Nodes with `USE_WIFI 1` also expose serial output in the web UI's **Serial** tab (via `wlog()`/`wlogln()` — replacements for `Serial.printf`/`Serial.println` that tee to both UART and the web UI).
 
 ## Web console cheat sheet
 
@@ -221,16 +224,17 @@ Check "force wifi-only" in the header. `bus_tx()` stops using TWAI; everything s
 
 ## Conventions and gotchas
 
-- **Shared-file sync.** See above. The Arduino IDE doesn't follow symlinks reliably on macOS, so we duplicate. The `cp` one-liner near the top is the fix.
-- **Init order.** In `setup()` the order must be `config_load()` → `setup_can()` → `webui_init()` → `bus_init()`. `webui_init` brings up WiFi so `esp_now_init` has a radio to bind to; `bus_init` requires WiFi ready.
+- **Init order.** In `setup()` the order must be `relay_setup()` → `setup_can()` → `webui_init()` → `bus_init()`. `webui_init` brings up WiFi so `esp_now_init` has a radio to bind to; `bus_init` requires WiFi ready. Relay pins are initialized first so outputs are known-good before any CAN traffic.
 - **Frame-flow direction.** Application code only goes through the bus. Do not call `twai_transmit` directly except inside `bus.cpp`; it will bypass ESP-NOW and the web UI log.
+- **Self-echo.** `bus_tx()` feeds every outbound frame back into the RX ring (tagged `source="self"`). This means state mirrors and LCD updates react to web-UI-injected frames exactly the same as frames from other nodes. Don't be surprised when you see your own TX come back through `bus_rx()`.
 - **Dedup.** ESP-NOW frames carry their own `(node_id, seq)` header; a 2-second window filters repeats. CAN frames are canonical and always passed through. This is safe because our application messages are idempotent (RELAY_CMD, STATUS, TELEMETRY) or edge-triggered with short windows (SWITCH_EVENT).
 - **Captive-portal probes.** iOS and Android each hit different URLs to detect captive portals — we catch the common ones in `webui.cpp` and bounce them to `/`.
 - **Open AP.** Fine in a garage, risky in public. Set `AP_PASSWORD` in `webui.cpp` before the car leaves the driveway. Remember it must be ≥ 8 chars for WPA2.
-- **Horn safety.** Default `DEFAULT_MAX_ON_MS[4] = 30000` in `relay_controller.ino` caps relay 5 (horn) at 30s even if a stuck CAN frame or hung switch panel tries to leave it on. A `service_hold_safety()` loop on the switch panel also enforces that if a HOLD switch is released while the relay is still on, the relay gets turned off.
-- **ADC calibration.** GPIO 34 on the relay controller is read with default attenuation; the `VBAT_DIVIDER_RATIO` constant assumes 10k + 2.2k divider. Re-tune to your resistors before trusting the telemetry.
+- **Horn safety.** `RELAY_MAX_ON_INIT` in `configs/relay_controller.h` caps relay 5 (horn) at 30s. `service_hold_safety()` in `mod_switches.cpp` also enforces that if a HOLD switch is released while the relay is still on, the relay gets turned off.
+- **ADC calibration.** GPIO 34 on the relay controller is read with default attenuation; `VBAT_DIVIDER_RATIO` in `configs/relay_controller.h` assumes 10k + 2.2k divider. Re-tune to your resistors before trusting the telemetry.
 - **Strapping pins.** Avoid GPIO 0, 2, 12, 15 for anything that's externally driven at reset. GPIO 13 is borderline — watch for flakiness.
 - **ULN2803 polarity.** Input high → output low → coil pulled to GND → relay on. `RELAY_ACTIVE_HIGH = true` is correct for ULN2803 + low-side-coil relays. Flip if using high-side-switch drivers.
+- **node_config.h is generated.** Never edit `firmware/accessory_node/node_config.h` directly — it gets overwritten by the next `make` invocation. Edit the appropriate `firmware/configs/<node>.h` instead.
 
 ## Known TODO list (in rough priority order)
 
@@ -238,7 +242,7 @@ Check "force wifi-only" in the header. `bus_tx()` stops using TWAI; everything s
 2. Encrypt ESP-NOW (`esp_now_set_pmk`, mark broadcast peer `encrypt = true`).
 3. Dashboard panel in the web UI — live relay states as tiles, switch pressed/released indicators, battery voltage graph. Today the UI is raw-frame-only.
 4. Python `can-gw` utility so a Mac with a CANable/MCP2515 USB adapter can be a bus participant for scripting and logging.
-5. Low-voltage cutoff in `relay_controller.ino` — when `vbat_cv` drops below a configurable threshold, force non-essential relays off.
+5. Low-voltage cutoff in `mod_relay.cpp` — when `vbat_cv` drops below a configurable threshold, force non-essential relays off.
 6. Persist the "force wifi-only" flag across reboots (currently RAM-only).
 7. Switch from polling to SSE or WebSocket for the frame log (lower latency, less traffic).
 8. ESP-NOW ack/retry for switch events specifically (they're the only edge-triggered frames).
@@ -252,27 +256,18 @@ Owner works primarily in JavaScript / VueJS / Quasar and Python, on a Mac. When 
 ## Useful one-liners
 
 ```bash
-# Sync shared files after editing (run from repo root)
-for f in can_protocol.h bus.h bus.cpp webui.h webui.cpp index_html.h; do
-  cp firmware/shared/$f firmware/relay_controller/$f
-  cp firmware/shared/$f firmware/switch_panel/$f
-  cp firmware/shared/$f firmware/viper_interface/$f
-done
+# Compile all three nodes in sequence
+make all
 
 # Tail all three serial ports at once (requires `brew install tmux`)
 tmux new-session \; \
   send-keys 'arduino-cli monitor -p /dev/cu.usbserial-XXXX -c baudrate=115200' C-m \; \
   split-window -h \; send-keys 'arduino-cli monitor -p /dev/cu.usbserial-YYYY -c baudrate=115200' C-m \; \
   split-window -v \; send-keys 'arduino-cli monitor -p /dev/cu.usbserial-ZZZZ -c baudrate=115200' C-m
-
-# Compile all three nodes
-for n in relay_controller switch_panel viper_interface; do
-  arduino-cli compile --fqbn esp32:esp32:esp32 firmware/$n || break
-done
 ```
 
 ## Quick mental model
 
-- Switch is pressed on switch_panel → local action dispatch looks up `g_map[idx]` → emits `RELAY_CMD` via `bus_tx()` → bus sends on both CAN and ESP-NOW → relay_controller `bus_rx()` returns the frame → `apply_relay_cmd()` flips GPIO → `send_relay_status()` broadcasts new state → switch_panel's `g_relay_mirror` stays in sync → web UI on either node logs every frame in real time.
-- Config changes follow the same path: UI or external tool sends `CONFIG_WRITE` → target node updates RAM, optionally persists to NVS, echoes a `CONFIG_READ_RESP` → sender sees confirmation.
-- Viper alarm command: any node (or the web UI) sends `VIPER_CMD (0x510)` with a 1-byte command code → viper_interface `bus_rx()` receives it → calls `ViperESP2.lock()` / `.unlock()` / `.remoteStart()` → ViperESP2 writes the 5-byte serial packet to the alarm over UART2 → alarm responds → `on_viper_message()` callback fires → viper_interface calls `bus_tx(VIPER_STATUS)` → all nodes and the web UI log the raw alarm response.
+- Switch is pressed on switch_panel → local action dispatch looks up `g_map[idx]` in `mod_switches.cpp` → emits `RELAY_CMD` via `bus_tx()` → bus sends on both CAN and ESP-NOW → relay_controller `bus_rx()` returns the frame → `relay_handle_frame()` calls `apply_relay_cmd()` which flips GPIO → `send_relay_status()` broadcasts new state → switch_panel's `g_relay_mirror` stays in sync → web UI on either node logs every frame in real time.
+- Config changes follow the same path: UI or external tool sends `CONFIG_WRITE` → target node's module handler updates RAM, optionally persists to NVS, echoes a `CONFIG_READ_RESP` → sender sees confirmation.
+- Viper alarm command: any node (or the web UI) sends `VIPER_CMD (0x510)` with a 1-byte command code → viper_interface `bus_rx()` returns the frame → `viper_handle_frame()` calls the appropriate ViperESP2 method → ViperESP2 writes the 5-byte serial packet to the alarm over UART2 → alarm responds → `on_viper_message()` callback fires → viper_interface calls `bus_tx(VIPER_STATUS)` → all nodes and the web UI log the raw alarm response.

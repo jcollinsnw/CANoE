@@ -1,74 +1,59 @@
-# Makefile — sync shared files, then compile/upload ESP32 nodes.
+# Makefile — configure and compile the unified accessory_node firmware.
+#
+# Each physical ESP32 gets a dedicated config header in firmware/configs/.
+# The Makefile copies the right one to accessory_node/node_config.h before
+# invoking arduino-cli, so the single sketch folder compiles to the correct
+# firmware for each node.
 #
 # Usage:
-#   make sync                        # copy shared/ → each sketch folder
-#   make switch_panel                 # sync + compile switch_panel
-#   make relay_controller             # sync + compile relay_controller
-#   make viper_interface              # sync + compile viper_interface
-#   make all                          # sync + compile all three
-#   make upload-switch_panel PORT=/dev/cu.usbserial-XXXX
-#   make upload-relay_controller PORT=/dev/cu.usbserial-YYYY
-#   make upload-viper_interface PORT=/dev/cu.usbserial-ZZZZ
-#   make monitor PORT=/dev/cu.usbserial-XXXX
+#   make relay_controller                             # compile
+#   make switch_panel
+#   make viper_interface
+#   make all                                          # compile all three
+#   make upload-relay_controller  PORT=/dev/cu.usbserial-XXXX
+#   make upload-switch_panel      PORT=/dev/cu.usbserial-YYYY
+#   make upload-viper_interface   PORT=/dev/cu.usbserial-ZZZZ
+#   make monitor                  PORT=/dev/cu.usbserial-XXXX
 
-FQBN     := esp32:esp32:esp32
-BAUD     := 115200
-PORT     ?= /dev/cu.usbserial-0001
+FQBN    := esp32:esp32:esp32
+BAUD    := 115200
+PORT    ?= /dev/cu.usbserial-0001
 
-SHARED   := firmware/shared
-SKETCHES := firmware/relay_controller firmware/switch_panel firmware/viper_interface
-SHARED_FILES := can_protocol.h bus.h bus.cpp webui.h webui.cpp index_html.h
+SKETCH  := firmware/accessory_node
+CONFIGS := firmware/configs
 
-# ---- sync ----
-.PHONY: sync
-sync:
-	@for dir in $(SKETCHES); do \
-		for f in $(SHARED_FILES); do \
-			cp $(SHARED)/$$f $$dir/$$f; \
-		done; \
-	done
-	@echo "[sync] shared files copied to all sketch folders"
+# ---- select node config ----
+.PHONY: relay_controller switch_panel viper_interface
 
-# ---- compile individual nodes ----
-.PHONY: switch_panel relay_controller viper_interface
-switch_panel: sync
-	arduino-cli compile --fqbn $(FQBN) firmware/switch_panel
+relay_controller:
+	cp $(CONFIGS)/relay_controller.h $(SKETCH)/node_config.h
+	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
 
-relay_controller: sync
-	arduino-cli compile --fqbn $(FQBN) firmware/relay_controller
+switch_panel:
+	cp $(CONFIGS)/switch_panel.h $(SKETCH)/node_config.h
+	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
 
-viper_interface: sync
-	arduino-cli compile --fqbn $(FQBN) firmware/viper_interface
+viper_interface:
+	cp $(CONFIGS)/viper_interface.h $(SKETCH)/node_config.h
+	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
 
-# ---- compile all ----
+# ---- compile all three ----
 .PHONY: all
-all: switch_panel relay_controller viper_interface
+all: relay_controller switch_panel viper_interface
 
 # ---- upload ----
-.PHONY: upload-switch_panel upload-relay_controller upload-viper_interface
-upload-switch_panel: switch_panel
-	arduino-cli upload -p $(PORT) --fqbn $(FQBN) firmware/switch_panel
+.PHONY: upload-relay_controller upload-switch_panel upload-viper_interface
 
 upload-relay_controller: relay_controller
-	arduino-cli upload -p $(PORT) --fqbn $(FQBN) firmware/relay_controller
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+
+upload-switch_panel: switch_panel
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
 
 upload-viper_interface: viper_interface
-	arduino-cli upload -p $(PORT) --fqbn $(FQBN) firmware/viper_interface
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
 
 # ---- serial monitor ----
 .PHONY: monitor
 monitor:
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
-
-# ---- check shared file consistency ----
-.PHONY: check
-check:
-	@ok=true; \
-	for f in $(SHARED_FILES); do \
-		for dir in $(SKETCHES); do \
-			if ! diff -q $(SHARED)/$$f $$dir/$$f >/dev/null 2>&1; then \
-				echo "MISMATCH: $(SHARED)/$$f vs $$dir/$$f"; ok=false; \
-			fi; \
-		done; \
-	done; \
-	$$ok && echo "[check] all shared files in sync"
