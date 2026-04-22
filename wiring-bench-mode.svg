@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <defs>
+    <style>
+      text { font-family: -apple-system, system-ui, "Helvetica Neue", sans-serif; }
+      .title { font-size: 22px; font-weight: 700; fill: #1a1a1a; }
+      .subtitle { font-size: 13px; fill: #555; }
+      .section { font-size: 15px; font-weight: 700; fill: #222; }
+      .label { font-size: 13px; fill: #222; }
+      .small { font-size: 11px; fill: #555; }
+      .pin { font-size: 10.5px; fill: #222; font-family: ui-monospace, "SF Mono", monospace; }
+      .value { font-size: 12px; font-weight: 600; fill: #333; font-family: ui-monospace, monospace; }
+      .mono { font-family: ui-monospace, "SF Mono", monospace; }
+
+      .esp  { fill: #E8F0FE; stroke: #1A73E8; stroke-width: 2; }
+      .sw   { fill: #FAFAFA; stroke: #5F6368; stroke-width: 1.5; }
+      .led  { fill: #FFF3D6; stroke: #B06000; stroke-width: 1.5; }
+      .term { fill: #FFFFFF; stroke: #333; stroke-width: 1.5; }
+      .warn { fill: #FFF9E8; stroke: #E0B000; stroke-width: 1.5; }
+
+      .busline { stroke: #188038; stroke-width: 3; fill: none; }
+      .pwr  { stroke: #D93025; stroke-width: 2; fill: none; }
+      .gnd  { stroke: #222;    stroke-width: 2; fill: none; }
+      .sig  { stroke: #5F6368; stroke-width: 1.5; fill: none; }
+      .dashed { stroke-dasharray: 6 4; }
+    </style>
+  </defs>
+
+  <!-- Header -->
+  <text x="640" y="34" text-anchor="middle" class="title">CAN Bus Accessory System — Bench Mode (No Transceivers)</text>
+  <text x="640" y="54" text-anchor="middle" class="subtitle">ESP32 TWAI peripheral with open-drain TX · single shared bus wire · one pull-up · for desk testing only</text>
+
+  <!-- Legend -->
+  <g transform="translate(40, 76)">
+    <rect x="0" y="0" width="520" height="36" fill="#FAFAFA" stroke="#ccc"/>
+    <line x1="12" y1="12" x2="42" y2="12" class="busline"/>
+    <text x="48" y="16" class="small">Shared CAN line (single wire, open-drain)</text>
+    <line x1="300" y1="12" x2="330" y2="12" class="pwr"/>
+    <text x="336" y="16" class="small">+3.3V</text>
+    <line x1="400" y1="12" x2="430" y2="12" class="gnd"/>
+    <text x="436" y="16" class="small">GND</text>
+    <line x1="12" y1="28" x2="42" y2="28" class="sig"/>
+    <text x="48" y="28" class="small">Logic signals</text>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- LEFT NODE: SWITCH PANEL                          -->
+  <!-- =============================================== -->
+  <g id="switch-panel">
+    <text x="200" y="150" text-anchor="middle" class="section">SWITCH PANEL NODE</text>
+
+    <rect x="60" y="170" width="280" height="160" rx="10" class="esp"/>
+    <text x="200" y="194" text-anchor="middle" class="label" style="font-weight:700">ESP32 #1</text>
+    <text x="200" y="210" text-anchor="middle" class="small">USB-powered during bench testing</text>
+
+    <text x="72" y="238" class="pin">GPIO25 ←</text>
+    <text x="72" y="252" class="pin">GPIO26 ←</text>
+    <text x="72" y="266" class="pin">GPIO27 ←</text>
+    <text x="72" y="280" class="pin">GPIO32 ←</text>
+    <text x="72" y="294" class="pin">GPIO33 ←</text>
+    <text x="72" y="308" class="pin">GPIO13 ←</text>
+
+    <text x="258" y="238" class="pin">GPIO5  (CAN TX) ↔</text>
+    <text x="258" y="252" class="pin">GPIO4  (CAN RX) ←</text>
+    <text x="258" y="280" class="pin">   3V3</text>
+    <text x="258" y="294" class="pin">   GND</text>
+
+    <!-- Two test switches -->
+    <rect x="60" y="380" width="280" height="90" rx="10" class="sw"/>
+    <text x="200" y="404" text-anchor="middle" class="label" style="font-weight:700">Test switches</text>
+    <g transform="translate(110,430)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="38" text-anchor="middle" class="pin">SW1</text>
+    </g>
+    <g transform="translate(190,430)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="38" text-anchor="middle" class="pin">SW2</text>
+    </g>
+    <g transform="translate(270,430)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="38" text-anchor="middle" class="pin">SW3</text>
+    </g>
+
+    <path d="M 110 440 L 90 340 L 72 330" class="sig"/>
+    <path d="M 190 440 L 140 340 L 72 320" class="sig"/>
+    <path d="M 270 440 L 200 340 L 72 310" class="sig"/>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- CENTER: SHARED CAN LINE                          -->
+  <!-- =============================================== -->
+  <g id="shared-bus">
+    <!-- Pull-up resistor to +3.3V -->
+    <line x1="640" y1="150" x2="640" y2="220" class="pwr"/>
+    <text x="640" y="144" text-anchor="middle" class="small" style="font-weight:700">+3.3V</text>
+
+    <g transform="translate(620, 220)">
+      <rect x="0" y="0" width="40" height="60" rx="4" class="term"/>
+      <text x="20" y="28" text-anchor="middle" class="value">2.2 kΩ</text>
+      <text x="20" y="44" text-anchor="middle" class="small">pull-up</text>
+    </g>
+    <line x1="640" y1="280" x2="640" y2="320" class="busline"/>
+
+    <!-- Horizontal shared bus line -->
+    <line x1="340" y1="244" x2="940" y2="244" class="busline"/>
+    <line x1="340" y1="252" x2="940" y2="252" class="sig"/>
+
+    <text x="640" y="230" text-anchor="middle" class="small" style="fill:#188038;font-weight:700">Shared CAN bus wire</text>
+    <text x="640" y="310" text-anchor="middle" class="small">(one conductor — repurposed CAT6 pair works fine, twist one wire with a ground return)</text>
+    <text x="640" y="326" text-anchor="middle" class="small">Every node ties its TX AND RX to this same line</text>
+
+    <!-- Arrows / labels pointing at nodes -->
+    <text x="350" y="238" class="small" style="fill:#188038">TX/RX bus</text>
+    <text x="890" y="238" text-anchor="end" class="small" style="fill:#188038">TX/RX bus</text>
+
+    <!-- Tap points -->
+    <circle cx="340" cy="244" r="4" fill="#188038"/>
+    <circle cx="340" cy="252" r="4" fill="#5F6368"/>
+    <circle cx="940" cy="244" r="4" fill="#188038"/>
+    <circle cx="940" cy="252" r="4" fill="#5F6368"/>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- RIGHT NODE: RELAY CONTROLLER (with LEDs)         -->
+  <!-- =============================================== -->
+  <g id="relay-controller">
+    <text x="1085" y="150" text-anchor="middle" class="section">RELAY CONTROLLER NODE</text>
+
+    <rect x="940" y="170" width="280" height="160" rx="10" class="esp"/>
+    <text x="1080" y="194" text-anchor="middle" class="label" style="font-weight:700">ESP32 #2</text>
+    <text x="1080" y="210" text-anchor="middle" class="small">USB-powered during bench testing</text>
+
+    <text x="952" y="238" class="pin">GPIO5  (CAN TX) ↔</text>
+    <text x="952" y="252" class="pin">GPIO4  (CAN RX) ←</text>
+    <text x="952" y="280" class="pin">3V3</text>
+    <text x="952" y="294" class="pin">GND</text>
+
+    <text x="1138" y="238" class="pin">→ GPIO16</text>
+    <text x="1138" y="252" class="pin">→ GPIO17</text>
+    <text x="1138" y="266" class="pin">→ GPIO18</text>
+    <text x="1138" y="280" class="pin">→ GPIO19</text>
+    <text x="1138" y="294" class="pin">→ GPIO21</text>
+    <text x="1138" y="308" class="pin">→ GPIO22</text>
+
+    <!-- Test LEDs -->
+    <rect x="940" y="380" width="280" height="140" rx="10" class="led"/>
+    <text x="1080" y="404" text-anchor="middle" class="label" style="font-weight:700">6× Test LEDs (stand in for relays)</text>
+    <text x="1080" y="420" text-anchor="middle" class="small">LED + 330Ω to GND on each relay GPIO</text>
+
+    <g transform="translate(970, 445)">
+      <circle cx="0" cy="0" r="10" fill="#FFE58A" stroke="#B06000"/>
+      <text x="0" y="28" text-anchor="middle" class="pin">L1</text>
+    </g>
+    <g transform="translate(1010, 445)">
+      <circle cx="0" cy="0" r="10" fill="#FFE58A" stroke="#B06000"/>
+      <text x="0" y="28" text-anchor="middle" class="pin">L2</text>
+    </g>
+    <g transform="translate(1050, 445)">
+      <circle cx="0" cy="0" r="10" fill="#FFE58A" stroke="#B06000"/>
+      <text x="0" y="28" text-anchor="middle" class="pin">L3</text>
+    </g>
+    <g transform="translate(1090, 445)">
+      <circle cx="0" cy="0" r="10" fill="#FFE58A" stroke="#B06000"/>
+      <text x="0" y="28" text-anchor="middle" class="pin">L4</text>
+    </g>
+    <g transform="translate(1130, 445)">
+      <circle cx="0" cy="0" r="10" fill="#FFE58A" stroke="#B06000"/>
+      <text x="0" y="28" text-anchor="middle" class="pin">L5</text>
+    </g>
+    <g transform="translate(1170, 445)">
+      <circle cx="0" cy="0" r="10" fill="#FFE58A" stroke="#B06000"/>
+      <text x="0" y="28" text-anchor="middle" class="pin">L6</text>
+    </g>
+
+    <!-- GPIO to LED lines -->
+    <path d="M 1200 238 L 1220 238 L 1220 410 L 970 410 L 970 435" class="sig"/>
+    <path d="M 1200 252 L 1215 252 L 1215 415 L 1010 415 L 1010 435" class="sig"/>
+    <path d="M 1200 266 L 1212 266 L 1212 420 L 1050 420 L 1050 435" class="sig"/>
+    <path d="M 1200 280 L 1210 280 L 1210 425 L 1090 425 L 1090 435" class="sig"/>
+    <path d="M 1200 294 L 1208 294 L 1208 430 L 1130 430 L 1130 435" class="sig"/>
+    <path d="M 1200 308 L 1205 308 L 1205 435 L 1170 435 L 1170 445" class="sig"/>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- GROUND RAIL                                      -->
+  <!-- =============================================== -->
+  <g id="ground">
+    <line x1="200" y1="330" x2="200" y2="600" class="gnd"/>
+    <line x1="1080" y1="330" x2="1080" y2="600" class="gnd"/>
+    <line x1="200" y1="600" x2="1080" y2="600" class="gnd"/>
+    <text x="640" y="594" text-anchor="middle" class="small" style="font-weight:600">Common GND — both ESP32s share ground (USB hub ground is fine if using one PC)</text>
+
+    <!-- Ground symbol -->
+    <g transform="translate(636, 610)">
+      <line x1="0" y1="0" x2="8" y2="0" class="gnd"/>
+      <line x1="-4" y1="4" x2="12" y2="4" class="gnd"/>
+      <line x1="-8" y1="8" x2="16" y2="8" class="gnd"/>
+      <line x1="4" y1="-8" x2="4" y2="0" class="gnd"/>
+    </g>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- FIRMWARE CALL-OUT                                -->
+  <!-- =============================================== -->
+  <g transform="translate(60, 640)">
+    <rect x="0" y="0" width="1160" height="100" rx="8" class="warn"/>
+    <text x="580" y="24" text-anchor="middle" class="label" style="font-weight:700">Firmware flag: bench mode requires open-drain TX</text>
+    <text x="16" y="46" class="small" style="font-weight:600">In config.h:</text>
+    <text x="120" y="46" class="mono">#define USE_CAN_TRANSCEIVER 0</text>
+    <text x="16" y="68" class="small">After twai_driver_install() the firmware reconfigures GPIO5 as open-drain + pull-up so both nodes can share the wire without fighting. When you add transceivers, flip the flag to 1 and re-flash — no other code changes.</text>
+    <text x="16" y="88" class="small" style="font-weight:600; fill:#B06000">Bench-mode caveats: keep the run under ~1m, stay at 125 kbit/s, max ~4 nodes. Not for in-car use.</text>
+  </g>
+</svg>

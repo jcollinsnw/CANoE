@@ -1,0 +1,56 @@
+/* * Viper 5305V ESP2 Serial Bridge for ESP32
+ * Note: Use a Level Shifter between ESP32 (3.3V) and Viper (5V)
+ * The protocol usually consists of a 5-byte hex string sent at 9600 baud.
+ * Frame format: [Header] [Command] [Status] [Checksum]
+ * Note: The checksum is typically a simple subtraction:
+ *   0xFF - (Byte1 + Byte2 + Byte3 + Byte4).
+ * Common Commands (HEX):
+ *   Function		Hex Sequence
+ *   Arm/Lock		0x01 0x01 0x01 0x01 0xFE
+ *   Disarm/Unlock	0x01 0x02 0x01 0x01 0xFD
+ *   Remote Start	0x01 0x03 0x01 0x01 0xFC
+ *   Panic		0x01 0x04 0x01 0x01 0xFB
+ *   Aux 10x01 0x05 0x01 0x01 0xFA
+ */
+
+#define RXD2 16 // Connect to Viper TX (via Level Shifter)
+#define TXD2 17 // Connect to Viper RX (via Level Shifter)
+
+void setup() {
+  Serial.begin(115200); // Debugging
+  // Viper Serial: 9600 Baud, 8 Data bits, No Parity, 1 Stop bit
+  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2); 
+  Serial.println("Viper ESP2 Bridge Initialized...");
+}
+
+// Function to send a command packet
+void sendViperCommand(byte cmd) {
+  byte header = 0x01;
+  byte status = 0x01;
+  byte extra  = 0x01;
+  byte checksum = 0xFF - (header + cmd + status + extra);
+  
+  byte packet[] = {header, cmd, status, extra, checksum};
+  
+  Serial2.write(packet, sizeof(packet));
+  
+  Serial.print("Sent Command: ");
+  Serial.println(cmd, HEX);
+}
+
+void loop() {
+  if (Serial.available()) {
+    char input = Serial.read();
+    
+    if (input == 'L') sendViperCommand(0x01); // Lock
+    if (input == 'U') sendViperCommand(0x02); // Unlock
+    if (input == 'S') sendViperCommand(0x03); // Start
+  }
+
+  // Listen for status updates from the Viper
+  if (Serial2.available()) {
+    byte statusUpdate = Serial2.read();
+    Serial.print("Viper Status Byte: ");
+    Serial.println(statusUpdate, HEX);
+  }
+}

@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="920" viewBox="0 0 1280 920">
+  <defs>
+    <style>
+      text { font-family: -apple-system, system-ui, "Helvetica Neue", sans-serif; }
+      .title { font-size: 22px; font-weight: 700; fill: #1a1a1a; }
+      .subtitle { font-size: 13px; fill: #555; }
+      .section { font-size: 15px; font-weight: 700; fill: #222; }
+      .label { font-size: 13px; fill: #222; }
+      .small { font-size: 11px; fill: #555; }
+      .pin { font-size: 10.5px; fill: #222; font-family: ui-monospace, "SF Mono", monospace; }
+      .value { font-size: 12px; font-weight: 600; fill: #333; font-family: ui-monospace, monospace; }
+
+      .esp  { fill: #E8F0FE; stroke: #1A73E8; stroke-width: 2; }
+      .xcvr { fill: #FCE8E6; stroke: #D93025; stroke-width: 2; }
+      .drv  { fill: #F3E8FD; stroke: #6A1B9A; stroke-width: 2; }
+      .rel  { fill: #E6F4EA; stroke: #188038; stroke-width: 2; }
+      .fuse { fill: #FEF7E0; stroke: #F29900; stroke-width: 2; }
+      .batt { fill: #FFF3D6; stroke: #B06000; stroke-width: 2; }
+      .sw   { fill: #FAFAFA; stroke: #5F6368; stroke-width: 1.5; }
+      .load { fill: #FFFFFF; stroke: #444; stroke-width: 1.5; }
+      .term { fill: #FFFFFF; stroke: #333; stroke-width: 1.5; }
+
+      .canh { stroke: #1A73E8; stroke-width: 3; fill: none; }
+      .canl { stroke: #F29900; stroke-width: 3; fill: none; }
+      .pwr  { stroke: #D93025; stroke-width: 2; fill: none; }
+      .gnd  { stroke: #222;    stroke-width: 2; fill: none; }
+      .sig  { stroke: #5F6368; stroke-width: 1.5; fill: none; }
+      .dashed { stroke-dasharray: 6 4; }
+    </style>
+  </defs>
+
+  <!-- Header -->
+  <text x="640" y="34" text-anchor="middle" class="title">CAN Bus Accessory System — Production Wiring (With Transceivers)</text>
+  <text x="640" y="54" text-anchor="middle" class="subtitle">Two ESP32 nodes · ISO 11898-2 high-speed CAN · 125 kbit/s · 120Ω termination at both ends</text>
+
+  <!-- Legend -->
+  <g transform="translate(40, 76)">
+    <rect x="0" y="0" width="460" height="36" fill="#FAFAFA" stroke="#ccc"/>
+    <line x1="12" y1="12" x2="42" y2="12" class="canh"/>
+    <text x="48" y="16" class="small">CAN_H</text>
+    <line x1="100" y1="12" x2="130" y2="12" class="canl"/>
+    <text x="136" y="16" class="small">CAN_L</text>
+    <line x1="184" y1="12" x2="214" y2="12" class="pwr"/>
+    <text x="220" y="16" class="small">+12V / +3.3V / +5V</text>
+    <line x1="320" y1="12" x2="350" y2="12" class="gnd"/>
+    <text x="356" y="16" class="small">GND</text>
+    <line x1="12" y1="28" x2="42" y2="28" class="sig"/>
+    <text x="48" y="32" class="small">Logic / GPIO signals</text>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- LEFT NODE: SWITCH PANEL                         -->
+  <!-- =============================================== -->
+  <g id="switch-panel">
+    <text x="200" y="150" text-anchor="middle" class="section">SWITCH PANEL NODE</text>
+
+    <!-- ESP32 -->
+    <rect x="60" y="170" width="280" height="140" rx="10" class="esp"/>
+    <text x="200" y="194" text-anchor="middle" class="label" style="font-weight:700">ESP32 DevKit</text>
+    <text x="200" y="210" text-anchor="middle" class="small">(WROOM-32 or similar)</text>
+
+    <!-- left pins (switches) -->
+    <text x="72" y="236" class="pin">GPIO25 ←</text>
+    <text x="72" y="250" class="pin">GPIO26 ←</text>
+    <text x="72" y="264" class="pin">GPIO27 ←</text>
+    <text x="72" y="278" class="pin">GPIO32 ←</text>
+    <text x="72" y="292" class="pin">GPIO33 ←</text>
+
+    <!-- right pins (can + power) -->
+    <text x="258" y="236" class="pin">→ GPIO5  (CAN TX)</text>
+    <text x="258" y="250" class="pin">← GPIO4  (CAN RX)</text>
+    <text x="258" y="278" class="pin">   3V3</text>
+    <text x="258" y="292" class="pin">   GND</text>
+
+    <!-- Transceiver -->
+    <rect x="380" y="200" width="180" height="110" rx="8" class="xcvr"/>
+    <text x="470" y="224" text-anchor="middle" class="label" style="font-weight:700">TJA1051T/3</text>
+    <text x="470" y="240" text-anchor="middle" class="small">CAN transceiver</text>
+    <text x="390" y="262" class="pin">TXD</text>
+    <text x="390" y="278" class="pin">RXD</text>
+    <text x="390" y="294" class="pin">VIO</text>
+    <text x="390" y="308" class="pin">GND</text>
+    <text x="528" y="262" class="pin">CANH</text>
+    <text x="528" y="278" class="pin">CANL</text>
+    <text x="528" y="294" class="pin">VCC</text>
+
+    <!-- ESP32 -> XCVR connections -->
+    <path d="M 340 236 L 390 260" class="sig"/>
+    <path d="M 340 250 L 390 276" class="sig"/>
+    <path d="M 340 278 L 390 292" class="pwr"/>
+    <path d="M 340 292 L 390 307" class="gnd"/>
+
+    <!-- Switches panel -->
+    <rect x="60" y="370" width="280" height="180" rx="10" class="sw"/>
+    <text x="200" y="394" text-anchor="middle" class="label" style="font-weight:700">Switches / Buttons</text>
+    <text x="200" y="410" text-anchor="middle" class="small">INPUT_PULLUP — pressed = GND</text>
+
+    <g transform="translate(100,430)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="40" text-anchor="middle" class="pin">SW1</text>
+    </g>
+    <g transform="translate(160,430)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="40" text-anchor="middle" class="pin">SW2</text>
+    </g>
+    <g transform="translate(220,430)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="40" text-anchor="middle" class="pin">SW3</text>
+    </g>
+    <g transform="translate(280,430)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="40" text-anchor="middle" class="pin">SW4</text>
+    </g>
+    <g transform="translate(130,500)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="40" text-anchor="middle" class="pin">SW5</text>
+    </g>
+    <g transform="translate(250,500)">
+      <circle cx="0" cy="10" r="9" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      <line x1="-6" y1="4" x2="6" y2="16" stroke="#333" stroke-width="1.5"/>
+      <text x="0" y="40" text-anchor="middle" class="pin">SW6</text>
+    </g>
+
+    <!-- switches to esp32 via a bus line -->
+    <path d="M 40 310 L 40 380 L 90 430" class="sig" fill="none"/>
+    <path d="M 40 380 L 160 430" class="sig"/>
+    <path d="M 40 380 L 220 430" class="sig"/>
+    <path d="M 40 380 L 280 430" class="sig"/>
+    <path d="M 40 380 L 130 500" class="sig"/>
+    <path d="M 40 380 L 250 500" class="sig"/>
+    <path d="M 72 280 L 40 310" class="sig"/>
+    <text x="20" y="360" class="small">6× GPIOs</text>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- CAN BUS IN THE MIDDLE                            -->
+  <!-- =============================================== -->
+  <g id="can-bus">
+    <!-- Termination resistor LEFT -->
+    <g transform="translate(580, 252)">
+      <rect x="-4" y="-4" width="40" height="30" rx="4" class="term"/>
+      <text x="16" y="14" text-anchor="middle" class="value">120Ω</text>
+      <text x="16" y="42" text-anchor="middle" class="small">term.</text>
+    </g>
+
+    <!-- CAN_H line (twisted pair illustration) -->
+    <path d="M 562 262
+             Q 620 252, 680 262 T 800 262 T 920 262 T 1040 262
+             L 1090 262"
+          class="canh"/>
+    <!-- CAN_L line -->
+    <path d="M 562 278
+             Q 620 288, 680 278 T 800 278 T 920 278 T 1040 278
+             L 1090 278"
+          class="canl"/>
+
+    <text x="825" y="248" text-anchor="middle" class="small" style="fill:#1A73E8; font-weight:600">CAN_H</text>
+    <text x="825" y="300" text-anchor="middle" class="small" style="fill:#F29900; font-weight:600">CAN_L</text>
+    <text x="825" y="318" text-anchor="middle" class="small">twisted pair — CAT6 pair, automotive hookup, or shielded cable</text>
+
+    <!-- Termination resistor RIGHT -->
+    <g transform="translate(1058, 252)">
+      <rect x="-4" y="-4" width="40" height="30" rx="4" class="term"/>
+      <text x="16" y="14" text-anchor="middle" class="value">120Ω</text>
+      <text x="16" y="42" text-anchor="middle" class="small">term.</text>
+    </g>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- RIGHT NODE: RELAY CONTROLLER                     -->
+  <!-- =============================================== -->
+  <g id="relay-controller">
+    <text x="1085" y="150" text-anchor="middle" class="section">RELAY CONTROLLER NODE</text>
+
+    <!-- Transceiver -->
+    <rect x="940" y="200" width="180" height="110" rx="8" class="xcvr"/>
+    <text x="1030" y="224" text-anchor="middle" class="label" style="font-weight:700">TJA1051T/3</text>
+    <text x="1030" y="240" text-anchor="middle" class="small">CAN transceiver</text>
+    <text x="950" y="262" class="pin">CANH</text>
+    <text x="950" y="278" class="pin">CANL</text>
+    <text x="950" y="294" class="pin">VCC</text>
+    <text x="1084" y="262" class="pin">TXD</text>
+    <text x="1084" y="278" class="pin">RXD</text>
+    <text x="1084" y="294" class="pin">GND</text>
+    <text x="1084" y="308" class="pin">VIO</text>
+
+    <!-- ESP32 -->
+    <rect x="940" y="340" width="280" height="140" rx="10" class="esp"/>
+    <text x="1080" y="364" text-anchor="middle" class="label" style="font-weight:700">ESP32 DevKit</text>
+    <text x="1080" y="380" text-anchor="middle" class="small">(WROOM-32 or similar)</text>
+
+    <text x="952" y="406" class="pin">GPIO5  (CAN TX) ←</text>
+    <text x="952" y="420" class="pin">GPIO4  (CAN RX) →</text>
+    <text x="952" y="444" class="pin">3V3</text>
+    <text x="952" y="458" class="pin">GND</text>
+
+    <text x="1138" y="406" class="pin">→ GPIO16</text>
+    <text x="1138" y="420" class="pin">→ GPIO17</text>
+    <text x="1138" y="434" class="pin">→ GPIO18</text>
+    <text x="1138" y="448" class="pin">→ GPIO19</text>
+    <text x="1138" y="462" class="pin">→ GPIO21</text>
+    <text x="1138" y="476" class="pin">→ GPIO22</text>
+
+    <!-- XCVR -> ESP32 connections -->
+    <path d="M 1104 262 L 1084 404" class="sig"/>
+    <path d="M 1104 278 L 1084 418" class="sig"/>
+    <path d="M 1120 294 L 1080 444" class="pwr"/>
+    <path d="M 1120 308 L 1080 458" class="gnd"/>
+
+    <!-- ULN2803 driver -->
+    <rect x="770" y="560" width="180" height="90" rx="8" class="drv"/>
+    <text x="860" y="582" text-anchor="middle" class="label" style="font-weight:700">ULN2803A</text>
+    <text x="860" y="598" text-anchor="middle" class="small">Darlington array (or 6× MOSFETs)</text>
+    <text x="860" y="622" text-anchor="middle" class="small">Drives relay coils, has flyback diodes</text>
+    <text x="860" y="640" text-anchor="middle" class="small">built in</text>
+
+    <!-- ESP32 GPIOs to ULN2803 -->
+    <path d="M 1200 406 L 1240 406 L 1240 540 L 950 540 L 950 580" class="sig"/>
+    <path d="M 1200 420 L 1230 420 L 1230 545 L 950 545 L 950 585" class="sig"/>
+    <path d="M 1200 434 L 1220 434 L 1220 550 L 950 550 L 950 590" class="sig"/>
+    <path d="M 1200 448 L 1210 448 L 1210 555 L 950 555 L 950 595" class="sig"/>
+    <path d="M 1200 462 L 1205 462 L 1205 560 L 950 560 L 950 600" class="sig"/>
+    <path d="M 1200 476 L 1202 476 L 1202 570 L 950 570 L 950 605" class="sig"/>
+
+    <!-- Relays + fuse box -->
+    <rect x="960" y="560" width="240" height="200" rx="10" class="fuse"/>
+    <text x="1080" y="584" text-anchor="middle" class="label" style="font-weight:700">Fuse &amp; Relay Box (6-way)</text>
+    <text x="1080" y="602" text-anchor="middle" class="small">Relay in drives load out; fuse inline</text>
+
+    <g transform="translate(985, 620)">
+      <rect x="0" y="0" width="46" height="22" rx="3" class="rel"/>
+      <text x="23" y="16" text-anchor="middle" class="pin">R1</text>
+      <rect x="50" y="0" width="36" height="22" rx="3" class="fuse"/>
+      <text x="68" y="16" text-anchor="middle" class="pin">F1</text>
+      <text x="100" y="16" class="pin">→ LOAD 1</text>
+    </g>
+    <g transform="translate(985, 648)">
+      <rect x="0" y="0" width="46" height="22" rx="3" class="rel"/>
+      <text x="23" y="16" text-anchor="middle" class="pin">R2</text>
+      <rect x="50" y="0" width="36" height="22" rx="3" class="fuse"/>
+      <text x="68" y="16" text-anchor="middle" class="pin">F2</text>
+      <text x="100" y="16" class="pin">→ LOAD 2</text>
+    </g>
+    <g transform="translate(985, 676)">
+      <rect x="0" y="0" width="46" height="22" rx="3" class="rel"/>
+      <text x="23" y="16" text-anchor="middle" class="pin">R3</text>
+      <rect x="50" y="0" width="36" height="22" rx="3" class="fuse"/>
+      <text x="68" y="16" text-anchor="middle" class="pin">F3</text>
+      <text x="100" y="16" class="pin">→ LOAD 3</text>
+    </g>
+    <g transform="translate(985, 704)">
+      <rect x="0" y="0" width="46" height="22" rx="3" class="rel"/>
+      <text x="23" y="16" text-anchor="middle" class="pin">R4</text>
+      <rect x="50" y="0" width="36" height="22" rx="3" class="fuse"/>
+      <text x="68" y="16" text-anchor="middle" class="pin">F4</text>
+      <text x="100" y="16" class="pin">→ LOAD 4</text>
+    </g>
+    <g transform="translate(985, 732)">
+      <rect x="0" y="0" width="46" height="22" rx="3" class="rel"/>
+      <text x="23" y="16" text-anchor="middle" class="pin">R5</text>
+      <rect x="50" y="0" width="36" height="22" rx="3" class="fuse"/>
+      <text x="68" y="16" text-anchor="middle" class="pin">F5</text>
+      <text x="100" y="16" class="pin">→ LOAD 5</text>
+    </g>
+    <g transform="translate(985, 760)">
+      <rect x="0" y="0" width="46" height="22" rx="3" class="rel"/>
+      <text x="23" y="16" text-anchor="middle" class="pin">R6</text>
+      <rect x="50" y="0" width="36" height="22" rx="3" class="fuse"/>
+      <text x="68" y="16" text-anchor="middle" class="pin">F6</text>
+      <text x="100" y="16" class="pin">→ LOAD 6</text>
+    </g>
+  </g>
+
+  <!-- =============================================== -->
+  <!-- POWER RAIL ACROSS BOTTOM                         -->
+  <!-- =============================================== -->
+  <g id="power">
+    <!-- Accessory battery -->
+    <rect x="60" y="790" width="150" height="80" rx="8" class="batt"/>
+    <text x="135" y="814" text-anchor="middle" class="label" style="font-weight:700">Accessory Battery</text>
+    <text x="135" y="830" text-anchor="middle" class="small">12V — isolated from starter</text>
+    <text x="135" y="850" text-anchor="middle" class="small">Solar + DC-DC charged</text>
+
+    <!-- Master fuse -->
+    <rect x="230" y="810" width="80" height="40" rx="6" class="fuse"/>
+    <text x="270" y="834" text-anchor="middle" class="label" style="font-weight:700">Main Fuse</text>
+
+    <!-- +12V rail -->
+    <line x1="210" y1="830" x2="230" y2="830" class="pwr"/>
+    <line x1="310" y1="830" x2="1200" y2="830" class="pwr"/>
+    <text x="700" y="822" text-anchor="middle" class="small">+12V rail</text>
+
+    <!-- GND rail -->
+    <line x1="135" y1="870" x2="135" y2="895" class="gnd"/>
+    <line x1="135" y1="895" x2="1200" y2="895" class="gnd"/>
+    <text x="700" y="912" text-anchor="middle" class="small">Common ground</text>
+
+    <!-- DC-DC for left node -->
+    <rect x="80" y="700" width="100" height="60" rx="6" class="drv"/>
+    <text x="130" y="722" text-anchor="middle" class="label" style="font-weight:600">12V → 5V</text>
+    <text x="130" y="738" text-anchor="middle" class="small">automotive-rated</text>
+    <text x="130" y="754" text-anchor="middle" class="small">+ TVS on input</text>
+
+    <line x1="130" y1="760" x2="130" y2="895" class="gnd"/>
+    <line x1="130" y1="700" x2="130" y2="660" class="pwr"/>
+    <line x1="130" y1="660" x2="260" y2="660" class="pwr"/>
+    <line x1="260" y1="660" x2="260" y2="310" class="pwr"/>
+    <text x="150" y="680" class="small">5V → ESP32 5V pin</text>
+    <line x1="130" y1="760" x2="130" y2="790" class="pwr" />
+
+    <!-- DC-DC for right node -->
+    <rect x="1100" y="700" width="100" height="60" rx="6" class="drv"/>
+    <text x="1150" y="722" text-anchor="middle" class="label" style="font-weight:600">12V → 5V</text>
+    <text x="1150" y="738" text-anchor="middle" class="small">automotive-rated</text>
+    <text x="1150" y="754" text-anchor="middle" class="small">+ TVS on input</text>
+
+    <line x1="1150" y1="760" x2="1150" y2="895" class="gnd"/>
+    <line x1="1150" y1="700" x2="1150" y2="480" class="pwr"/>
+    <text x="1165" y="620" class="small">5V → ESP32</text>
+
+    <!-- Fuse box input from 12V rail -->
+    <line x1="1200" y1="830" x2="1200" y2="760" class="pwr"/>
+    <text x="1215" y="780" class="small">+12V in</text>
+  </g>
+
+  <!-- Notes -->
+  <g transform="translate(380, 660)">
+    <rect x="0" y="0" width="540" height="110" rx="8" fill="#FFF9E8" stroke="#E0B000" stroke-width="1.5"/>
+    <text x="270" y="22" text-anchor="middle" class="label" style="font-weight:700">Build notes</text>
+    <text x="12" y="44" class="small">• Termination: one 120Ω resistor between CAN_H and CAN_L at EACH end of the bus (2 total).</text>
+    <text x="12" y="60" class="small">• Keep the CAN pair twisted — repurposed CAT6 pair works fine.</text>
+    <text x="12" y="76" class="small">• All nodes MUST share a common ground reference. Tie chassis ground at one point only.</text>
+    <text x="12" y="92" class="small">• ULN2803A includes flyback diodes. Do NOT drive relay coils directly from GPIO.</text>
+    <text x="12" y="108" class="small">• Feed ESP32 from an automotive-rated buck (9–36V in, load-dump tolerant) + TVS diode.</text>
+  </g>
+</svg>

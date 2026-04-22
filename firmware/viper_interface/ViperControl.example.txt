@@ -1,0 +1,38 @@
+#include <ViperESP2.h>
+
+// Use UART2 (GPIO 16/17 on most ESP32s)
+ViperESP2 carAlarm(Serial2);
+
+void handleViperStatus(uint8_t status) {
+  Serial.print("Viper says: 0x");
+  Serial.println(status, HEX);
+  
+  // Example logic mapping
+  if (status == 0x01) Serial.println("Status: System Armed");
+  if (status == 0x02) Serial.println("Status: System Disarmed");
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Initialize library
+  carAlarm.begin(9600);
+  
+  // Link the 'listen' function
+  carAlarm.onStatusUpdate(handleViperStatus);
+  
+  Serial.println("Viper Interface Ready.");
+}
+
+void loop() {
+  // Always call update to process incoming serial data from the alarm
+  carAlarm.update();
+
+  // Test commands via Serial Monitor
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == 'l') carAlarm.lock();
+    if (c == 'u') carAlarm.unlock();
+    if (c == 's') carAlarm.remoteStart();
+  }
+}
