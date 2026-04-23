@@ -46,12 +46,15 @@ all: relay_controller switch_panel viper_interface
 
 upload-relay_controller: relay_controller
 	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
 upload-switch_panel: switch_panel
 	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
 upload-viper_interface: viper_interface
 	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
 # ---- serial monitor ----
 .PHONY: monitor

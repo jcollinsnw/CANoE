@@ -6,6 +6,7 @@
 
 #ifdef ENABLE_DHT22
 
+#include "mod_dht22.h"
 #include "can_protocol.h"
 #include "bus.h"
 

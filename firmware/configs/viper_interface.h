@@ -23,3 +23,5 @@
 #define LCD_I2C_ADDR      0x27  // try 0x3F if blank
 #define LCD_SDA_PIN       21
 #define LCD_SCL_PIN       22
+#define MPU_SDA_PIN       21
+#define MPU_SCL_PIN       22

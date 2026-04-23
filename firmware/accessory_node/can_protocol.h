@@ -87,6 +87,8 @@ enum SwitchActionKind : uint8_t {
   SW_ACT_EVENT_ONLY = 2,  // Publish SW_PRESS only; no relay change.
   SW_ACT_HOLD       = 3,  // arg = relay idx. Relay ON while held, OFF on release. (Horn-style.)
   SW_ACT_SCENE      = 4,  // arg = 6-bit relay bitmap. Press sets mask=0x3F, state=arg.
+  SW_ACT_MENU_NAV   = 5,  // Short press = menu select/navigate; long press = menu enter/confirm.
+  SW_ACT_ALL_OFF    = 6,  // Press turns all relays off.
 };
 
 // The in-RAM switch mapping record. The switch panel keeps an array

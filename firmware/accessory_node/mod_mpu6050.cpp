@@ -19,6 +19,13 @@
 #define wlogln(msg)     Serial.println(msg)
 #endif
 
+#ifndef MPU_SDA_PIN
+#define MPU_SDA_PIN LCD_SDA_PIN
+#endif
+#ifndef MPU_SCL_PIN
+#define MPU_SCL_PIN LCD_SCL_PIN
+#endif
+
 #define MPU_ADDR         0x68
 #define MPU_REG_PWR_MGMT 0x6B
 #define MPU_REG_ACCEL    0x3B   // ACCEL_XOUT_H
@@ -50,7 +57,6 @@ static bool mpu_read_accel(int16_t out[3]) {
 }
 
 void mpu_setup() {
-  Wire.begin(MPU_SDA_PIN, MPU_SCL_PIN);
   mpu_write_reg(MPU_REG_PWR_MGMT, 0x00);  // wake up
   delay(10);
   Wire.beginTransmission(MPU_ADDR);

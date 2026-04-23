@@ -3,20 +3,22 @@
 // Which features compile in is determined entirely by node_config.h, which is
 // copied from firmware/configs/<node>.h by the Makefile before each build.
 //
-// Init order (mandatory): relay_setup → setup_can → webui_init → bus_init
+// Init order (mandatory): relay_setup → setup_can → webui_init → bus_init → lcd_setup → menu_setup
 //   webui_init brings WiFi up so esp_now_init has a radio to bind to.
-//   bus_init requires WiFi already running.
+//   bus_init requires WiFi already running. menu_setup reads NVS so must run after bus_init.
 //
 // Supported feature flags (define in node_config.h):
 //   ENABLE_RELAY    — relay GPIO control, watchdog, battery telemetry
-//   ENABLE_SWITCHES — 6 latching switches + 4 buttons + rotary encoder + LCD menu
+//   ENABLE_SWITCHES — switch/button inputs, debounce, action dispatch, rotary encoder
 //   ENABLE_LCD      — HD44780 16x2 via PCF8574 I2C backpack
+//   ENABLE_MENU     — LCD menu system; requires ENABLE_LCD (items gated by MENU_HAS_*)
 //   ENABLE_VIPER    — Viper 5305V serial bridge over UART2
 //   ENABLE_MPU6050  — MPU-6050 accelerometer / shake detection
 //   ENABLE_DHT22    — AM2302 temperature/humidity sensor
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <Wire.h>
 #include "driver/twai.h"
 #include "soc/gpio_struct.h"
 
@@ -35,6 +37,7 @@
 #include "mod_relay.h"
 #include "mod_lcd.h"
 #include "mod_switches.h"
+#include "mod_menu.h"
 #include "mod_viper.h"
 #include "mod_mpu6050.h"
 #include "mod_dht22.h"
@@ -106,8 +109,18 @@ void setup() {
   bus_init_no_wifi(NODE_ID);
 #endif
 
+// I2C — initialize once for all modules that share the bus (LCD, MPU-6050).
+#if defined(ENABLE_LCD)
+  Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
+#elif defined(ENABLE_MPU6050)
+  Wire.begin(MPU_SDA_PIN, MPU_SCL_PIN);
+#endif
+
 #ifdef ENABLE_LCD
   lcd_setup();
+#endif
+#ifdef ENABLE_MENU
+  menu_setup();
 #endif
 #ifdef ENABLE_SWITCHES
   switches_setup();
@@ -139,6 +152,9 @@ void loop() {
   // Per-module periodic work
 #ifdef ENABLE_SWITCHES
   switches_loop();
+#endif
+#ifdef ENABLE_MENU
+  menu_tick();
 #endif
 #ifdef ENABLE_VIPER
   viper_loop();
