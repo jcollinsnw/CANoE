@@ -14,12 +14,16 @@
 // --------------------------------------------------------------
 #define CAN_ID_RELAY_CMD         0x100  // Switch panel  -> Relay controller
 #define CAN_ID_RELAY_STATUS      0x101  // Relay ctrl    -> everyone, periodic
+#define CAN_ID_LED_CMD           0x102  // Any node -> target node: [target, mask, state]
+#define CAN_ID_LED_STATUS        0x103  // Target node  -> everyone, on change: [node_id, bitmap]
 #define CAN_ID_SWITCH_EVENT      0x200  // Switch panel  -> everyone, on change
 #define CAN_ID_ENCODER_EVENT     0x201  // Switch panel  -> everyone: rotary encoder
 #define CAN_ID_TELEMETRY         0x300  // Relay ctrl    -> everyone, periodic
 #define CAN_ID_ENV_DATA          0x301  // Switch panel  -> everyone, periodic (temp/humidity)
 #define CAN_ID_IMU_DATA          0x302  // Viper iface   -> everyone, periodic (accel xyz)
 #define CAN_ID_SHAKE_EVENT       0x303  // Viper iface   -> everyone, on detection
+#define CAN_ID_ENGINE_DATA       0x304  // RPM node      -> everyone: [rpm_lo, rpm_hi]
+#define CAN_ID_GPS_DATA          0x305  // GPS node      -> everyone: [speed_lo, speed_hi, heading_lo, heading_hi, flags]
 
 // Config-over-CAN — change behavior at runtime without reflashing.
 #define CAN_ID_CONFIG_WRITE      0x400
@@ -77,28 +81,84 @@ enum EncoderEvent : uint8_t {
 };
 
 // --------------------------------------------------------------
-// Switch action kinds — what happens when a switch is pressed.
-// The switch panel stores one of these per switch and executes it
-// locally (sending RELAY_CMD frames as needed).
+// Rules engine — any CAN frame → any CAN action, stored in NVS.
+// Rules are evaluated on every received frame; the first matching
+// condition fires its action. trig_id == 0 means the slot is empty.
+//
+// Condition matching (c0 and c1 are independent; c*_mask == 0 skips):
+//   (frame.data[c*_byte] & c*_mask) == (c*_val & c*_mask)
 // --------------------------------------------------------------
-enum SwitchActionKind : uint8_t {
-  SW_ACT_TOGGLE     = 0,  // arg = relay idx. Press toggles that relay.
-  SW_ACT_PULSE      = 1,  // arg = relay idx, arg2 = pulse length in ms.
-  SW_ACT_EVENT_ONLY = 2,  // Publish SW_PRESS only; no relay change.
-  SW_ACT_HOLD       = 3,  // arg = relay idx. Relay ON while held, OFF on release. (Horn-style.)
-  SW_ACT_SCENE      = 4,  // arg = 6-bit relay bitmap. Press sets mask=0x3F, state=arg.
-  SW_ACT_MENU_NAV   = 5,  // Short press = menu select/navigate; long press = menu enter/confirm.
-  SW_ACT_ALL_OFF    = 6,  // Press turns all relays off.
+enum RuleActionKind : uint8_t {
+  RULE_ACT_NONE         = 0,   // slot disabled
+  RULE_ACT_RELAY_TOGGLE = 1,   // arg0 = relay idx (0-5)
+  RULE_ACT_RELAY_ON     = 2,   // arg0 = relay idx
+  RULE_ACT_RELAY_OFF    = 3,   // arg0 = relay idx
+  RULE_ACT_ALL_OFF      = 4,   // all relays off
+  RULE_ACT_RELAY_SCENE  = 5,   // arg0 = 6-bit relay bitmap
+  RULE_ACT_LED_ON       = 6,   // arg0 = target node_id, arg1 = led index
+  RULE_ACT_LED_OFF      = 7,   // arg0 = target node_id, arg1 = led index
+  RULE_ACT_WIFI_ENABLE  = 8,   // arg0 = target node_id
+  RULE_ACT_WIFI_DISABLE = 9,   // arg0 = target node_id
+  RULE_ACT_VIPER_CMD    = 10,  // arg0 = VIPER_CMD_*
+  RULE_ACT_MENU_SELECT  = 11,  // short-press menu select (no-op when menu closed)
+  RULE_ACT_MENU_ENTER   = 12,  // long-press: enter menu or confirm action
 };
 
-// The in-RAM switch mapping record. The switch panel keeps an array
-// of these, one per switch. Size is fixed at 4 bytes so it fits cleanly
-// in a CAN payload and in NVS.
-struct SwitchAction {
-  uint8_t  kind;   // SwitchActionKind
-  uint8_t  arg;    // relay idx, bitmap, etc (depends on kind)
-  uint16_t arg2;   // extra param (pulse ms, etc)
-};
+struct CanRule {
+  uint16_t trig_id;   // CAN frame ID to watch; 0 = slot disabled
+  uint8_t  c0_byte;   // data byte index for condition 0
+  uint8_t  c0_val;    // expected value (after masking)
+  uint8_t  c0_mask;   // AND mask; 0x00 = skip this condition entirely
+  uint8_t  c1_byte;   // data byte index for condition 1
+  uint8_t  c1_val;
+  uint8_t  c1_mask;   // 0x00 = skip
+  uint8_t  action;    // RuleActionKind
+  uint8_t  arg0;
+  uint8_t  arg1;
+  uint8_t  arg2;
+};  // 12 bytes — fits cleanly in NVS putBytes
+
+// --------------------------------------------------------------
+// Trigger macros — expand to the CanRule trigger fields:
+//   trig_id, c0_byte, c0_val, c0_mask, c1_byte, c1_val, c1_mask
+// --------------------------------------------------------------
+// Switch events (SWITCH_EVENT: data[0]=sw_idx, data[1]=SwitchEvent)
+#define TRIG_SW_PRESS(idx)    CAN_ID_SWITCH_EVENT, 0, (idx), 0xFF, 1, SW_PRESS,      0xFF
+#define TRIG_SW_RELEASE(idx)  CAN_ID_SWITCH_EVENT, 0, (idx), 0xFF, 1, SW_RELEASE,    0xFF
+#define TRIG_SW_LONG(idx)     CAN_ID_SWITCH_EVENT, 0, (idx), 0xFF, 1, SW_LONG_PRESS, 0xFF
+
+// Relay status (RELAY_STATUS: data[0] = relay bitmap at 5 Hz)
+// These fire every status broadcast while the condition holds.
+#define TRIG_RELAY_BIT_ON(n)  CAN_ID_RELAY_STATUS, 0, (1<<(n)), (1<<(n)), 0, 0, 0x00
+#define TRIG_RELAY_BIT_OFF(n) CAN_ID_RELAY_STATUS, 0, 0x00,     (1<<(n)), 0, 0, 0x00
+
+// Relay command (RELAY_CMD: data[0]=mask, data[1]=state — fires only on changes)
+#define TRIG_RELAY_CMD_ON(n)  CAN_ID_RELAY_CMD, 0, (1<<(n)), (1<<(n)), 1, (1<<(n)), (1<<(n))
+#define TRIG_RELAY_CMD_OFF(n) CAN_ID_RELAY_CMD, 0, (1<<(n)), (1<<(n)), 1, 0x00,     (1<<(n))
+
+// Match any frame with a given ID (no byte conditions)
+#define TRIG_ANY(id)          (id), 0, 0, 0x00, 0, 0, 0x00
+
+// --------------------------------------------------------------
+// Action macros — expand to the CanRule action fields:
+//   action, arg0, arg1, arg2
+// --------------------------------------------------------------
+#define ACT_RELAY_TOGGLE(r)    RULE_ACT_RELAY_TOGGLE, (r),    0,      0
+#define ACT_RELAY_ON(r)        RULE_ACT_RELAY_ON,     (r),    0,      0
+#define ACT_RELAY_OFF(r)       RULE_ACT_RELAY_OFF,    (r),    0,      0
+#define ACT_ALL_OFF()          RULE_ACT_ALL_OFF,      0,      0,      0
+#define ACT_RELAY_SCENE(bmap)  RULE_ACT_RELAY_SCENE,  (bmap), 0,      0
+#define ACT_LED_ON(node, led)  RULE_ACT_LED_ON,       (node), (led),  0
+#define ACT_LED_OFF(node, led) RULE_ACT_LED_OFF,      (node), (led),  0
+#define ACT_WIFI_ENABLE(node)  RULE_ACT_WIFI_ENABLE,  (node), 0,      0
+#define ACT_WIFI_DISABLE(node) RULE_ACT_WIFI_DISABLE, (node), 0,      0
+#define ACT_VIPER(cmd)         RULE_ACT_VIPER_CMD,    (cmd),  0,      0
+#define ACT_MENU_SELECT()      RULE_ACT_MENU_SELECT,  0,      0,      0
+#define ACT_MENU_ENTER()       RULE_ACT_MENU_ENTER,   0,      0,      0
+
+// Convenience: wrap a trigger + action pair into a CanRule initialiser.
+// Usage: RULE(TRIG_SW_PRESS(0), ACT_RELAY_TOGGLE(0))
+#define RULE(trig, act)  { trig, act }
 
 // --------------------------------------------------------------
 // CONFIG PROTOCOL
@@ -110,10 +170,9 @@ struct SwitchAction {
 #define CFG_TARGET_BROADCAST      0xFF
 
 // Keys — what piece of config is being addressed.
-//   Switch panel side:
-#define CFG_KEY_SW_ACTION         0x10   // per-switch SwitchAction record
 //   Relay controller side:
 #define CFG_KEY_RELAY_MAX_ON_MS   0x20   // per-relay safety auto-off (0 = no limit)
+#define CFG_KEY_RPM_REDLINE       0x40   // RPM redline for display widget; arg2_lo/hi = RPM uint16
 //   Any node:
 #define CFG_KEY_WIFI_ENABLED      0x30   // data[4]=0 disable / 1 enable; node restarts to apply
 
@@ -126,7 +185,7 @@ struct SwitchAction {
 //   [0] target
 //   [1] key
 //   [2] index     (switch id, relay id, etc.)
-//   [3] kind      (for CFG_KEY_SW_ACTION: SwitchActionKind; else unused)
+//   [3] kind      (unused / reserved)
 //   [4] arg
 //   [5] arg2_lo
 //   [6] arg2_hi

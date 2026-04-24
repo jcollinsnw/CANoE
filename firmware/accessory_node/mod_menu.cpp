@@ -14,6 +14,7 @@
 #include "bus.h"
 #include "node_state.h"
 #include "mod_lcd.h"
+#include "mod_buzzer.h"
 
 #if USE_WIFI
 #include "webui.h"
@@ -214,7 +215,7 @@ bool menu_is_active() { return g_menu_active; }
 void menu_exit() {
   g_menu_active = false;
   lcd_update_status();
-  lcd_set_event("Menu closed");
+  buzzer_menu_exit();
   wlogln("[menu] exit");
 }
 
@@ -225,6 +226,7 @@ void menu_enter() {
   g_sub_sel     = 0;
   g_last_act    = millis();
   menu_draw();
+  buzzer_menu_enter();
   wlogln("[menu] enter");
 }
 
@@ -247,6 +249,7 @@ void menu_scroll(int8_t dir) {
     if (dir > 0) g_sub_sel = (g_sub_sel + 1) % n;
     else         g_sub_sel = (g_sub_sel + n - 1) % n;
   }
+  buzzer_menu_scroll();
   menu_draw();
 }
 
@@ -255,6 +258,7 @@ void menu_select() {
   if (g_level == 0) {
     if (g_items[g_top_sel].id == MENU_ID_EXIT) { menu_exit(); return; }
     g_level = 1; g_sub_sel = 0;
+    buzzer_menu_select();
     menu_draw();
   } else {
     if (g_sub_sel == g_items[g_top_sel].sub_count - 1) menu_back();
@@ -266,6 +270,7 @@ void menu_action() {
   g_last_act = millis();
   if (g_level == 0) return;
   if (g_sub_sel == g_items[g_top_sel].sub_count - 1) { menu_back(); return; }
+  buzzer_menu_action();
   uint8_t idx = g_sub_sel;  // direct index — Back is last, not first
 
   switch (g_items[g_top_sel].id) {

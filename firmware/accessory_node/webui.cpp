@@ -11,15 +11,29 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <stdarg.h>
+#include "node_config.h"
 #include "bus.h"
 #include "webui.h"
 #include "index_html.h"
+#ifdef ENABLE_RULES
+#include "mod_rules.h"
+#endif
 
 // --------------------------------------------------------------
-// Config
+// Config — AP settings can be overridden in the node's config header:
+//   #define AP_SSID     "MyNetwork"   // default: "AccessoryBus"
+//   #define AP_PASSWORD "mypassword"  // default: open (no password)
+//   #define AP_HIDDEN   1             // default: 0 (visible SSID)
 // --------------------------------------------------------------
-static const char*  AP_SSID     = "AccessoryBus";
-static const char*  AP_PASSWORD = "";          // open network — change if you want WPA2
+#ifndef AP_SSID
+#define AP_SSID     "AccessoryBus"
+#endif
+#ifndef AP_PASSWORD
+#define AP_PASSWORD ""
+#endif
+#ifndef AP_HIDDEN
+#define AP_HIDDEN   0
+#endif
 static const int    AP_CHANNEL  = 6;
 static const IPAddress AP_IP(192, 168, 4, 1);
 static const IPAddress AP_NETMASK(255, 255, 255, 0);
@@ -203,6 +217,168 @@ static void handle_serial() {
   g_http.send(200, "application/json", s);
 }
 
+static void handle_config() {
+  static const char* const LABELS[] = {
+#ifdef RELAY_1_LABEL
+    RELAY_1_LABEL,
+#else
+    nullptr,
+#endif
+#ifdef RELAY_2_LABEL
+    RELAY_2_LABEL,
+#else
+    nullptr,
+#endif
+#ifdef RELAY_3_LABEL
+    RELAY_3_LABEL,
+#else
+    nullptr,
+#endif
+#ifdef RELAY_4_LABEL
+    RELAY_4_LABEL,
+#else
+    nullptr,
+#endif
+#ifdef RELAY_5_LABEL
+    RELAY_5_LABEL,
+#else
+    nullptr,
+#endif
+#ifdef RELAY_6_LABEL
+    RELAY_6_LABEL,
+#else
+    nullptr,
+#endif
+  };
+
+  String s = "{";
+#ifdef ENABLE_RELAY
+  s += "\"has_relay\":true,";
+#else
+  s += "\"has_relay\":false,";
+#endif
+#ifdef ENABLE_SWITCHES
+  s += "\"has_switches\":true,";
+  s += "\"switch_count\":" + String(NUM_SWITCHES) + ",";
+  s += "\"button_count\":" + String(NUM_BUTTONS) + ",";
+#else
+  s += "\"has_switches\":false,\"switch_count\":0,\"button_count\":0,";
+#endif
+#ifdef ENABLE_VIPER
+  s += "\"has_viper\":true,";
+#else
+  s += "\"has_viper\":false,";
+#endif
+#ifdef ENABLE_LEDS
+  s += "\"has_leds\":true,";
+  s += "\"led_count\":" + String(NUM_LEDS) + ",";
+#else
+  s += "\"has_leds\":false,\"led_count\":0,";
+#endif
+  s += "\"relay_labels\":[";
+  for (int i = 0; i < 6; i++) {
+    if (i) s += ',';
+    s += '"';
+    if (LABELS[i]) {
+      for (const char* p = LABELS[i]; *p; p++) {
+        if (*p == '"' || *p == '\\') s += '\\';
+        s += *p;
+      }
+    } else {
+      s += "Relay "; s += (char)('1' + i);
+    }
+    s += '"';
+  }
+  s += "]}";
+  g_http.sendHeader("Cache-Control", "no-store");
+  g_http.send(200, "application/json", s);
+}
+
+#ifdef ENABLE_RULES
+// GET /api/rules — return all rule slots as a JSON array.
+static void handle_rules_get() {
+  String s;
+  s.reserve(512);
+  s += "[";
+  uint8_t n = rules_max();
+  for (uint8_t i = 0; i < n; i++) {
+    CanRule r = rules_get(i);
+    if (i) s += ",";
+    s += "{\"i\":"; s += i;
+    s += ",\"trig_id\":"; s += r.trig_id;
+    s += ",\"c0_byte\":"; s += r.c0_byte;
+    s += ",\"c0_val\":";  s += r.c0_val;
+    s += ",\"c0_mask\":"; s += r.c0_mask;
+    s += ",\"c1_byte\":"; s += r.c1_byte;
+    s += ",\"c1_val\":";  s += r.c1_val;
+    s += ",\"c1_mask\":"; s += r.c1_mask;
+    s += ",\"action\":";  s += r.action;
+    s += ",\"arg0\":";    s += r.arg0;
+    s += ",\"arg1\":";    s += r.arg1;
+    s += ",\"arg2\":";    s += r.arg2;
+    s += "}";
+  }
+  s += "]";
+  g_http.sendHeader("Cache-Control", "no-store");
+  g_http.send(200, "application/json", s);
+}
+
+// Tiny integer field extractor: finds "key":N in a JSON string.
+static bool json_int(const String& body, const char* key, long& out) {
+  String needle = String("\"") + key + "\":";
+  int pos = body.indexOf(needle);
+  if (pos < 0) return false;
+  pos += needle.length();
+  while (pos < (int)body.length() && body[pos] == ' ') pos++;
+  char* end = nullptr;
+  out = strtol(body.c_str() + pos, &end, 10);
+  return end != body.c_str() + pos;
+}
+
+// POST /api/rules — upsert a rule slot. Body is JSON with all CanRule fields + "i" (index).
+static void handle_rules_post() {
+  if (!g_http.hasArg("plain")) { g_http.send(400, "text/plain", "no body"); return; }
+  const String& body = g_http.arg("plain");
+
+  long idx = -1;
+  if (!json_int(body, "i", idx) || idx < 0 || idx >= rules_max()) {
+    g_http.send(400, "text/plain", "bad index"); return;
+  }
+
+  CanRule r = rules_get((uint8_t)idx);  // start from current so unset fields are preserved
+  long v;
+  if (json_int(body, "trig_id", v)) r.trig_id  = (uint16_t)v;
+  if (json_int(body, "c0_byte", v)) r.c0_byte  = (uint8_t)v;
+  if (json_int(body, "c0_val",  v)) r.c0_val   = (uint8_t)v;
+  if (json_int(body, "c0_mask", v)) r.c0_mask  = (uint8_t)v;
+  if (json_int(body, "c1_byte", v)) r.c1_byte  = (uint8_t)v;
+  if (json_int(body, "c1_val",  v)) r.c1_val   = (uint8_t)v;
+  if (json_int(body, "c1_mask", v)) r.c1_mask  = (uint8_t)v;
+  if (json_int(body, "action",  v)) r.action   = (uint8_t)v;
+  if (json_int(body, "arg0",    v)) r.arg0     = (uint8_t)v;
+  if (json_int(body, "arg1",    v)) r.arg1     = (uint8_t)v;
+  if (json_int(body, "arg2",    v)) r.arg2     = (uint8_t)v;
+
+  rules_set((uint8_t)idx, r);
+  g_http.send(200, "application/json", "{\"ok\":true}");
+}
+
+// DELETE /api/rules?i=N — clear a rule slot.
+static void handle_rules_delete() {
+  if (!g_http.hasArg("i")) { g_http.send(400, "text/plain", "missing i"); return; }
+  long idx = g_http.arg("i").toInt();
+  if (idx < 0 || idx >= rules_max()) { g_http.send(400, "text/plain", "bad index"); return; }
+  rules_clear((uint8_t)idx);
+  g_http.send(200, "application/json", "{\"ok\":true}");
+}
+
+// POST /api/rules/reset — restore compiled defaults.
+static void handle_rules_reset() {
+  rules_reset_factory();
+  g_http.send(200, "application/json", "{\"ok\":true}");
+}
+#endif // ENABLE_RULES
+
 static void handle_not_found() {
   // Captive portal: any unknown host → redirect to our root
   g_http.sendHeader("Location", String("http://") + AP_IP.toString() + "/", true);
@@ -221,10 +397,12 @@ void webui_init(const char* node_name, uint8_t node_id) {
   WiFi.softAPConfig(AP_IP, AP_IP, AP_NETMASK);
   // Same SSID on every node so the phone roams; channel is fixed so
   // ESP-NOW across nodes just works.
-  WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL);
+  WiFi.softAP(AP_SSID, strlen(AP_PASSWORD) ? AP_PASSWORD : nullptr, AP_CHANNEL, AP_HIDDEN);
   delay(100);
-  Serial.printf("[wifi] AP up  SSID=\"%s\"  IP=%s  ch=%d\n",
-                AP_SSID, WiFi.softAPIP().toString().c_str(), AP_CHANNEL);
+  Serial.printf("[wifi] AP up  SSID=\"%s\"%s  IP=%s  ch=%d\n",
+                AP_HIDDEN ? "<hidden>" : AP_SSID,
+                strlen(AP_PASSWORD) ? " (WPA2)" : " (open)",
+                WiFi.softAPIP().toString().c_str(), AP_CHANNEL);
 
   // Captive DNS: wildcard resolve → our AP IP
   g_dns.setErrorReplyCode(DNSReplyCode::NoError);
@@ -237,6 +415,13 @@ void webui_init(const char* node_name, uint8_t node_id) {
   g_http.on("/api/send",    HTTP_POST, handle_send);
   g_http.on("/api/wifi_only", HTTP_POST, handle_wifi_only);
   g_http.on("/api/serial",  HTTP_GET,  handle_serial);
+  g_http.on("/api/config",  HTTP_GET,  handle_config);
+#ifdef ENABLE_RULES
+  g_http.on("/api/rules",       HTTP_GET,    handle_rules_get);
+  g_http.on("/api/rules",       HTTP_POST,   handle_rules_post);
+  g_http.on("/api/rules",       HTTP_DELETE, handle_rules_delete);
+  g_http.on("/api/rules/reset", HTTP_POST,   handle_rules_reset);
+#endif
 
   // Common captive-portal probe paths — just bounce them to our root
   g_http.on("/generate_204",         HTTP_GET, handle_not_found);

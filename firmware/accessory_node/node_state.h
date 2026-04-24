@@ -6,4 +6,4 @@
 
 extern uint8_t g_relay_mirror;  // relay states as last seen on the bus
 extern bool    g_can_ok;        // CAN bus health (updated by TWAI health check)
-extern bool    g_menu_active;   // true while the LCD menu is open (set by mod_switches)
+extern bool    g_menu_active;   // true while the LCD menu is open (set by mod_menu)

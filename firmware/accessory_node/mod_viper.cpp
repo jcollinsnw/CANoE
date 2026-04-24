@@ -62,7 +62,6 @@ static void on_viper_message(uint8_t* buf, int len) {
   bus_tx(CAN_ID_VIPER_STATUS, pkt, 5);
   wlog("[viper<-] %02X %02X %02X %02X %02X\n",
        pkt[0], pkt[1], pkt[2], pkt[3], pkt[4]);
-  lcd_set_event("Viper: Response");
 }
 
 // --------------------------------------------------------------

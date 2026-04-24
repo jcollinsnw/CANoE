@@ -8,8 +8,8 @@ A parallel 12V accessory wiring system for an antique car, built around three ES
 - Down the road, unify the two systems once the factory wiring is vetted.
 - All accessory loads driven through a 6-relay / 6-fuse box.
 - CAN bus between a switch panel (buttons/toggles) and the relay controller.
-- Reconfigurable switch → relay mappings and per-relay safety behavior at runtime.
-- Web console for debugging and direct CAN frame injection.
+- CAN-frame-triggered rules engine for flexible switch→relay/LED/alarm mappings, stored in NVS and editable at runtime.
+- Web console for debugging, direct CAN frame injection, and rules management.
 - WiFi fallback if the CAN wire ever fails.
 
 ## Repo layout
@@ -29,16 +29,22 @@ A parallel 12V accessory wiring system for an antique car, built around three ES
         ├── accessory_node.ino                  # setup() / loop() / frame dispatch
         ├── node_config.h                       # ← overwritten by Makefile before each build
         ├── node_state.h                        # extern g_relay_mirror, g_can_ok, g_menu_active
-        ├── can_protocol.h                      # CAN message IDs, enums, pack/unpack helpers
+        ├── can_protocol.h                      # CAN message IDs, enums, CanRule struct + DSL macros
         ├── bus.h / bus.cpp                     # dual-transport abstraction (TWAI + ESP-NOW)
         ├── webui.h / webui.cpp                 # SoftAP + captive portal + HTTP + JSON API
         ├── index_html.h                        # embedded single-page web UI
         ├── mod_relay.h / mod_relay.cpp         # relay GPIO, watchdog, telemetry
-        ├── mod_lcd.h / mod_lcd.cpp             # HD44780 16×2 driver (PCF8574 I2C backpack)
-        ├── mod_switches.h / mod_switches.cpp   # switch inputs, encoder, LCD menu
+        ├── mod_lcd.h / mod_lcd.cpp             # HD44780 16×2 driver; lcd_relay_char/lcd_relay_label helpers
+        ├── mod_menu.h / mod_menu.cpp           # LCD menu system; requires ENABLE_MENU + MENU_HAS_* flags
+        ├── mod_switches.h / mod_switches.cpp   # switch/button/encoder inputs → SWITCH_EVENT / ENCODER_EVENT only
+        ├── mod_rules.h / mod_rules.cpp         # CAN-frame-triggered rules engine (replaces switch action dispatch)
+        ├── mod_buzzer.h / mod_buzzer.cpp       # passive piezo tone sequencer; non-blocking via buzzer_tick()
+        ├── mod_led.h / mod_led.cpp             # CAN-controllable status LEDs; responds to LED_CMD (0x102)
         ├── mod_viper.h / mod_viper.cpp         # Viper 5305V serial bridge (ViperESP2 inlined)
         ├── mod_mpu6050.h / mod_mpu6050.cpp     # MPU-6050 accelerometer / shake detection
-        └── mod_dht22.h / mod_dht22.cpp         # AM2302 temperature/humidity sensor
+        ├── mod_dht22.h / mod_dht22.cpp         # AM2302 temperature/humidity sensor
+        ├── mod_rpm.h / mod_rpm.cpp             # engine RPM via PC817C optocoupler + interrupt counting
+        └── mod_gps.h / mod_gps.cpp             # GPS speed/heading via NMEA UART (u-blox Neo-6M/8M)
 ```
 
 **How it works:** `firmware/configs/<node>.h` defines which feature flags (`ENABLE_RELAY`, `ENABLE_LCD`, etc.) and pin assignments apply to that physical ESP32. The Makefile copies the right config to `node_config.h` before compiling, so the single sketch folder produces the correct firmware for each node. Every module's `.cpp` wraps its entire body in `#ifdef ENABLE_*` so unneeded modules compile to nothing.
@@ -58,22 +64,96 @@ Three ESP32 nodes, each runs up to four things concurrently:
 
 ## Node identities
 
-| Node             | NODE_ID | Config file                      | Features                                         |
-|------------------|---------|----------------------------------|--------------------------------------------------|
-| switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_LCD, ENABLE_DHT22        |
-| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY                                     |
-| viper_interface  | 0x03    | configs/viper_interface.h        | ENABLE_VIPER, ENABLE_LCD, ENABLE_MPU6050         |
+| Node             | NODE_ID | Config file                      | Features                                                                    |
+|------------------|---------|----------------------------------|-----------------------------------------------------------------------------|
+| switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_RULES, ENABLE_LCD, ENABLE_MENU, ENABLE_BUZZER, ENABLE_LEDS |
+| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RPM                                                    |
+| viper_interface  | 0x03    | configs/viper_interface.h        | ENABLE_VIPER, ENABLE_LCD, ENABLE_MPU6050                                    |
 
 ## Feature flags (defined in configs/*.h)
 
-| Flag              | Module              | Description                                           |
-|-------------------|---------------------|-------------------------------------------------------|
-| `ENABLE_RELAY`    | mod_relay           | 6 relay GPIO outputs, safety watchdog, battery ADC    |
-| `ENABLE_SWITCHES` | mod_switches        | 10 inputs (6 latching + 4 buttons), encoder, menu     |
-| `ENABLE_LCD`      | mod_lcd             | HD44780 16×2 via PCF8574 I2C backpack                 |
-| `ENABLE_VIPER`    | mod_viper           | Viper 5305V serial bridge over UART2                  |
-| `ENABLE_MPU6050`  | mod_mpu6050         | MPU-6050 shake detection, IMU data broadcast          |
-| `ENABLE_DHT22`    | mod_dht22           | AM2302 temperature/humidity broadcast                 |
+| Flag              | Module              | Description                                                          |
+|-------------------|---------------------|----------------------------------------------------------------------|
+| `ENABLE_RELAY`    | mod_relay           | 6 relay GPIO outputs, safety watchdog, battery ADC                   |
+| `ENABLE_SWITCHES` | mod_switches        | 10 inputs (6 latching + 4 buttons) + encoder; publishes SWITCH_EVENT / ENCODER_EVENT only |
+| `ENABLE_RULES`    | mod_rules           | CAN-frame-triggered rules engine; `MAX_RULES` cap; `RULES_DEFAULT_INIT` for compile-time defaults |
+| `ENABLE_LCD`      | mod_lcd             | HD44780 16×2 via PCF8574 I2C backpack; relay char/label helpers      |
+| `ENABLE_MENU`     | mod_menu            | LCD menu system; requires ENABLE_LCD; per-section `MENU_HAS_*` flags |
+| `ENABLE_BUZZER`   | mod_buzzer          | Passive piezo tone sequencer; `BUZZER_PIN` sets the GPIO             |
+| `ENABLE_LEDS`     | mod_led             | CAN-controllable status LEDs; `NUM_LEDS`, `LED_PINS_INIT`, `LED_ACTIVE_HIGH` |
+| `ENABLE_VIPER`    | mod_viper           | Viper 5305V serial bridge over UART2                                 |
+| `ENABLE_MPU6050`  | mod_mpu6050         | MPU-6050 shake detection, IMU data broadcast                         |
+| `ENABLE_DHT22`    | mod_dht22           | AM2302 temperature/humidity broadcast                                |
+| `ENABLE_RPM`      | mod_rpm             | Engine RPM sensor (if `RPM_PIN` defined) and/or LCD bar widget (if `RPM_WIDGET_ROW` defined); redline configurable over CAN (`CFG_KEY_RPM_REDLINE 0x40`) |
+| `ENABLE_GPS`      | mod_gps             | GPS speed/heading via NMEA UART; `GPS_SERIAL_NUM`, `GPS_RX_PIN`, `GPS_TX_PIN`, `GPS_BAUD` |
+
+`ENABLE_MENU` subflags (defined alongside `ENABLE_MENU` in the node config):
+
+| Flag               | Submenu compiled in                        |
+|--------------------|--------------------------------------------|
+| `MENU_HAS_RELAYS`  | Relay toggle submenu (6 relays)            |
+| `MENU_HAS_VIPER`   | Viper lock/unlock/start submenu            |
+| `MENU_HAS_BUS`     | Live TWAI health counter display           |
+| `MENU_HAS_DISPLAY` | LCD backlight toggle                       |
+| `MENU_HAS_WIFI`    | Per-node WiFi enable/disable (sends CONFIG_WRITE; self-toggle restarts) |
+
+## Rules engine
+
+`mod_rules` is the central action dispatcher. It replaces the old per-switch action map (`g_map[]` / `SwitchAction`). Every rule is a `CanRule` (12 bytes):
+
+```c
+struct CanRule {
+  uint16_t trig_id;              // CAN ID to match
+  uint8_t  c0_byte, c0_val, c0_mask;  // byte 0 condition (mask=0 → skip)
+  uint8_t  c1_byte, c1_val, c1_mask;  // byte 1 condition
+  uint8_t  action, arg0, arg1, arg2;  // what to do
+};
+```
+
+Rules are stored in NVS (namespace `"rules"`, keys `"r0"` … `"rN"`). A compile-time `RULES_DEFAULT_INIT` macro in the node config provides the initial factory defaults.
+
+**Trigger macros:**
+```c
+TRIG_SW_PRESS(idx)      // SWITCH_EVENT, switch idx, data[1] == SW_PRESS
+TRIG_SW_RELEASE(idx)    // SWITCH_EVENT, switch idx, data[1] == SW_RELEASE
+TRIG_SW_LONG(idx)       // SWITCH_EVENT, switch idx, data[1] == SW_LONG_PRESS
+TRIG_RELAY_BIT_ON(n)    // RELAY_STATUS, bit n set
+TRIG_RELAY_BIT_OFF(n)   // RELAY_STATUS, bit n clear
+TRIG_RELAY_CMD_ON(n)    // RELAY_CMD sets bit n ON (change-driven)
+TRIG_RELAY_CMD_OFF(n)   // RELAY_CMD sets bit n OFF
+```
+
+**Action macros:**
+```c
+ACT_RELAY_TOGGLE(r)      ACT_RELAY_ON(r)       ACT_RELAY_OFF(r)
+ACT_ALL_OFF()            ACT_LED_ON(node,led)  ACT_LED_OFF(node,led)
+ACT_WIFI_ENABLE(node)    ACT_WIFI_DISABLE(node)
+ACT_VIPER(cmd)           ACT_MENU_SELECT()     ACT_MENU_ENTER()
+```
+
+**Rule DSL:**
+```c
+#define RULES_DEFAULT_INIT \
+  RULE(TRIG_SW_PRESS(0),  ACT_RELAY_TOGGLE(0)), \
+  RULE(TRIG_SW_PRESS(1),  ACT_RELAY_TOGGLE(1)), \
+  RULE(TRIG_SW_PRESS(4),  ACT_RELAY_ON(4)),     \
+  RULE(TRIG_SW_RELEASE(4),ACT_RELAY_OFF(4)),    \
+  RULE(TRIG_SW_PRESS(7),  ACT_ALL_OFF()),       \
+```
+
+HOLD-style behavior (relay on while switch pressed, off on release) is expressed with two rules (PRESS→ON, RELEASE→OFF). The relay controller's `RELAY_MAX_ON_MS` watchdog provides safety cutoff as a fallback.
+
+**Self-echo:** `bus_tx()` feeds outbound frames back into the RX ring. Rules see their own emitted frames, and the buzzer, LCD, and relay mirror react to them exactly as they would to frames from other nodes.
+
+**Runtime editing:** `/api/rules` REST endpoints (GET / POST / DELETE) and a **Rules** tab in the web UI allow viewing, creating, editing, and deleting rules at runtime. Changes are persisted to NVS via `rules_set()`. A factory reset endpoint (`POST /api/rules/reset`) restores `RULES_DEFAULT_INIT`.
+
+## Switch module
+
+`mod_switches` is now **input-only**. It polls GPIO state, debounces, and publishes:
+- `SWITCH_EVENT (0x200)` — `[switch_id, event]` where event is 0 RELEASE, 1 PRESS, 2 LONG_PRESS, 3 DOUBLE_PRESS.
+- `ENCODER_EVENT (0x201)` — `[event, count]` where event is 0 CW, 1 CCW, 2 PRESS, 3 RELEASE, 4 LONG_PRESS.
+
+It has no action dispatch and no NVS config. All switch→action behavior lives in the rules engine. Encoder scroll-in-menu is handled directly in `accessory_node.ino`'s `bus_rx()` loop (encoder events are self-echoed so they appear in rx just like any other frame).
 
 ## Pinout
 
@@ -86,6 +166,9 @@ All nodes share the same CAN pins. Node-specific pins are defined in the config 
 | GPIO 16–22| Relay controller: ULN2803 inputs (relays 1–6)                  |
 | GPIO 25,26,27,32,33,13 | Switch panel: switches to GND                    |
 | GPIO 34, 35 | Switch panel: rotary encoder GA (CLK/A) and GB (DT/B). Module is CJMCU-111 (EC11-based). Has onboard 3.3 kΩ pull-ups (marked 332) — connect module VCC to 3V3, no external resistors needed. The shaft physically clicks but the SW contact is not wired to any pin header on the CJMCU-111 PCB — use a dedicated panel button (BTN1–4) for encoder select/back instead. |
+| GPIO 16   | Switch panel: passive piezo buzzer (`BUZZER_PIN`). Positive leg to GPIO 16 via optional 100Ω series resistor; negative leg to GND. Driven by `tone()`/`noTone()`. |
+| GPIO 17, 19, 23 | Switch panel: status LEDs (`LED_PINS_INIT`). Each drives an LED via a 330Ω series resistor to GND (`LED_ACTIVE_HIGH true`). Controlled via CAN_ID_LED_CMD. |
+| GPIO 36, 39 | Switch panel: BTN3 and BTN4 (moved from GPIO 19/23 to free those for LED outputs). Input-only pins — **no internal pull-up**; wire a 10kΩ resistor from each pin to 3V3. |
 | GPIO 34   | Relay controller: battery voltage ADC (optional)               |
 | GPIO 16   | Viper interface: UART2 TX → level shifter → Viper serial RX    |
 | GPIO 17   | Viper interface: UART2 RX ← level shifter ← Viper serial TX   |
@@ -100,13 +183,17 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 |--------|-------------------|--------------------------------------------------------|
 | 0x100  | RELAY_CMD         | `[mask, state]` — only bits set in mask are applied    |
 | 0x101  | RELAY_STATUS      | `[bitmap]` — broadcast at 5 Hz                         |
+| 0x102  | LED_CMD           | `[target_node_id, mask, state]` — any node → target; 0xFF target = broadcast |
+| 0x103  | LED_STATUS        | `[node_id, bitmap]` — sent by target on change         |
 | 0x200  | SWITCH_EVENT      | `[switch_id, SwitchEvent]`                             |
 | 0x201  | ENCODER_EVENT     | `[EncoderEvent, count]`                                |
 | 0x300  | TELEMETRY         | `[vbat_cv_lo, vbat_cv_hi, i_da_lo, i_da_hi, vsol_cv_lo, vsol_cv_hi, flags, _]` |
 | 0x301  | ENV_DATA          | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` (0.1°C, 0.1%) |
 | 0x302  | IMU_DATA          | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` |
 | 0x303  | SHAKE_EVENT       | `[magnitude, axis_mask]`                               |
-| 0x400  | CONFIG_WRITE      | `[target, key, index, kind, arg, arg2_lo, arg2_hi, flags]` |
+| 0x304  | ENGINE_DATA       | `[rpm_lo, rpm_hi]` — uint16 LE RPM; broadcast at `RPM_SAMPLE_MS` interval |
+| 0x305  | GPS_DATA          | `[speed_lo, speed_hi, heading_lo, heading_hi, flags]` — speed 0.1 mph, heading 0.1 deg, flags: bit0=fix, bit1=speed valid, bit2=heading valid |
+| 0x400  | CONFIG_WRITE      | `[target, key, index, _reserved, arg, arg2_lo, arg2_hi, flags]` |
 | 0x401  | CONFIG_READ_REQ   | `[target, key, index]` (index 0xFF = all)              |
 | 0x402  | CONFIG_READ_RESP  | same layout as CONFIG_WRITE (flags byte unused)        |
 | 0x403  | CONFIG_SAVE       | `[target, action]` — 0x01 commit, 0x02 reload, 0x03 factory reset |
@@ -117,15 +204,8 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 Config targets: `0x01 SWITCH_PANEL`, `0x02 RELAY_CTRL`, `0x03 VIPER`, `0xFF BROADCAST`.
 
 Config keys:
-- `0x10 CFG_KEY_SW_ACTION` — per-switch `SwitchAction {kind, arg, arg2}`
 - `0x20 CFG_KEY_RELAY_MAX_ON_MS` — per-relay safety auto-off timeout
-
-Switch action kinds:
-- `0 SW_ACT_TOGGLE` — press toggles relay `arg`
-- `1 SW_ACT_PULSE` — press turns relay `arg` on for `arg2` ms
-- `2 SW_ACT_EVENT_ONLY` — publish event only
-- `3 SW_ACT_HOLD` — relay `arg` ON while held (horn)
-- `4 SW_ACT_SCENE` — press sets all relays to bitmap in `arg`
+- `0x40 CFG_KEY_RPM_REDLINE` — RPM redline for display widget (arg2_lo/hi = uint16 RPM)
 
 Switch events (0x200 data[1]): `0 RELEASE`, `1 PRESS`, `2 LONG_PRESS`, `3 DOUBLE_PRESS`.
 
@@ -189,6 +269,12 @@ Serial monitor at 115200 baud on each node for boot logs. Nodes with `USE_WIFI 1
 
 Connect phone/laptop to SSID **AccessoryBus** (open by default — add a password in `webui.cpp` before field use). Captive portal usually auto-pops; otherwise `http://192.168.4.1`.
 
+The UI has four tabs:
+- **CAN Frames** — raw frame log + hex command line + quick-action buttons.
+- **Serial** — live tee of `wlog()`/`wlogln()` output (same as the UART monitor).
+- **Control** — node-adaptive panel. Switch panel shows: physical switch state (tracked from SWITCH_EVENT frames; clickable to simulate input), momentary buttons (clickable), LED status dots (clickable to toggle). Relay controller shows: 6 relay tiles + All OFF. Viper interface shows Lock/Unlock/Start and last alarm response. Relay state updates in real time from RELAY_STATUS and RELAY_CMD frames.
+- **Rules** — full rules editor; lists all rules, shows human-readable trigger/action descriptions, add/edit/delete rules inline, factory reset button.
+
 ### Raw hex command line
 ```
 <id_hex> <byte0> <byte1> ...       # up to 8 bytes
@@ -198,7 +284,6 @@ Examples:
 ```
 100 01 01        # relay 1 on
 100 3F 00        # all relays off
-401 02 20 FF     # read all relay max-on-ms config
 510 01           # viper lock/arm
 510 02           # viper unlock/disarm
 510 03           # viper remote start
@@ -208,12 +293,11 @@ Examples:
 ```
 :relay <n> on|off              # n = 1..6
 :alloff                        # all 6 off
-:horn                          # quick horn pulse
-:readcfg sw|relay              # dump node config
-:save sw|relay                 # commit RAM config to NVS
-:reset sw|relay                # factory reset
-:cfgsw <idx> toggle|pulse|event|hold|scene <arg> [arg2] [!]
-:cfgrelay <idx> maxon <ms> [!]
+:horn                          # turn relay 5 on (subject to 30 s watchdog)
+:readcfg relay                 # dump relay max-on-ms config
+:save relay                    # commit relay config to NVS
+:reset relay                   # factory reset relay config
+:cfgrelay <idx> maxon <ms> [!] # set per-relay safety auto-off
 :viper lock|unlock|start       # send VIPER_CMD to viper_interface node
 ```
 
@@ -226,21 +310,29 @@ Check "force wifi-only" in the header. `bus_tx()` stops using TWAI; everything s
 
 - **Init order.** In `setup()` the order must be `relay_setup()` → `setup_can()` → `webui_init()` → `bus_init()`. `webui_init` brings up WiFi so `esp_now_init` has a radio to bind to; `bus_init` requires WiFi ready. Relay pins are initialized first so outputs are known-good before any CAN traffic.
 - **Frame-flow direction.** Application code only goes through the bus. Do not call `twai_transmit` directly except inside `bus.cpp`; it will bypass ESP-NOW and the web UI log.
-- **Self-echo.** `bus_tx()` feeds every outbound frame back into the RX ring (tagged `source="self"`). This means state mirrors and LCD updates react to web-UI-injected frames exactly the same as frames from other nodes. Don't be surprised when you see your own TX come back through `bus_rx()`.
+- **Self-echo.** `bus_tx()` feeds every outbound frame back into the RX ring (tagged `source="self"`). This means state mirrors, LCD updates, buzzer, and rules all react to web-UI-injected frames exactly the same as frames from other nodes. Don't be surprised when you see your own TX come back through `bus_rx()`.
 - **Dedup.** ESP-NOW frames carry their own `(node_id, seq)` header; a 2-second window filters repeats. CAN frames are canonical and always passed through. This is safe because our application messages are idempotent (RELAY_CMD, STATUS, TELEMETRY) or edge-triggered with short windows (SWITCH_EVENT).
 - **Captive-portal probes.** iOS and Android each hit different URLs to detect captive portals — we catch the common ones in `webui.cpp` and bounce them to `/`.
-- **Open AP.** Fine in a garage, risky in public. Set `AP_PASSWORD` in `webui.cpp` before the car leaves the driveway. Remember it must be ≥ 8 chars for WPA2.
-- **Horn safety.** `RELAY_MAX_ON_INIT` in `configs/relay_controller.h` caps relay 5 (horn) at 30s. `service_hold_safety()` in `mod_switches.cpp` also enforces that if a HOLD switch is released while the relay is still on, the relay gets turned off.
+- **Open AP.** Fine in a garage, risky in public. Set `AP_PASSWORD` in each WiFi node's config header (`switch_panel.h`, `viper_interface.h`) before the car leaves the driveway. Must be ≥ 8 chars for WPA2 and identical on every node. `AP_SSID` and `AP_HIDDEN` are also configurable there.
+- **Horn safety.** `RELAY_MAX_ON_INIT` in `configs/relay_controller.h` caps relay 5 (horn) at 30s. HOLD-style rules (SW_PRESS→relay ON, SW_RELEASE→relay OFF) still rely on the relay controller's watchdog as a backstop.
 - **ADC calibration.** GPIO 34 on the relay controller is read with default attenuation; `VBAT_DIVIDER_RATIO` in `configs/relay_controller.h` assumes 10k + 2.2k divider. Re-tune to your resistors before trusting the telemetry.
 - **Strapping pins.** Avoid GPIO 0, 2, 12, 15 for anything that's externally driven at reset. GPIO 13 is borderline — watch for flakiness.
 - **ULN2803 polarity.** Input high → output low → coil pulled to GND → relay on. `RELAY_ACTIVE_HIGH = true` is correct for ULN2803 + low-side-coil relays. Flip if using high-side-switch drivers.
 - **node_config.h is generated.** Never edit `firmware/accessory_node/node_config.h` directly — it gets overwritten by the next `make` invocation. Edit the appropriate `firmware/configs/<node>.h` instead.
+- **I2C initialized once.** `Wire.begin()` is called a single time in `accessory_node.ino` setup before any module setup. Calling it inside a module (lcd_setup, mpu_setup, etc.) would reinitialize the ESP32 I2C peripheral and corrupt the LCD 4-bit mode state. Do not add `Wire.begin()` calls inside modules.
+- **CGRAM slot 0 is forbidden.** HD44780 custom characters use CGRAM slots 0–7, but slot 0 maps to `\x00` (C null terminator) which silently truncates any `snprintf` output that contains it. Icon allocation in `lcd_setup()` starts at slot 1; max 7 custom icons total across all relays (2 of those slots are consumed by the shared CAN/WiFi status icons). Macros: `RELAY_n_LABEL`, `RELAY_n_ICON_ON`, `RELAY_n_ICON_OFF` in the node config define per-relay LCD labels and 5×8 CGRAM bitmaps.
+- **LCD widget system.** Modules call `lcd_register_widget()` during setup to claim a screen region (row, col, width, refresh_ms, render fn). `lcd_update_status()` renders all widgets after the status row. `lcd_tick()` (called from loop) re-renders widgets on their own schedule. `lcd_set_event()` automatically truncates event text to the first widget boundary on row 1 so both coexist. `LcdWidget` struct is defined in `mod_lcd.h` and available regardless of `ENABLE_LCD` (stubs compile cleanly).
+- **LCD status row format.** Row 0 idle display is `C[icon]W[icon] [relay chars]` where `C` = CAN, `W` = WiFi, icons are filled/hollow CGRAM glyphs (or `+`/`-` ASCII fallback). The shared on/off icon bitmaps are loaded at the end of `lcd_setup()` after relay icons.
+- **`/api/config` endpoint.** `webui.cpp` includes `node_config.h` and serves a JSON config object with `has_relay`, `has_switches`, `has_viper`, `has_rules`, `has_leds`, `switch_count`, `button_count`, `led_count`, and `relay_labels[6]`. The Control tab fetches this on load to decide which sections to render.
+- **GPIO 36/39 have no internal pull-up.** These are RTC-domain input-only pins on the ESP32. `INPUT_PULLUP` is silently ignored; the pull-up request has no effect. Any input on these pins needs an external 10kΩ resistor to 3V3. BTN3 and BTN4 were moved here from GPIO 19/23 to free those pins for LED outputs — document the external resistor requirement clearly for anyone who assembles the hardware.
+- **Buzzer sequencer.** `mod_buzzer` uses Arduino `tone()`/`noTone()` to drive a passive piezo — no LEDC setup required. Sequences are arrays of `{freq, ms}` notes advanced by `buzzer_tick()` each loop; a new `play_seq()` call immediately interrupts any active sequence. Relay sounds fire on RELAY_CMD frames (including self-echoed ones from the web UI), so every relay state change produces feedback regardless of its source. `BUZZER_PIN` must not be an input-only GPIO (avoid 34/35).
+- **Rules NVS layout.** Namespace `"rules"`, keys `"r0"` through `"r<MAX_RULES-1>"`. Each key holds a 12-byte blob (`CanRule`). Empty/deleted rules have `trig_id == 0` and are skipped at evaluation time. Factory reset clears all keys and re-writes from `RULES_DEFAULT_INIT`.
 
 ## Known TODO list (in rough priority order)
 
-1. Add a password to the SoftAP before any field install (`AP_PASSWORD` in `webui.cpp`).
+1. Add a password to the SoftAP before any field install (`AP_PASSWORD` in each node's config header — must match on all WiFi nodes).
 2. Encrypt ESP-NOW (`esp_now_set_pmk`, mark broadcast peer `encrypt = true`).
-3. Dashboard panel in the web UI — live relay states as tiles, switch pressed/released indicators, battery voltage graph. Today the UI is raw-frame-only.
+3. ~~Dashboard panel in the web UI~~ — **done** (Control tab: switch state, buttons, LEDs, relay tiles on relay_controller, viper controls on viper_interface). Still missing: battery voltage graph from TELEMETRY (0x300) frames.
 4. Python `can-gw` utility so a Mac with a CANable/MCP2515 USB adapter can be a bus participant for scripting and logging.
 5. Low-voltage cutoff in `mod_relay.cpp` — when `vbat_cv` drops below a configurable threshold, force non-essential relays off.
 6. Persist the "force wifi-only" flag across reboots (currently RAM-only).
@@ -268,6 +360,7 @@ tmux new-session \; \
 
 ## Quick mental model
 
-- Switch is pressed on switch_panel → local action dispatch looks up `g_map[idx]` in `mod_switches.cpp` → emits `RELAY_CMD` via `bus_tx()` → bus sends on both CAN and ESP-NOW → relay_controller `bus_rx()` returns the frame → `relay_handle_frame()` calls `apply_relay_cmd()` which flips GPIO → `send_relay_status()` broadcasts new state → switch_panel's `g_relay_mirror` stays in sync → web UI on either node logs every frame in real time.
-- Config changes follow the same path: UI or external tool sends `CONFIG_WRITE` → target node's module handler updates RAM, optionally persists to NVS, echoes a `CONFIG_READ_RESP` → sender sees confirmation.
+- Switch is pressed on switch_panel → `mod_switches` debounces and emits `SWITCH_EVENT (0x200)` via `bus_tx()` → frame is self-echoed back into rx ring → `rules_handle_frame()` in `mod_rules` matches a rule → rule executes (e.g. `RELAY_CMD`) via `bus_tx()` → relay_controller `bus_rx()` returns the frame → `relay_handle_frame()` flips GPIO → `send_relay_status()` broadcasts new state → switch_panel's `g_relay_mirror` stays in sync → web UI on either node logs every frame in real time.
+- Rules are stored in NVS and evaluated on every incoming (including self-echoed) CAN frame. A rule fires when its `trig_id` matches and both byte conditions pass. Action is dispatched immediately inline.
+- Config changes: UI or external tool sends `CONFIG_WRITE` → target node's module handler updates RAM, optionally persists to NVS, echoes a `CONFIG_READ_RESP` → sender sees confirmation.
 - Viper alarm command: any node (or the web UI) sends `VIPER_CMD (0x510)` with a 1-byte command code → viper_interface `bus_rx()` returns the frame → `viper_handle_frame()` calls the appropriate ViperESP2 method → ViperESP2 writes the 5-byte serial packet to the alarm over UART2 → alarm responds → `on_viper_message()` callback fires → viper_interface calls `bus_tx(VIPER_STATUS)` → all nodes and the web UI log the raw alarm response.

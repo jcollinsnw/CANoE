@@ -9,6 +9,12 @@
 #define USE_WIFI            1
 #define NVS_NAMESPACE       "viperiface"
 
+// ---- WiFi AP settings ----
+// Must match the other WiFi nodes so ESP-NOW peers and phones roam correctly.
+#define AP_SSID     "AccessoryBus"
+#define AP_PASSWORD ""        // change to WPA2 passphrase before field use
+#define AP_HIDDEN   0
+
 // ---- Features enabled on this node ----
 #define ENABLE_VIPER      // Viper 5305V serial bridge via UART2 + level shifter
 #define ENABLE_LCD        // HD44780 16x2 via PCF8574 I2C backpack

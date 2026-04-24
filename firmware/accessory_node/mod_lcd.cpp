@@ -25,10 +25,56 @@
 static bool g_lcd_backlight = true;
 
 // --------------------------------------------------------------
+// Widget registry
+// --------------------------------------------------------------
+static LcdWidget g_widgets[LCD_MAX_WIDGETS];
+static uint8_t   g_widget_count = 0;
+static uint32_t  g_widget_last_render[LCD_MAX_WIDGETS] = {};
+
+void lcd_register_widget(const LcdWidget& w) {
+  if (g_widget_count < LCD_MAX_WIDGETS)
+    g_widgets[g_widget_count++] = w;
+}
+
+// Render all registered widgets in a given row, or all rows if row == 0xFF.
+static void render_widgets(uint8_t row_filter) {
+  char buf[LCD_COLS + 1];
+  for (uint8_t i = 0; i < g_widget_count; i++) {
+    if (row_filter != 0xFF && g_widgets[i].row != row_filter) continue;
+    uint8_t w = g_widgets[i].width;
+    if (w > LCD_COLS) w = LCD_COLS;
+    memset(buf, ' ', w);
+    g_widgets[i].render(buf, w);
+    lcd_set_cursor(g_widgets[i].row, g_widgets[i].col);
+    lcd_print_n(buf, w);
+    g_widget_last_render[i] = millis();
+  }
+}
+
+// Return the leftmost widget col on a given row, or LCD_COLS if none.
+static uint8_t widget_boundary(uint8_t row) {
+  uint8_t bound = LCD_COLS;
+  for (uint8_t i = 0; i < g_widget_count; i++)
+    if (g_widgets[i].row == row && g_widgets[i].col < bound)
+      bound = g_widgets[i].col;
+  return bound;
+}
+
+// --------------------------------------------------------------
 // Per-relay icons and labels (populated from config macros at setup)
 // --------------------------------------------------------------
 static uint8_t g_icon_on[6];   // CGRAM slot, 0xFF = no custom icon
 static uint8_t g_icon_off[6];
+
+// Shared status indicator icons (CAN and WiFi use the same on/off bitmaps).
+// Slots allocated at the end of the relay-icon chain in lcd_setup().
+static uint8_t g_status_on_slot  = 0xFF;  // filled icon  = link up
+static uint8_t g_status_off_slot = 0xFF;  // hollow icon  = link down
+
+static const uint8_t STATUS_ICON_ON[8]  = {0b01110, 0b01010, 0b01010, 0b01010,
+                                            0b01110, 0b01110, 0b01110, 0b01110};
+static const uint8_t STATUS_ICON_OFF[8] = {0b01110, 0b01110, 0b01110, 0b01110,
+                                            0b01010, 0b01010, 0b01010, 0b01110};
 
 static const char* const g_relay_label[6] = {
 #ifdef RELAY_1_LABEL
@@ -137,10 +183,12 @@ void lcd_setup() {
   lcd_cmd_raw(0x0C);         // display on, cursor off
 
   // Load custom CGRAM icons defined in node_config.h.
-  // Icons are allocated to CGRAM slots 0–7 in relay order (ON before OFF).
+  // Allocation starts at slot 1 — slot 0 maps to '\x00' (C null terminator)
+  // which would silently truncate snprintf output. Slots 1–7 are safe.
+  // Max 7 custom icons total across all relays.
   memset(g_icon_on,  0xFF, sizeof(g_icon_on));
   memset(g_icon_off, 0xFF, sizeof(g_icon_off));
-  uint8_t cgram_slot = 0;
+  uint8_t cgram_slot = 1;
 #ifdef RELAY_1_ICON_ON
   _LOAD_ICON(0, RELAY_1_ICON_ON,  g_icon_on)
 #endif
@@ -177,22 +225,44 @@ void lcd_setup() {
 #ifdef RELAY_6_ICON_OFF
   _LOAD_ICON(5, RELAY_6_ICON_OFF, g_icon_off)
 #endif
+  // Status indicator icons — loaded after relay icons so they never displace them.
+  if (cgram_slot < 8) { write_cgram(cgram_slot, STATUS_ICON_ON);  g_status_on_slot  = cgram_slot++; }
+  if (cgram_slot < 8) { write_cgram(cgram_slot, STATUS_ICON_OFF); g_status_off_slot = cgram_slot++; }
+
   if (cgram_slot > 0)
     lcd_cmd_raw(0x80);  // return to DDRAM address 0 after CGRAM writes
-  wlog("[LCD] init OK (%u custom icon%s)\n", cgram_slot, cgram_slot == 1 ? "" : "s");
+  wlog("[LCD] init OK (%u custom icon%s)\n", cgram_slot - 1, cgram_slot == 2 ? "" : "s");
 }
 
 void lcd_update_status() {
   if (g_menu_active) return;
+
+  // CAN and WiFi status icons — fall back to ASCII if CGRAM slots weren't allocated.
+  bool have_icons = (g_status_on_slot != 0xFF && g_status_off_slot != 0xFF);
+  auto status_char = [&](bool ok) -> char {
+    return have_icons ? (char)(ok ? g_status_on_slot : g_status_off_slot)
+                      : (ok ? '+' : '-');
+  };
+
+#if USE_WIFI
+  bool wifi_ok = bus_wifi_seen_peer();
+#else
+  bool wifi_ok = false;
+#endif
+
   char relays[7];
   for (uint8_t i = 0; i < 6; i++) {
     bool on = (g_relay_mirror & (1 << i)) != 0;
     relays[i] = lcd_relay_char(i, on);
   }
   relays[6] = '\0';
+
   char buf[LCD_COLS + 1];
-  snprintf(buf, sizeof(buf), "CAN:%-3s [%s]", g_can_ok ? "OK" : "ERR", relays);
+  snprintf(buf, sizeof(buf), "C%cW%c [%s]",
+           status_char(g_can_ok), status_char(wifi_ok), relays);
   lcd_write_row(0, buf);
+
+  render_widgets(0xFF);
 }
 
 char lcd_relay_char(uint8_t idx, bool on) {
@@ -213,7 +283,30 @@ const char* lcd_relay_label(uint8_t idx) {
 
 void lcd_set_event(const char* msg) {
   if (g_menu_active) return;
-  lcd_write_row(1, msg);
+  // Only write up to the first widget boundary on row 1 so widget regions are preserved.
+  uint8_t text_width = widget_boundary(1);
+  char buf[LCD_COLS + 1];
+  snprintf(buf, sizeof(buf), "%-*s", text_width, msg);
+  lcd_set_cursor(1, 0);
+  lcd_print_n(buf, text_width);
+  render_widgets(1);
+}
+
+void lcd_tick() {
+  if (g_menu_active) return;
+  uint32_t now = millis();
+  char buf[LCD_COLS + 1];
+  for (uint8_t i = 0; i < g_widget_count; i++) {
+    if (g_widgets[i].refresh_ms == 0) continue;
+    if (now - g_widget_last_render[i] < g_widgets[i].refresh_ms) continue;
+    uint8_t w = g_widgets[i].width;
+    if (w > LCD_COLS) w = LCD_COLS;
+    memset(buf, ' ', w);
+    g_widgets[i].render(buf, w);
+    lcd_set_cursor(g_widgets[i].row, g_widgets[i].col);
+    lcd_print_n(buf, w);
+    g_widget_last_render[i] = now;
+  }
 }
 
 void lcd_handle_frame(const BusFrame& f) {
@@ -238,7 +331,6 @@ void lcd_handle_frame(const BusFrame& f) {
       break;
 
     case CAN_ID_VIPER_STATUS:
-      lcd_set_event("Viper: Response");
       break;
 
     default: break;

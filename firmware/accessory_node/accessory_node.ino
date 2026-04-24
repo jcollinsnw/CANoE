@@ -38,9 +38,14 @@
 #include "mod_lcd.h"
 #include "mod_switches.h"
 #include "mod_menu.h"
+#include "mod_buzzer.h"
+#include "mod_led.h"
+#include "mod_rules.h"
 #include "mod_viper.h"
 #include "mod_mpu6050.h"
 #include "mod_dht22.h"
+#include "mod_rpm.h"
+#include "mod_gps.h"
 
 // --------------------------------------------------------------
 // Shared state definitions (declared extern in node_state.h)
@@ -125,6 +130,9 @@ void setup() {
 #ifdef ENABLE_SWITCHES
   switches_setup();
 #endif
+#ifdef ENABLE_RULES
+  rules_setup();
+#endif
 #ifdef ENABLE_VIPER
   viper_setup();
 #endif
@@ -133,6 +141,18 @@ void setup() {
 #endif
 #ifdef ENABLE_DHT22
   dht22_setup();
+#endif
+#ifdef ENABLE_RPM
+  rpm_setup();
+#endif
+#ifdef ENABLE_GPS
+  gps_setup();
+#endif
+#ifdef ENABLE_BUZZER
+  buzzer_setup();
+#endif
+#ifdef ENABLE_LEDS
+  led_setup();
 #endif
 
 #ifdef ENABLE_LCD
@@ -168,6 +188,18 @@ void loop() {
 #ifdef ENABLE_RELAY
   relay_loop();
 #endif
+#ifdef ENABLE_RPM
+  rpm_loop();
+#endif
+#ifdef ENABLE_GPS
+  gps_loop();
+#endif
+#ifdef ENABLE_LCD
+  lcd_tick();
+#endif
+#ifdef ENABLE_BUZZER
+  buzzer_tick();
+#endif
 
   // CAN frame dispatch — update shared state then route to modules
   BusFrame f;
@@ -194,20 +226,53 @@ void loop() {
       lcd_set_event(msg);
       lcd_update_status();
 #endif
+#ifdef ENABLE_BUZZER
+      if (mask == 0x3F && state == 0)   buzzer_all_off();
+      else if (state & mask)            buzzer_relay_on();
+      else                              buzzer_relay_off();
+#endif
     }
+
+    // WiFi enable/disable — handled on every node that has WiFi.
+#if USE_WIFI
+    if (f.id == CAN_ID_CONFIG_WRITE && f.dlc >= 5 &&
+        (f.data[0] == NODE_ID || f.data[0] == CFG_TARGET_BROADCAST) &&
+        f.data[1] == CFG_KEY_WIFI_ENABLED) {
+      bool en = (f.data[4] != 0);
+      Preferences p; p.begin(NVS_NAMESPACE, false);
+      p.putBool("wifi_en", en); p.end();
+      wlog("[cfg] wifi_en=%u -> restart\n", en);
+      delay(100); ESP.restart();
+    }
+#endif
+
+    // Encoder scroll drives menu when active (encoder events are self-echoed from mod_switches).
+#if defined(ENABLE_MENU) && defined(ENABLE_SWITCHES)
+    if (f.id == CAN_ID_ENCODER_EVENT && f.dlc >= 2 && menu_is_active()) {
+      uint8_t count = f.data[1] ? f.data[1] : 1;
+      int8_t  dir   = (f.data[0] == ENC_ROTATE_CW) ? 1 : -1;
+      for (uint8_t i = 0; i < count; i++) menu_scroll(dir);
+    }
+#endif
 
     // Route to module handlers
 #ifdef ENABLE_RELAY
     relay_handle_frame(f);
 #endif
-#ifdef ENABLE_SWITCHES
-    switches_handle_frame(f);
+#ifdef ENABLE_RULES
+    rules_handle_frame(f);
 #endif
 #ifdef ENABLE_LCD
     lcd_handle_frame(f);
 #endif
 #ifdef ENABLE_VIPER
     viper_handle_frame(f);
+#endif
+#ifdef ENABLE_LEDS
+    led_handle_frame(f);
+#endif
+#ifdef ENABLE_RPM
+    rpm_handle_frame(f);
 #endif
   }
 
