@@ -265,6 +265,30 @@ Payload: `[speed_lo, speed_hi, heading_lo, heading_hi, flags]`
 
 ---
 
+## Wideband O2 Sensor (WBO2)
+
+### Air-Fuel Ratio (AFR) — `0x306 WBO2_DATA`
+
+Broadcast by any node with a wideband O2 sensor (e.g., LSU 4.9 + controller) every `WBO2_SAMPLE_MS` (default 500 ms).
+
+Payload: `[afr_lo, afr_hi]` — uint16 little-endian, AFR × 100.
+
+- **afr_lo, afr_hi** — Air-Fuel Ratio (AFR), multiplied by 100. For example, 1470 = 14.70 AFR.
+
+```
+# Example: 14.70 AFR (0x05BE)
+306  BE 05
+
+# Example: 12.50 AFR (0x04E2)
+306  E2 04
+```
+
+- The voltage-to-AFR mapping is linear and configurable in firmware (see `WBO2_MIN_V`, `WBO2_MAX_V`, `WBO2_MIN_AFR`, `WBO2_MAX_AFR`).
+- Any node can listen for `0x306` frames to display or log AFR.
+- If an LCD widget is configured, the AFR value will be shown on the display.
+
+---
+
 ## Runtime Configuration
 
 Config frames let you change node behavior over the bus without reflashing.

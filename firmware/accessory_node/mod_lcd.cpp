@@ -207,6 +207,27 @@ void lcd_tick() {
 
 void lcd_handle_frame(const BusFrame& f) {
   switch (f.id) {
+    case CAN_ID_RELAY_STATUS:
+      lcd_update_status();
+      break;
+
+    case CAN_ID_RELAY_CMD:
+      if (f.dlc >= 2) {
+        char msg[LCD_COLS + 1];
+        uint8_t mask = f.data[0], state = f.data[1];
+        if (__builtin_popcount(mask) == 1) {
+          uint8_t idx = __builtin_ctz(mask);
+          snprintf(msg, sizeof(msg), "Relay %u %s", idx + 1, (state & mask) ? "ON" : "OFF");
+        } else if (mask == 0x3F && state == 0) {
+          snprintf(msg, sizeof(msg), "All OFF");
+        } else {
+          snprintf(msg, sizeof(msg), "Relays %02X:%02X", mask, state);
+        }
+        lcd_set_event(msg);
+        lcd_update_status();
+      }
+      break;
+
     case CAN_ID_LCD_CMD:
       if (f.dlc < 1) break;
       if (f.data[0] == 0xFF) { lcd_clear(); break; }

@@ -33,6 +33,7 @@ void bus_tick();
 uint8_t bus_node_id();
 bool bus_can_healthy();
 bool bus_wifi_seen_peer();
+bool bus_twai_check();   // run TWAI health check + bus-off recovery; returns true if health changed
 void bus_set_wifi_only(bool on);
 bool bus_is_wifi_only();
 

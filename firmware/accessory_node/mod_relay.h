@@ -14,6 +14,8 @@ void relay_handle_frame(const BusFrame& f);
 // relay display registry. Call once from setup() after lcd_setup().
 #ifdef ENABLE_LCD
 void relay_icons_init();
+uint8_t relay_lcd_count();  // number of relay slots shown on the LCD
 #else
-static inline void relay_icons_init() {}
+static inline void relay_icons_init()    {}
+static inline uint8_t relay_lcd_count() { return 6; }
 #endif

@@ -33,10 +33,11 @@ static uint16_t g_tx_seq = 0;
 static bool g_wifi_only = false;
 static bool g_wifi_enabled = false;
 
-static uint32_t g_last_can_tx_ok = 0;
-static uint32_t g_last_can_rx    = 0;
-static uint32_t g_last_wifi_rx   = 0;
-static uint16_t g_tx_fail_streak = 0;
+static uint32_t g_last_can_tx_ok  = 0;
+static uint32_t g_last_can_rx     = 0;
+static uint32_t g_last_wifi_rx    = 0;
+static uint16_t g_tx_fail_streak  = 0;
+static bool     g_twai_was_ok     = false;
 
 static bus_observer_t g_observer = nullptr;
 
@@ -207,6 +208,22 @@ void bus_tick() {
 
 uint8_t bus_node_id()       { return g_node_id; }
 bool bus_can_healthy()      { uint32_t n=millis(); return (n-g_last_can_rx)<5000 || (n-g_last_can_tx_ok)<2000; }
+
+bool bus_twai_check() {
+  twai_status_info_t info;
+  if (twai_get_status_info(&info) != ESP_OK) return false;
+  bool ok = (info.state == TWAI_STATE_RUNNING);
+  Serial.printf("[twai] state=%d tx_err=%u rx_err=%u tx_failed=%u rx_missed=%u\n",
+                info.state, info.tx_error_counter, info.rx_error_counter,
+                info.tx_failed_count, info.rx_missed_count);
+  if (info.state == TWAI_STATE_BUS_OFF) {
+    Serial.println("[bus] TWAI BUS_OFF — recovering");
+    twai_initiate_recovery();
+  }
+  bool changed = (ok != g_twai_was_ok);
+  g_twai_was_ok = ok;
+  return changed;
+}
 bool bus_wifi_seen_peer()   { return g_wifi_enabled && (millis() - g_last_wifi_rx) < 5000; }
 void bus_set_wifi_only(bool on) { if (g_wifi_enabled) g_wifi_only = on; }
 bool bus_is_wifi_only()     { return g_wifi_only; }

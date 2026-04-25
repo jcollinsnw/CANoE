@@ -14,6 +14,7 @@
 #include "bus.h"
 #include "node_state.h"
 #include "mod_lcd.h"
+#include "mod_relay.h"
 #include "mod_buzzer.h"
 
 #if USE_WIFI
@@ -69,11 +70,7 @@ static void relay_toggle(uint8_t relay_idx) {
   uint8_t want = (g_relay_mirror & mask) ? 0 : mask;
   uint8_t d[2] = { mask, want };
   bus_tx(CAN_ID_RELAY_CMD, d, 2);
-  g_relay_mirror = (g_relay_mirror & ~mask) | want;
-  char msg[LCD_COLS + 1];
-  snprintf(msg, sizeof(msg), "Relay %u %s", relay_idx + 1, want ? "ON" : "OFF");
-  lcd_set_event(msg);
-  lcd_update_status();
+  g_relay_mirror = (g_relay_mirror & ~mask) | want;  // update immediately for menu_draw()
 }
 
 // \x7E = → (right arrow, HD44780 ROM A00) — selection cursor
@@ -100,7 +97,7 @@ static void menu_draw() {
       case MENU_ID_RELAYS: {
         // Row 0: live relay state bitmap using per-relay icons
         char bmap[7];
-        for (uint8_t i = 0; i < 6; i++) {
+        for (uint8_t i = 0; i < relay_lcd_count(); i++) {
           bool on = (g_relay_mirror & (1 << i)) != 0;
           bmap[i] = lcd_relay_char(i, on);
         }
@@ -190,7 +187,7 @@ static void menu_draw() {
 void menu_setup() {
   g_item_count = 0;
 #ifdef MENU_HAS_RELAYS
-  g_items[g_item_count++] = { MENU_ID_RELAYS,  "Relays",     7 };  // 6 relays + Back
+  g_items[g_item_count++] = { MENU_ID_RELAYS,  "Relays",     (uint8_t)(relay_lcd_count() + 1) };  // N relays + Back
 #endif
 #ifdef MENU_HAS_VIPER
   g_items[g_item_count++] = { MENU_ID_VIPER,   "Viper",      4 };  // 3 commands + Back

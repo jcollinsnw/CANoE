@@ -51,7 +51,6 @@
 // Shared state definitions (declared extern in node_state.h)
 // --------------------------------------------------------------
 uint8_t g_relay_mirror = 0;
-bool    g_can_ok       = true;
 bool    g_menu_active  = false;
 
 // --------------------------------------------------------------
@@ -157,6 +156,10 @@ void setup() {
   led_setup();
 #endif
 
+#ifdef ENABLE_WBO2
+  wbo2_setup();
+#endif
+
 #ifdef ENABLE_LCD
   lcd_update_status();
   lcd_set_event(NODE_NAME);
@@ -203,36 +206,19 @@ void loop() {
   buzzer_tick();
 #endif
 
+#ifdef ENABLE_WBO2
+  wbo2_loop();
+#endif
+
   // CAN frame dispatch — update shared state then route to modules
   BusFrame f;
   while (bus_rx(f)) {
     // Maintain the shared relay mirror for any node that observes relay state
     if (f.id == CAN_ID_RELAY_STATUS && f.dlc >= 1) {
       g_relay_mirror = f.data[0];
-#ifdef ENABLE_LCD
-      lcd_update_status();
-#endif
     } else if (f.id == CAN_ID_RELAY_CMD && f.dlc >= 2) {
       uint8_t mask = f.data[0], state = f.data[1];
       g_relay_mirror = (g_relay_mirror & ~mask) | (state & mask);
-#ifdef ENABLE_LCD
-      char msg[17];
-      if (__builtin_popcount(mask) == 1) {
-        uint8_t idx = __builtin_ctz(mask);
-        snprintf(msg, sizeof(msg), "Relay %u %s", idx + 1, (state & mask) ? "ON" : "OFF");
-      } else if (mask == 0x3F && state == 0) {
-        snprintf(msg, sizeof(msg), "All OFF");
-      } else {
-        snprintf(msg, sizeof(msg), "Relays %02X:%02X", mask, state);
-      }
-      lcd_set_event(msg);
-      lcd_update_status();
-#endif
-#ifdef ENABLE_BUZZER
-      if (mask == 0x3F && state == 0)   buzzer_all_off();
-      else if (state & mask)            buzzer_relay_on();
-      else                              buzzer_relay_off();
-#endif
     }
 
     // WiFi enable/disable — handled on every node that has WiFi.
@@ -267,14 +253,24 @@ void loop() {
 #ifdef ENABLE_LCD
     lcd_handle_frame(f);
 #endif
+    buzzer_handle_frame(f);
 #ifdef ENABLE_VIPER
     viper_handle_frame(f);
+#endif
+
+  // WBO2 sensor loop
+#ifdef ENABLE_WBO2
+  wbo2_loop();
 #endif
 #ifdef ENABLE_LEDS
     led_handle_frame(f);
 #endif
 #ifdef ENABLE_RPM
     rpm_handle_frame(f);
+#endif
+
+#ifdef ENABLE_WBO2
+  wbo2_handle_frame(f);
 #endif
   }
 
@@ -283,19 +279,9 @@ void loop() {
   uint32_t now = millis();
   if (now - last_can_check >= 2000) {
     last_can_check = now;
-    twai_status_info_t info;
-    if (twai_get_status_info(&info) == ESP_OK) {
-      bool was_ok = g_can_ok;
-      g_can_ok = (info.state == TWAI_STATE_RUNNING);
-      wlog("[twai] state=%d tx_err=%u rx_err=%u tx_failed=%u rx_missed=%u\n",
-           info.state, info.tx_error_counter, info.rx_error_counter,
-           info.tx_failed_count, info.rx_missed_count);
-      if (info.state == TWAI_STATE_BUS_OFF) {
-        wlogln("[bus] TWAI BUS_OFF — recovering");
-        twai_initiate_recovery();
-      }
+    if (bus_twai_check()) {
 #ifdef ENABLE_LCD
-      if (g_can_ok != was_ok) lcd_update_status();
+      lcd_update_status();
 #endif
     }
   }

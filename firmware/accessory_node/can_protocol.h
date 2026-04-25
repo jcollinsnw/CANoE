@@ -25,6 +25,8 @@
 #define CAN_ID_ENGINE_DATA       0x304  // RPM node      -> everyone: [rpm_lo, rpm_hi]
 #define CAN_ID_GPS_DATA          0x305  // GPS node      -> everyone: [speed_lo, speed_hi, heading_lo, heading_hi, flags]
 
+#define CAN_ID_WBO2_DATA         0x306  // WBO2 node     -> everyone: [afr_lo, afr_hi] (AFR × 100)
+
 // Config-over-CAN — change behavior at runtime without reflashing.
 #define CAN_ID_CONFIG_WRITE      0x400
 #define CAN_ID_CONFIG_READ_REQ   0x401

@@ -214,6 +214,8 @@ static uint8_t     g_icon_off[LCD_MAX_RELAYS];
 static const char* g_relay_label[LCD_MAX_RELAYS];
 static uint8_t     g_relay_display_count = 6;
 
+uint8_t relay_lcd_count() { return g_relay_display_count; }
+
 char lcd_relay_char(uint8_t idx, bool on) {
   if (idx < LCD_MAX_RELAYS) {
     uint8_t slot = on ? g_icon_on[idx] : g_icon_off[idx];

@@ -23,9 +23,6 @@
 #include "node_state.h"
 #include "mod_rules.h"
 
-#ifdef ENABLE_LCD
-#include "mod_lcd.h"
-#endif
 #ifdef ENABLE_MENU
 #include "mod_menu.h"
 #endif

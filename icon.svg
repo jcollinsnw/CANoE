@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <clipPath id="badge-clip">
+      <rect width="128" height="128" rx="24"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="128" height="128" rx="24" fill="#1B2D3F"/>
+
+  <g clip-path="url(#badge-clip)">
+    <!-- Canoe hull (top-down view), centred in badge -->
+    <path fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linejoin="round"
+          d="M 12,64 C 32,34 96,34 116,64 C 96,94 32,94 12,64 Z"/>
+    <!-- inner plank -->
+    <path fill="none" stroke="#ffffff" stroke-width="1" opacity="0.22"
+          d="M 26,64 C 42,46 86,46 102,64 C 86,82 42,82 26,64 Z"/>
+
+    <!-- CAN bus backbone -->
+    <line x1="28" y1="64" x2="100" y2="64" stroke="#C8800A" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Termination markers -->
+    <rect x="22" y="58" width="8" height="12" rx="2" fill="#C0392B"/>
+    <rect x="98" y="58" width="8" height="12" rx="2" fill="#C0392B"/>
+
+    <!-- Three nodes -->
+    <circle cx="48"  cy="64" r="9" fill="#2BAF6A"/>
+    <circle cx="64"  cy="64" r="9" fill="#2BAF6A"/>
+    <circle cx="80"  cy="64" r="9" fill="#2BAF6A"/>
+  </g>
+
+  <!-- "CE" monogram below canoe, small -->
+  <text x="64" y="112" text-anchor="middle"
+        font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="13" font-weight="700" letter-spacing="3" fill="#6B8FAF">CANoE</text>
+</svg>

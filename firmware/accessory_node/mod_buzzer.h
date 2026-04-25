@@ -3,11 +3,13 @@
 
 #pragma once
 #include "node_config.h"
+#include "bus.h"
 
 #ifdef ENABLE_BUZZER
 
 void buzzer_setup();
-void buzzer_tick();        // call every loop() iteration
+void buzzer_tick();              // call every loop() iteration
+void buzzer_handle_frame(const BusFrame& f);  // reacts to RELAY_CMD frames
 
 void buzzer_menu_enter();
 void buzzer_menu_exit();
@@ -20,15 +22,16 @@ void buzzer_all_off();
 
 #else
 
-inline void buzzer_setup()       {}
-inline void buzzer_tick()        {}
-inline void buzzer_menu_enter()  {}
-inline void buzzer_menu_exit()   {}
-inline void buzzer_menu_scroll() {}
-inline void buzzer_menu_select() {}
-inline void buzzer_menu_action() {}
-inline void buzzer_relay_on()    {}
-inline void buzzer_relay_off()   {}
-inline void buzzer_all_off()     {}
+inline void buzzer_setup()                          {}
+inline void buzzer_tick()                           {}
+inline void buzzer_handle_frame(const BusFrame&)    {}
+inline void buzzer_menu_enter()                     {}
+inline void buzzer_menu_exit()                      {}
+inline void buzzer_menu_scroll()                    {}
+inline void buzzer_menu_select()                    {}
+inline void buzzer_menu_action()                    {}
+inline void buzzer_relay_on()                       {}
+inline void buzzer_relay_off()                      {}
+inline void buzzer_all_off()                        {}
 
 #endif

@@ -7,6 +7,7 @@
 #ifdef ENABLE_BUZZER
 
 #include <Arduino.h>
+#include "can_protocol.h"
 #include "mod_buzzer.h"
 
 struct Note { uint16_t freq; uint16_t ms; };  // freq=0 → silence gap
@@ -86,6 +87,14 @@ void buzzer_relay_off() {
 void buzzer_all_off() {
   static const Note s[] = { {1047,30}, {784,30}, {523,80} };
   play_seq(s, 3);
+}
+
+void buzzer_handle_frame(const BusFrame& f) {
+  if (f.id != CAN_ID_RELAY_CMD || f.dlc < 2) return;
+  uint8_t mask = f.data[0], state = f.data[1];
+  if (mask == 0x3F && state == 0)   buzzer_all_off();
+  else if (state & mask)            buzzer_relay_on();
+  else                              buzzer_relay_off();
 }
 
 #endif // ENABLE_BUZZER
