@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 110" width="500" height="110">
+  <defs>
+    <style>
+      .hull-outer { fill: none; stroke: #1B2D3F; stroke-width: 3; stroke-linejoin: round; }
+      .hull-inner { fill: none; stroke: #1B2D3F; stroke-width: 1; opacity: 0.18; }
+      .bus-line   { stroke: #C8800A; stroke-width: 2.5; fill: none; stroke-linecap: round; }
+      .node       { fill: #2BAF6A; }
+      .node-label { font-family: 'Courier New', monospace; font-size: 7.5px; fill: #fff; text-anchor: middle; dominant-baseline: central; }
+      .term       { fill: #C0392B; }
+      .name       { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #1B2D3F; }
+      .tag        { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #6B7E8F; letter-spacing: 2.5px; }
+    </style>
+  </defs>
+
+  <!-- ── Canoe hull (top-down view) ── -->
+  <path class="hull-outer" d="M 14,55 C 52,18 188,18 246,55 C 188,92 52,92 14,55 Z"/>
+  <!-- inner plank line for depth -->
+  <path class="hull-inner" d="M 32,55 C 62,32 186,32 224,55 C 186,78 62,78 32,55 Z"/>
+
+  <!-- CAN bus backbone -->
+  <line class="bus-line" x1="42" y1="55" x2="218" y2="55"/>
+
+  <!-- Termination markers (120Ω resistors at each end) -->
+  <rect class="term" x="35" y="49" width="9" height="12" rx="2"/>
+  <rect class="term" x="216" y="49" width="9" height="12" rx="2"/>
+
+  <!-- Three ESP32 nodes -->
+  <circle class="node" cx="90"  cy="55" r="10"/>
+  <circle class="node" cx="130" cy="55" r="10"/>
+  <circle class="node" cx="170" cy="55" r="10"/>
+
+  <text class="node-label" x="90"  y="55">01</text>
+  <text class="node-label" x="130" y="55">02</text>
+  <text class="node-label" x="170" y="55">03</text>
+
+  <!-- ── Logotype ── -->
+  <!-- "CAN" bold -->
+  <text class="name" x="278" y="68" font-size="52" font-weight="800" letter-spacing="-1">CAN</text>
+  <!-- "o" accent colour, lighter weight, slightly dropped to sit on baseline -->
+  <text x="375" y="68" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="44" font-weight="300" fill="#C8800A">o</text>
+  <!-- "E" bold, back to brand colour -->
+  <text class="name" x="399" y="68" font-size="52" font-weight="800" letter-spacing="-1">E</text>
+
+  <!-- Tagline -->
+  <text class="tag" x="280" y="88" font-size="11">CAN over ESP</text>
+</svg>

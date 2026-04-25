@@ -1,4 +1,8 @@
-# Antique Car CAN Bus Accessory System
+# CANoE — CAN over ESP
+
+<p align="center">
+  <img src="logo.svg" alt="CANoE logo" width="420"/>
+</p>
 
 A parallel 12V accessory wiring system for an antique car. Three ESP32 nodes talk over a shared CAN bus (with ESP-NOW WiFi fallback), driven by a switch panel, with a browser-based web console on each node and a Viper 5305V car alarm bridged in as a fourth participant.
 
