@@ -37,3 +37,7 @@ void bus_set_wifi_only(bool on);
 bool bus_is_wifi_only();
 
 void bus_set_observer(bus_observer_t cb);
+
+// Register CAN-status and WiFi-status LCD widgets. Call once from setup() after lcd_setup().
+// No-op when ENABLE_LCD is not defined in node_config.h.
+void bus_register_lcd_widgets();

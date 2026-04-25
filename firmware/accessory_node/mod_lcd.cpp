@@ -22,7 +22,9 @@
 #define LCD_EN 0x04   // enable strobe
 #define LCD_RS 0x01   // register select: 0 = command, 1 = data
 
-static bool g_lcd_backlight = true;
+static bool    g_lcd_backlight = true;
+static char    g_event_buf[LCD_COLS + 1] = {};  // current event row text (padded, no null needed)
+static uint8_t g_cgram_next = 1;               // next free CGRAM slot (1–7; slot 0 is reserved)
 
 // --------------------------------------------------------------
 // Widget registry
@@ -51,23 +53,19 @@ static void render_widgets(uint8_t row_filter) {
   }
 }
 
-// Return the leftmost widget col on a given row, or LCD_COLS if none.
+// Return the leftmost widget col on a given row for widgets with auto-refresh (refresh_ms > 0).
+// Used externally; event/background widgets (refresh_ms == 0) are excluded.
 static uint8_t widget_boundary(uint8_t row) {
   uint8_t bound = LCD_COLS;
   for (uint8_t i = 0; i < g_widget_count; i++)
-    if (g_widgets[i].row == row && g_widgets[i].col < bound)
+    if (g_widgets[i].row == row && g_widgets[i].refresh_ms > 0 && g_widgets[i].col < bound)
       bound = g_widgets[i].col;
   return bound;
 }
 
 // --------------------------------------------------------------
-// Per-relay icons and labels (populated from config macros at setup)
+// Status indicator icons (CAN / WiFi) — loaded by lcd_setup(), LCD's own concern.
 // --------------------------------------------------------------
-static uint8_t g_icon_on[6];   // CGRAM slot, 0xFF = no custom icon
-static uint8_t g_icon_off[6];
-
-// Shared status indicator icons (CAN and WiFi use the same on/off bitmaps).
-// Slots allocated at the end of the relay-icon chain in lcd_setup().
 static uint8_t g_status_on_slot  = 0xFF;  // filled icon  = link up
 static uint8_t g_status_off_slot = 0xFF;  // hollow icon  = link down
 
@@ -75,39 +73,6 @@ static const uint8_t STATUS_ICON_ON[8]  = {0b01110, 0b01010, 0b01010, 0b01010,
                                             0b01110, 0b01110, 0b01110, 0b01110};
 static const uint8_t STATUS_ICON_OFF[8] = {0b01110, 0b01110, 0b01110, 0b01110,
                                             0b01010, 0b01010, 0b01010, 0b01110};
-
-static const char* const g_relay_label[6] = {
-#ifdef RELAY_1_LABEL
-  RELAY_1_LABEL,
-#else
-  nullptr,
-#endif
-#ifdef RELAY_2_LABEL
-  RELAY_2_LABEL,
-#else
-  nullptr,
-#endif
-#ifdef RELAY_3_LABEL
-  RELAY_3_LABEL,
-#else
-  nullptr,
-#endif
-#ifdef RELAY_4_LABEL
-  RELAY_4_LABEL,
-#else
-  nullptr,
-#endif
-#ifdef RELAY_5_LABEL
-  RELAY_5_LABEL,
-#else
-  nullptr,
-#endif
-#ifdef RELAY_6_LABEL
-  RELAY_6_LABEL,
-#else
-  nullptr,
-#endif
-};
 
 // --------------------------------------------------------------
 // Low-level driver (private)
@@ -131,23 +96,39 @@ static void lcd_cmd_raw(uint8_t c)  { lcd_byte(c, false); }
 static void lcd_data_raw(uint8_t c) { lcd_byte(c, true);  }
 
 // Write one 8-row custom character into CGRAM slot (0–7).
-// Caller must restore DDRAM address afterward.
+// Caller must restore DDRAM address afterward (lcd_alloc_cgram does this).
 static void write_cgram(uint8_t slot, const uint8_t pattern[8]) {
   lcd_cmd_raw(0x40 | (slot << 3));
   for (uint8_t i = 0; i < 8; i++) lcd_data_raw(pattern[i]);
 }
 
-// Helper macro — load one icon into CGRAM if the config macro is defined.
-#define _LOAD_ICON(relay_idx, macro, slot_arr) \
-  if (cgram_slot < 8) { \
-    static const uint8_t _d[] = macro; \
-    write_cgram(cgram_slot, _d); \
-    slot_arr[relay_idx] = cgram_slot++; \
-  }
+// --------------------------------------------------------------
+// Built-in widget render functions
+// --------------------------------------------------------------
+
+// Event row: copies g_event_buf into the render buffer (registered at row 1, full width).
+static void event_render(char* buf, uint8_t width) {
+  uint8_t n = strnlen(g_event_buf, LCD_COLS);
+  memcpy(buf, g_event_buf, n < width ? n : width);
+}
 
 // --------------------------------------------------------------
 // Public API
 // --------------------------------------------------------------
+
+uint8_t lcd_alloc_cgram(const uint8_t pattern[8]) {
+  if (g_cgram_next >= 8) return 0xFF;
+  write_cgram(g_cgram_next, pattern);
+  lcd_cmd_raw(0x80);  // return to DDRAM after CGRAM write
+  return g_cgram_next++;
+}
+
+char lcd_status_char(bool ok) {
+  bool have_icons = (g_status_on_slot != 0xFF && g_status_off_slot != 0xFF);
+  return have_icons ? (char)(ok ? g_status_on_slot : g_status_off_slot)
+                    : (ok ? '+' : '-');
+}
+
 void lcd_set_cursor(uint8_t row, uint8_t col) {
   static const uint8_t ROW_OFF[] = { 0x00, 0x40 };
   lcd_cmd_raw(0x80 | (ROW_OFF[row & 1] + (col & 0x0F)));
@@ -182,113 +163,28 @@ void lcd_setup() {
   lcd_cmd_raw(0x06);         // entry mode: increment, no shift
   lcd_cmd_raw(0x0C);         // display on, cursor off
 
-  // Load custom CGRAM icons defined in node_config.h.
-  // Allocation starts at slot 1 — slot 0 maps to '\x00' (C null terminator)
-  // which would silently truncate snprintf output. Slots 1–7 are safe.
-  // Max 7 custom icons total across all relays.
-  memset(g_icon_on,  0xFF, sizeof(g_icon_on));
-  memset(g_icon_off, 0xFF, sizeof(g_icon_off));
-  uint8_t cgram_slot = 1;
-#ifdef RELAY_1_ICON_ON
-  _LOAD_ICON(0, RELAY_1_ICON_ON,  g_icon_on)
-#endif
-#ifdef RELAY_1_ICON_OFF
-  _LOAD_ICON(0, RELAY_1_ICON_OFF, g_icon_off)
-#endif
-#ifdef RELAY_2_ICON_ON
-  _LOAD_ICON(1, RELAY_2_ICON_ON,  g_icon_on)
-#endif
-#ifdef RELAY_2_ICON_OFF
-  _LOAD_ICON(1, RELAY_2_ICON_OFF, g_icon_off)
-#endif
-#ifdef RELAY_3_ICON_ON
-  _LOAD_ICON(2, RELAY_3_ICON_ON,  g_icon_on)
-#endif
-#ifdef RELAY_3_ICON_OFF
-  _LOAD_ICON(2, RELAY_3_ICON_OFF, g_icon_off)
-#endif
-#ifdef RELAY_4_ICON_ON
-  _LOAD_ICON(3, RELAY_4_ICON_ON,  g_icon_on)
-#endif
-#ifdef RELAY_4_ICON_OFF
-  _LOAD_ICON(3, RELAY_4_ICON_OFF, g_icon_off)
-#endif
-#ifdef RELAY_5_ICON_ON
-  _LOAD_ICON(4, RELAY_5_ICON_ON,  g_icon_on)
-#endif
-#ifdef RELAY_5_ICON_OFF
-  _LOAD_ICON(4, RELAY_5_ICON_OFF, g_icon_off)
-#endif
-#ifdef RELAY_6_ICON_ON
-  _LOAD_ICON(5, RELAY_6_ICON_ON,  g_icon_on)
-#endif
-#ifdef RELAY_6_ICON_OFF
-  _LOAD_ICON(5, RELAY_6_ICON_OFF, g_icon_off)
-#endif
-  // Status indicator icons — loaded after relay icons so they never displace them.
-  if (cgram_slot < 8) { write_cgram(cgram_slot, STATUS_ICON_ON);  g_status_on_slot  = cgram_slot++; }
-  if (cgram_slot < 8) { write_cgram(cgram_slot, STATUS_ICON_OFF); g_status_off_slot = cgram_slot++; }
+  // Status indicator icons are LCD's own concern — always allocated first so they
+  // are guaranteed slots 1 and 2 regardless of how many relay icons follow.
+  g_status_on_slot  = lcd_alloc_cgram(STATUS_ICON_ON);
+  g_status_off_slot = lcd_alloc_cgram(STATUS_ICON_OFF);
 
-  if (cgram_slot > 0)
-    lcd_cmd_raw(0x80);  // return to DDRAM address 0 after CGRAM writes
-  wlog("[LCD] init OK (%u custom icon%s)\n", cgram_slot - 1, cgram_slot == 2 ? "" : "s");
+  wlog("[LCD] init OK (status icons at slots %u/%u, %u CGRAM slots free)\n",
+       g_status_on_slot, g_status_off_slot, (uint8_t)(8 - g_cgram_next));
+
+  // Register the event text widget (row 1, full width, background — no auto-refresh).
+  // relay_icons_init() registers the relay widget on top of this after lcd_setup() returns.
+  memset(g_event_buf, ' ', LCD_COLS);
+  { LcdWidget w = { 1, 0, LCD_COLS, 0, event_render }; lcd_register_widget(w); }
 }
 
 void lcd_update_status() {
   if (g_menu_active) return;
-
-  // CAN and WiFi status icons — fall back to ASCII if CGRAM slots weren't allocated.
-  bool have_icons = (g_status_on_slot != 0xFF && g_status_off_slot != 0xFF);
-  auto status_char = [&](bool ok) -> char {
-    return have_icons ? (char)(ok ? g_status_on_slot : g_status_off_slot)
-                      : (ok ? '+' : '-');
-  };
-
-#if USE_WIFI
-  bool wifi_ok = bus_wifi_seen_peer();
-#else
-  bool wifi_ok = false;
-#endif
-
-  char relays[7];
-  for (uint8_t i = 0; i < 6; i++) {
-    bool on = (g_relay_mirror & (1 << i)) != 0;
-    relays[i] = lcd_relay_char(i, on);
-  }
-  relays[6] = '\0';
-
-  char buf[LCD_COLS + 1];
-  snprintf(buf, sizeof(buf), "C%cW%c [%s]",
-           status_char(g_can_ok), status_char(wifi_ok), relays);
-  lcd_write_row(0, buf);
-
   render_widgets(0xFF);
-}
-
-char lcd_relay_char(uint8_t idx, bool on) {
-  if (idx < 6) {
-    uint8_t slot = on ? g_icon_on[idx] : g_icon_off[idx];
-    if (slot != 0xFF) return (char)slot;
-  }
-  return on ? (char)0xFF : '-';
-}
-
-const char* lcd_relay_label(uint8_t idx) {
-  static const char* const defaults[] = {
-    "Relay 1", "Relay 2", "Relay 3", "Relay 4", "Relay 5", "Relay 6"
-  };
-  if (idx < 6 && g_relay_label[idx]) return g_relay_label[idx];
-  return (idx < 6) ? defaults[idx] : "Relay ?";
 }
 
 void lcd_set_event(const char* msg) {
   if (g_menu_active) return;
-  // Only write up to the first widget boundary on row 1 so widget regions are preserved.
-  uint8_t text_width = widget_boundary(1);
-  char buf[LCD_COLS + 1];
-  snprintf(buf, sizeof(buf), "%-*s", text_width, msg);
-  lcd_set_cursor(1, 0);
-  lcd_print_n(buf, text_width);
+  snprintf(g_event_buf, LCD_COLS + 1, "%-*s", LCD_COLS, msg);
   render_widgets(1);
 }
 

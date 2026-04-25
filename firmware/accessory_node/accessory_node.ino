@@ -123,6 +123,8 @@ void setup() {
 
 #ifdef ENABLE_LCD
   lcd_setup();
+  relay_icons_init();       // must run after lcd_setup() so CGRAM is ready
+  bus_register_lcd_widgets();
 #endif
 #ifdef ENABLE_MENU
   menu_setup();

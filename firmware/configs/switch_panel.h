@@ -52,6 +52,16 @@
 #define LCD_SDA_PIN       21
 #define LCD_SCL_PIN       22
 
+// ---- LCD widget positions (row 0: C[x]W[x][RRRRRR]    row 1: event text + RPM bar) ----
+#define BUS_CAN_WIDGET_ROW   0   // "C[icon]" at col 0
+#define BUS_CAN_WIDGET_COL   0
+#define BUS_WIFI_WIDGET_ROW  0   // "W[icon]" at col 2
+#define BUS_WIFI_WIDGET_COL  2
+#define RELAY_WIDGET_ROW     0   // "[RRRRRR]" at col 4
+#define RELAY_WIDGET_COL     4
+#define RELAY_WIDGET_WIDTH   8   // 2 brackets + RELAY_DISPLAY_COUNT chars
+#define RELAY_DISPLAY_COUNT  6   // number of relay chars the relay widget renders
+
 // ---- LCD menu items ----
 #define MENU_HAS_RELAYS   // Relays submenu (toggle relay states)
 #define MENU_HAS_VIPER    // Viper submenu (lock/unlock/remote start)

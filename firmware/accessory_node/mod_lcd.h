@@ -13,6 +13,7 @@
 // modules can reference LcdWidget in their headers without guards.
 // --------------------------------------------------------------
 #define LCD_MAX_WIDGETS 8
+#define LCD_MAX_RELAYS  8
 
 struct LcdWidget {
   uint8_t  row;           // LCD row (0 or 1)
@@ -39,7 +40,15 @@ void lcd_tick();                    // call from loop(); re-renders widgets on t
 
 void lcd_register_widget(const LcdWidget& w);  // register a display widget; call from module setup
 
-// Per-relay display helpers.
+// CGRAM icon allocation — call after lcd_setup(), before first lcd_update_status().
+// Writes pattern into the next free CGRAM slot (1–7). Returns the slot or 0xFF if full.
+uint8_t lcd_alloc_cgram(const uint8_t pattern[8]);
+
+// Status icon helper — returns the filled/hollow CGRAM glyph (or '+'/'-' ASCII fallback).
+// Used by bus.cpp CAN/WiFi widget renderers which live outside mod_lcd.
+char lcd_status_char(bool ok);
+
+// Per-relay display helpers (used by relay widget and menu; implemented in relay_icons.cpp).
 char        lcd_relay_char(uint8_t relay_idx, bool on);
 const char* lcd_relay_label(uint8_t relay_idx);
 
@@ -53,9 +62,11 @@ static inline void lcd_print_n(const char*, uint8_t)  {}
 static inline void lcd_clear()                         {}
 static inline void lcd_set_backlight(bool)             {}
 static inline bool lcd_get_backlight()                 { return false; }
-static inline void lcd_tick()                          {}
-static inline void lcd_register_widget(const LcdWidget&) {}
-static inline char lcd_relay_char(uint8_t, bool on)   { return on ? (char)0xFF : '-'; }
-static inline const char* lcd_relay_label(uint8_t)    { return "Relay ?"; }
+static inline void lcd_tick()                              {}
+static inline void lcd_register_widget(const LcdWidget&)   {}
+static inline uint8_t lcd_alloc_cgram(const uint8_t*)      { return 0xFF; }
+static inline char lcd_status_char(bool)                   { return '-'; }
+static inline char lcd_relay_char(uint8_t, bool on)       { return on ? (char)0xFF : '-'; }
+static inline const char* lcd_relay_label(uint8_t)        { return "Relay ?"; }
 
 #endif // ENABLE_LCD

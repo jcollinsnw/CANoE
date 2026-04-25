@@ -4,7 +4,12 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include "driver/twai.h"
+#include "node_config.h"
 #include "bus.h"
+
+#ifdef ENABLE_LCD
+#include "mod_lcd.h"
+#endif
 
 // --------------------------------------------------------------
 // Wire format for ESP-NOW. Magic filters out random broadcasts
@@ -206,3 +211,42 @@ bool bus_wifi_seen_peer()   { return g_wifi_enabled && (millis() - g_last_wifi_r
 void bus_set_wifi_only(bool on) { if (g_wifi_enabled) g_wifi_only = on; }
 bool bus_is_wifi_only()     { return g_wifi_only; }
 void bus_set_observer(bus_observer_t cb) { g_observer = cb; }
+
+// --------------------------------------------------------------
+// LCD status widgets for CAN and WiFi health indicators
+// --------------------------------------------------------------
+#ifdef ENABLE_LCD
+
+#ifndef BUS_CAN_WIDGET_ROW
+#define BUS_CAN_WIDGET_ROW 0
+#endif
+#ifndef BUS_CAN_WIDGET_COL
+#define BUS_CAN_WIDGET_COL 0
+#endif
+#ifndef BUS_WIFI_WIDGET_ROW
+#define BUS_WIFI_WIDGET_ROW 0
+#endif
+#ifndef BUS_WIFI_WIDGET_COL
+#define BUS_WIFI_WIDGET_COL 2
+#endif
+
+static void can_status_render(char* buf, uint8_t width) {
+  buf[0] = 'C';
+  if (width > 1) buf[1] = lcd_status_char(bus_can_healthy());
+}
+
+static void wifi_status_render(char* buf, uint8_t width) {
+  buf[0] = 'W';
+  if (width > 1) buf[1] = lcd_status_char(bus_wifi_seen_peer());
+}
+
+void bus_register_lcd_widgets() {
+  { LcdWidget w = { BUS_CAN_WIDGET_ROW, BUS_CAN_WIDGET_COL, 2, 1000, can_status_render }; lcd_register_widget(w); }
+#if USE_WIFI
+  { LcdWidget w = { BUS_WIFI_WIDGET_ROW, BUS_WIFI_WIDGET_COL, 2, 1000, wifi_status_render }; lcd_register_widget(w); }
+#endif
+}
+
+#else
+void bus_register_lcd_widgets() {}
+#endif // ENABLE_LCD

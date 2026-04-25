@@ -31,3 +31,9 @@
 #define LCD_SCL_PIN       22
 #define MPU_SDA_PIN       21
 #define MPU_SCL_PIN       22
+
+// ---- LCD widget positions (row 0: C[x]W[x] + available space for future widgets) ----
+#define BUS_CAN_WIDGET_ROW   0
+#define BUS_CAN_WIDGET_COL   0
+#define BUS_WIFI_WIDGET_ROW  0
+#define BUS_WIFI_WIDGET_COL  2
