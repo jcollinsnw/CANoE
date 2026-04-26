@@ -102,7 +102,7 @@ static void handle_status() {
   s += "\"id\":";     s += g_node_id;           s += ",";
   s += "\"can_ok\":"; s += (bus_can_healthy() ? "true" : "false"); s += ",";
   s += "\"wifi_peer\":"; s += (bus_wifi_seen_peer() ? "true" : "false"); s += ",";
-  s += "\"wifi_only\":"; s += (bus_is_wifi_only() ? "true" : "false"); s += ",";
+  s += "\"tx_mode\":";   s += (uint8_t)bus_get_tx_mode(); s += ",";
   s += "\"uptime_s\":"; s += uptime_s;
   s += "}";
   g_http.send(200, "application/json", s);
@@ -183,12 +183,19 @@ static void handle_send() {
   g_http.send(200, "application/json", "{\"ok\":true}");
 }
 
-static void handle_wifi_only() {
+static void handle_tx_mode() {
   if (!g_http.hasArg("plain")) { g_http.send(400, "text/plain", "no body"); return; }
   const String& body = g_http.arg("plain");
-  bool on = body.indexOf("true") >= 0;
-  bus_set_wifi_only(on);
-  g_http.send(200, "application/json", on ? "{\"on\":true}" : "{\"on\":false}");
+  long v = -1;
+  // parse {"mode":N}
+  int pos = body.indexOf("\"mode\"");
+  if (pos >= 0) {
+    pos = body.indexOf(':', pos);
+    if (pos >= 0) v = body.substring(pos + 1).toInt();
+  }
+  if (v < 0 || v > 2) { g_http.send(400, "text/plain", "mode must be 0,1,2"); return; }
+  bus_set_tx_mode((BusTxMode)v);
+  g_http.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handle_serial() {
@@ -274,6 +281,11 @@ static void handle_config() {
   s += "\"led_count\":" + String(NUM_LEDS) + ",";
 #else
   s += "\"has_leds\":false,\"led_count\":0,";
+#endif
+#ifdef ENABLE_RULES
+  s += "\"has_rules\":true,";
+#else
+  s += "\"has_rules\":false,";
 #endif
   s += "\"relay_labels\":[";
   for (int i = 0; i < 6; i++) {
@@ -413,7 +425,7 @@ void webui_init(const char* node_name, uint8_t node_id) {
   g_http.on("/api/status",  HTTP_GET,  handle_status);
   g_http.on("/api/frames",  HTTP_GET,  handle_frames);
   g_http.on("/api/send",    HTTP_POST, handle_send);
-  g_http.on("/api/wifi_only", HTTP_POST, handle_wifi_only);
+  g_http.on("/api/tx_mode",  HTTP_POST, handle_tx_mode);
   g_http.on("/api/serial",  HTTP_GET,  handle_serial);
   g_http.on("/api/config",  HTTP_GET,  handle_config);
 #ifdef ENABLE_RULES
@@ -421,6 +433,11 @@ void webui_init(const char* node_name, uint8_t node_id) {
   g_http.on("/api/rules",       HTTP_POST,   handle_rules_post);
   g_http.on("/api/rules",       HTTP_DELETE, handle_rules_delete);
   g_http.on("/api/rules/reset", HTTP_POST,   handle_rules_reset);
+#else
+  g_http.on("/api/rules", HTTP_GET, [](){
+    g_http.sendHeader("Cache-Control", "no-store");
+    g_http.send(200, "application/json", "[]");
+  });
 #endif
 
   // Common captive-portal probe paths — just bounce them to our root

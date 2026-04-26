@@ -20,6 +20,12 @@ void buzzer_relay_on();
 void buzzer_relay_off();
 void buzzer_all_off();
 
+void buzzer_startup();              // boot-complete jingle (call after WiFi + CAN ready)
+void buzzer_can_up();               // CAN bus link restored
+void buzzer_can_down();             // CAN bus link lost
+void buzzer_peer_count(uint8_t n);  // play pitch for n active peers; queued so simultaneous
+                                    // connects stack up rather than cutting each other off
+
 #else
 
 inline void buzzer_setup()                          {}
@@ -33,5 +39,9 @@ inline void buzzer_menu_action()                    {}
 inline void buzzer_relay_on()                       {}
 inline void buzzer_relay_off()                      {}
 inline void buzzer_all_off()                        {}
+inline void buzzer_startup()                        {}
+inline void buzzer_can_up()                         {}
+inline void buzzer_can_down()                       {}
+inline void buzzer_peer_count(uint8_t)              {}
 
 #endif

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include "driver/twai.h"
 #include "node_config.h"
 #include "bus.h"
@@ -30,7 +31,7 @@ struct __attribute__((packed)) WifiFrame {
 // --------------------------------------------------------------
 static uint8_t g_node_id = 0;
 static uint16_t g_tx_seq = 0;
-static bool g_wifi_only = false;
+static BusTxMode g_tx_mode = BUS_TX_CAN_WIFI;
 static bool g_wifi_enabled = false;
 
 static uint32_t g_last_can_tx_ok  = 0;
@@ -40,6 +41,24 @@ static uint16_t g_tx_fail_streak  = 0;
 static bool     g_twai_was_ok     = false;
 
 static bus_observer_t g_observer = nullptr;
+
+// Per-peer activity tracking — used to report connect/disconnect counts.
+// Slot node_id==0 means empty. Timeout matches bus_wifi_seen_peer() window.
+static const uint32_t PEER_TIMEOUT_MS = 6000;
+struct PeerEntry { uint8_t node_id; uint32_t last_seen_ms; };
+static PeerEntry g_peers[8] = {};
+
+static void peer_touch(uint8_t node_id) {
+  uint32_t now = millis();
+  for (int i = 0; i < 8; i++) {
+    if (g_peers[i].node_id == node_id) { g_peers[i].last_seen_ms = now; return; }
+  }
+  for (int i = 0; i < 8; i++) {
+    if (!g_peers[i].node_id || (now - g_peers[i].last_seen_ms) >= PEER_TIMEOUT_MS) {
+      g_peers[i] = {node_id, now}; return;
+    }
+  }
+}
 
 // Dedup cache for (node_id, seq) pairs seen in the last ~2 seconds
 struct DedupEntry { uint8_t node_id; uint16_t seq; uint32_t t_ms; };
@@ -87,6 +106,7 @@ static void on_espnow_recv(const uint8_t* /*mac*/, const uint8_t* data, int len)
   if (f.node_id == g_node_id) return; // our own broadcast coming back
   if (dedup_seen_or_record(f.node_id, f.seq)) return;
   g_last_wifi_rx = millis();
+  peer_touch(f.node_id);
 
   BusFrame b = {};
   b.id = f.can_id;
@@ -122,9 +142,37 @@ void bus_init(uint8_t node_id) {
   Serial.printf("[bus] ready (wifi+can), node_id=0x%02X\n", node_id);
 }
 
+void bus_init_no_ap(uint8_t node_id) {
+  g_node_id = node_id;
+  memset(g_dedup, 0, sizeof(g_dedup));
+  g_ring_head = g_ring_tail = 0;
+
+  // Start WiFi in STA mode so the radio is up for ESP-NOW without launching a SoftAP.
+  // Channel must be fixed manually — without an AP association there is no automatic
+  // channel negotiation and peers need to agree on the same channel (6).
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(false);
+  esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("[bus] esp_now_init failed (no-ap mode)");
+    return;
+  }
+  esp_now_register_recv_cb(on_espnow_recv);
+
+  esp_now_peer_info_t peer = {};
+  memset(peer.peer_addr, 0xFF, 6);
+  peer.channel = 0;
+  peer.encrypt = false;
+  esp_now_add_peer(&peer);
+
+  g_wifi_enabled = true;
+  Serial.printf("[bus] ready (espnow, no AP), node_id=0x%02X\n", node_id);
+}
+
 void bus_init_no_wifi(uint8_t node_id) {
   g_node_id = node_id;
-  g_wifi_only = false;
+  g_tx_mode = BUS_TX_CAN_ONLY;
   memset(g_dedup, 0, sizeof(g_dedup));
   g_ring_head = g_ring_tail = 0;
   Serial.printf("[bus] ready (can-only), node_id=0x%02X\n", node_id);
@@ -133,8 +181,8 @@ void bus_init_no_wifi(uint8_t node_id) {
 bool bus_tx(uint32_t id, const uint8_t* data, uint8_t dlc) {
   bool any_ok = false;
 
-  // Wired CAN (skip if in WiFi-only mode)
-  if (!g_wifi_only) {
+  // Wired CAN
+  if (g_tx_mode != BUS_TX_WIFI_ONLY) {
     twai_message_t m = {};
     m.identifier = id;
     m.data_length_code = dlc;
@@ -164,7 +212,7 @@ bool bus_tx(uint32_t id, const uint8_t* data, uint8_t dlc) {
 
   dedup_seen_or_record(g_node_id, f.seq); // suppress our own echo if it wraps around
 
-  if (g_wifi_enabled) {
+  if (g_wifi_enabled && g_tx_mode != BUS_TX_CAN_ONLY) {
     uint8_t bcast[6]; memset(bcast, 0xFF, 6);
     if (esp_now_send(bcast, (uint8_t*)&f, sizeof(f)) == ESP_OK) any_ok = true;
   }
@@ -225,8 +273,17 @@ bool bus_twai_check() {
   return changed;
 }
 bool bus_wifi_seen_peer()   { return g_wifi_enabled && (millis() - g_last_wifi_rx) < 5000; }
-void bus_set_wifi_only(bool on) { if (g_wifi_enabled) g_wifi_only = on; }
-bool bus_is_wifi_only()     { return g_wifi_only; }
+bool bus_twai_running()     { return g_twai_was_ok; }
+
+uint8_t bus_peer_count() {
+  uint32_t now = millis();
+  uint8_t n = 0;
+  for (int i = 0; i < 8; i++)
+    if (g_peers[i].node_id && (now - g_peers[i].last_seen_ms) < PEER_TIMEOUT_MS) n++;
+  return n;
+}
+void     bus_set_tx_mode(BusTxMode mode) { g_tx_mode = mode; }
+BusTxMode bus_get_tx_mode()              { return g_tx_mode; }
 void bus_set_observer(bus_observer_t cb) { g_observer = cb; }
 
 // --------------------------------------------------------------
@@ -240,11 +297,17 @@ void bus_set_observer(bus_observer_t cb) { g_observer = cb; }
 #ifndef BUS_CAN_WIDGET_COL
 #define BUS_CAN_WIDGET_COL 0
 #endif
-#ifndef BUS_WIFI_WIDGET_ROW
-#define BUS_WIFI_WIDGET_ROW 0
+#ifndef BUS_ESPNOW_WIDGET_ROW
+#define BUS_ESPNOW_WIDGET_ROW 0
 #endif
-#ifndef BUS_WIFI_WIDGET_COL
-#define BUS_WIFI_WIDGET_COL 2
+#ifndef BUS_ESPNOW_WIDGET_COL
+#define BUS_ESPNOW_WIDGET_COL 2
+#endif
+#ifndef BUS_AP_WIDGET_ROW
+#define BUS_AP_WIDGET_ROW 0
+#endif
+#ifndef BUS_AP_WIDGET_COL
+#define BUS_AP_WIDGET_COL 4
 #endif
 
 static void can_status_render(char* buf, uint8_t width) {
@@ -252,15 +315,23 @@ static void can_status_render(char* buf, uint8_t width) {
   if (width > 1) buf[1] = lcd_status_char(bus_can_healthy());
 }
 
-static void wifi_status_render(char* buf, uint8_t width) {
-  buf[0] = 'W';
+static void espnow_status_render(char* buf, uint8_t width) {
+  buf[0] = 'N';
   if (width > 1) buf[1] = lcd_status_char(bus_wifi_seen_peer());
 }
+
+#if USE_WIFI
+static void ap_status_render(char* buf, uint8_t width) {
+  buf[0] = 'A';
+  if (width > 1) buf[1] = lcd_status_char(WiFi.softAPIP() != IPAddress(0, 0, 0, 0));
+}
+#endif
 
 void bus_register_lcd_widgets() {
   { LcdWidget w = { BUS_CAN_WIDGET_ROW, BUS_CAN_WIDGET_COL, 2, 1000, can_status_render }; lcd_register_widget(w); }
 #if USE_WIFI
-  { LcdWidget w = { BUS_WIFI_WIDGET_ROW, BUS_WIFI_WIDGET_COL, 2, 1000, wifi_status_render }; lcd_register_widget(w); }
+  { LcdWidget w = { BUS_ESPNOW_WIDGET_ROW, BUS_ESPNOW_WIDGET_COL, 2, 1000, espnow_status_render }; lcd_register_widget(w); }
+  { LcdWidget w = { BUS_AP_WIDGET_ROW, BUS_AP_WIDGET_COL, 2, 1000, ap_status_render }; lcd_register_widget(w); }
 #endif
 }
 

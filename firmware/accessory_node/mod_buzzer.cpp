@@ -10,18 +10,35 @@
 #include "can_protocol.h"
 #include "mod_buzzer.h"
 
-struct Note { uint16_t freq; uint16_t ms; };  // freq=0 → silence gap
+struct Note     { uint16_t freq; uint16_t ms; };  // freq=0 → silence gap
+struct SeqEntry { const Note* seq; uint8_t len; };
 
 static const Note* g_seq     = nullptr;
 static uint8_t     g_seq_len = 0;
 static uint8_t     g_seq_pos = 0;
 static uint32_t    g_note_end = 0;
 
+// Queue for sequences that should play back-to-back without interrupting each other.
+#define BZ_QUEUE_SIZE 8
+static SeqEntry g_queue[BZ_QUEUE_SIZE];
+static uint8_t  g_q_head = 0, g_q_tail = 0;
+
+// Start a sequence immediately with no queue side-effects.
+static void start_seq(const Note* seq, uint8_t len) {
+  g_seq = seq; g_seq_len = len; g_seq_pos = 0; g_note_end = 0;
+}
+
+// Interrupt whatever is playing and clear the queue (user-initiated sounds).
 static void play_seq(const Note* seq, uint8_t len) {
-  g_seq     = seq;
-  g_seq_len = len;
-  g_seq_pos = 0;
-  g_note_end = 0;  // fire immediately on next tick
+  g_q_head = g_q_tail = 0;
+  start_seq(seq, len);
+}
+
+// Add to queue; if nothing is playing, start immediately (ambient status sounds).
+static void enqueue_seq(const Note* seq, uint8_t len) {
+  if (!g_seq && g_q_head == g_q_tail) { start_seq(seq, len); return; }
+  uint8_t next = (g_q_head + 1) % BZ_QUEUE_SIZE;
+  if (next != g_q_tail) { g_queue[g_q_head] = {seq, len}; g_q_head = next; }
 }
 
 void buzzer_setup() {
@@ -37,6 +54,11 @@ void buzzer_tick() {
   if (g_seq_pos >= g_seq_len) {
     noTone(BUZZER_PIN);
     g_seq = nullptr;
+    if (g_q_head != g_q_tail) {
+      SeqEntry e = g_queue[g_q_tail];
+      g_q_tail = (g_q_tail + 1) % BZ_QUEUE_SIZE;
+      start_seq(e.seq, e.len);
+    }
     return;
   }
 
@@ -87,6 +109,44 @@ void buzzer_relay_off() {
 void buzzer_all_off() {
   static const Note s[] = { {1047,30}, {784,30}, {523,80} };
   play_seq(s, 3);
+}
+
+void buzzer_startup() {
+  // Rising C-major arpeggio: C5 E5 G5 C6 E6 — boot complete jingle
+  static const Note s[] = {
+    {523,70}, {659,70}, {784,70}, {1047,70}, {1319,180}
+  };
+  play_seq(s, 5);
+}
+
+void buzzer_can_up() {
+  // Three rising staccato tones — link restored
+  static const Note s[] = { {784,40},{0,20},{1047,40},{0,20},{1319,90} };
+  play_seq(s, 5);
+}
+
+void buzzer_can_down() {
+  // Two low warning pulses — link lost
+  static const Note s[] = { {523,60},{0,30},{523,120} };
+  play_seq(s, 3);
+}
+
+// Pitch ladder: one note per active peer count, queued so simultaneous
+// connects play in sequence rather than cutting each other off.
+// G4=392  C5=523  E5=659  G5=784  C6=1047  E6=1319
+// count:  0       1       2       3        4        5+
+static const Note PEER_TONES[][2] = {
+  { {392, 150}, {0, 50} },  // 0 — low note, longer (all gone)
+  { {523,  80}, {0, 40} },  // 1
+  { {659,  80}, {0, 40} },  // 2
+  { {784,  80}, {0, 40} },  // 3
+  { {1047, 80}, {0, 40} },  // 4
+  { {1319, 80}, {0, 40} },  // 5+
+};
+
+void buzzer_peer_count(uint8_t n) {
+  uint8_t idx = (n < 6) ? n : 5;
+  enqueue_seq(PEER_TONES[idx], 2);
 }
 
 void buzzer_handle_frame(const BusFrame& f) {

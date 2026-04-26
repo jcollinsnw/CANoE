@@ -5,7 +5,8 @@
 
 #define NODE_NAME           "switch-panel"
 #define NODE_ID             0x01
-#define USE_CAN_TRANSCEIVER 0
+#define USE_CAN_TRANSCEIVER 1
+#define CAN_BUS_SPEED       125   // kbps — change all nodes together: 125, 250, or 500
 #define USE_WIFI            1
 #define NVS_NAMESPACE       "swpanel"
 
@@ -52,18 +53,22 @@
 #define LCD_SDA_PIN       21
 #define LCD_SCL_PIN       22
 
-// ---- LCD widget positions (row 0: C[x]W[x][RRRRRR]    row 1: event text + RPM bar) ----
-#define BUS_CAN_WIDGET_ROW   0   // "C[icon]" at col 0
-#define BUS_CAN_WIDGET_COL   0
-#define BUS_WIFI_WIDGET_ROW  0   // "W[icon]" at col 2
-#define BUS_WIFI_WIDGET_COL  2
-#define RELAY_WIDGET_ROW     0   // "[RRRRRR]" at col 4
-#define RELAY_WIDGET_COL     4
-#define RELAY_WIDGET_WIDTH   8   // 2 brackets + RELAY_DISPLAY_COUNT chars
-#define RELAY_DISPLAY_COUNT  6   // number of relay chars the relay widget renders
+// ---- LCD widget positions (row 0: C[x]N[x]A[x]  RRRRRR) ----
+// C=CAN wired health, N=ESP-NOW peer seen, A=WiFi AP active; 2-char gap; 6 relay chars right side
+#define BUS_CAN_WIDGET_ROW    0   // "C[icon]" at col 0-1
+#define BUS_CAN_WIDGET_COL    0
+#define BUS_ESPNOW_WIDGET_ROW 0   // "N[icon]" at col 2-3
+#define BUS_ESPNOW_WIDGET_COL 2
+#define BUS_AP_WIDGET_ROW     0   // "A[icon]" at col 4-5
+#define BUS_AP_WIDGET_COL     4
+#define RELAY_WIDGET_ROW      0   // "RRRRRR" at col 10-15 (no brackets)
+#define RELAY_WIDGET_COL      10
+#define RELAY_WIDGET_WIDTH    6
+#define RELAY_DISPLAY_COUNT   6
 
 // ---- LCD menu items ----
 #define MENU_HAS_RELAYS   // Relays submenu (toggle relay states)
+#define MENU_HAS_TX_MODE  // CAN Mode submenu (CAN+WiFi / WiFi Only / CAN Only)
 #define MENU_HAS_VIPER    // Viper submenu (lock/unlock/remote start)
 #define MENU_HAS_BUS      // Bus Status submenu (TWAI health counters)
 #define MENU_HAS_DISPLAY  // Display submenu (backlight toggle)
@@ -83,15 +88,11 @@
 #define RELAY_1_ICON_ON  {0b10101, 0b10101, 0b10101, 0b00000, 0b11111, 0b11111, 0b01110, 0b00000}
 #define RELAY_1_ICON_OFF {0b00000, 0b00000, 0b00000, 0b11111, 0b10001, 0b11111, 0b01110, 0b00000}
 
-// ---- RPM display widget ----
-// Subscribes to ENGINE_DATA (0x304) from the relay controller and renders a bar
-// on the LCD. No local coil connection needed on this node.
-// Redline is settable at runtime: 400 01 40 00 00 <rpm_lo> <rpm_hi> 01
+// ---- RPM ----
+// Frame handler + redline config enabled; LCD bar widget is disabled until hardware is ready.
+// To re-enable the bar: add RPM_WIDGET_ROW 0, RPM_WIDGET_COL <col>, RPM_WIDGET_WIDTH <w>.
 #define ENABLE_RPM
-#define RPM_WIDGET_ROW   1     // row 1 = the event row
-#define RPM_WIDGET_COL   8     // columns 8–15 (leaves cols 0–7 for event text)
-#define RPM_WIDGET_WIDTH 8
-#define RPM_REDLINE      6500
+#define RPM_REDLINE 6500
 
 // ---- Rules engine ----
 // Each rule: when a CAN frame matching the trigger arrives, fire the action.

@@ -25,6 +25,8 @@
 static bool    g_lcd_backlight = true;
 static char    g_event_buf[LCD_COLS + 1] = {};  // current event row text (padded, no null needed)
 static uint8_t g_cgram_next = 1;               // next free CGRAM slot (1–7; slot 0 is reserved)
+static uint8_t g_cgram_patterns[8][8] = {};    // stored for re-init after LCD power glitch
+static uint8_t g_i2c_fail_count = 0;           // consecutive I2C write failures
 
 // --------------------------------------------------------------
 // Widget registry
@@ -80,7 +82,11 @@ static const uint8_t STATUS_ICON_OFF[8] = {0b01110, 0b01110, 0b01110, 0b01110,
 static void lcd_i2c_write(uint8_t v) {
   Wire.beginTransmission(LCD_I2C_ADDR);
   Wire.write(v | (g_lcd_backlight ? LCD_BL : 0));
-  Wire.endTransmission();
+  if (Wire.endTransmission() != 0) {
+    if (g_i2c_fail_count < 255) g_i2c_fail_count++;
+  } else {
+    g_i2c_fail_count = 0;
+  }
 }
 static void lcd_pulse(uint8_t v) {
   lcd_i2c_write(v | LCD_EN); delayMicroseconds(1);
@@ -118,6 +124,7 @@ static void event_render(char* buf, uint8_t width) {
 
 uint8_t lcd_alloc_cgram(const uint8_t pattern[8]) {
   if (g_cgram_next >= 8) return 0xFF;
+  memcpy(g_cgram_patterns[g_cgram_next], pattern, 8);
   write_cgram(g_cgram_next, pattern);
   lcd_cmd_raw(0x80);  // return to DDRAM after CGRAM write
   return g_cgram_next++;
@@ -150,6 +157,27 @@ void lcd_write_row(uint8_t row, const char* text) {
 void lcd_set_backlight(bool on) { g_lcd_backlight = on; }
 bool lcd_get_backlight()        { return g_lcd_backlight; }
 
+// Replay the full HD44780 power-on init + CGRAM rewrite. Called when I2C failures
+// suggest the LCD lost power or its control register state was corrupted.
+static void lcd_hard_reinit() {
+  delay(50);
+  lcd_nibble(0x03, false); delay(5);
+  lcd_nibble(0x03, false); delayMicroseconds(150);
+  lcd_nibble(0x03, false);
+  lcd_nibble(0x02, false);
+  lcd_cmd_raw(0x28);
+  lcd_cmd_raw(0x08);
+  lcd_clear();
+  lcd_cmd_raw(0x06);
+  lcd_cmd_raw(0x0C);
+  for (uint8_t s = 1; s < g_cgram_next; s++)
+    write_cgram(s, g_cgram_patterns[s]);
+  lcd_cmd_raw(0x80);
+  lcd_write_row(0, "");
+  render_widgets(0xFF);
+  wlogln("[LCD] re-initialized after I2C failure");
+}
+
 void lcd_setup() {
   delay(50);
   // HD44780 4-bit power-on init sequence (per datasheet)
@@ -171,6 +199,9 @@ void lcd_setup() {
   wlog("[LCD] init OK (status icons at slots %u/%u, %u CGRAM slots free)\n",
        g_status_on_slot, g_status_off_slot, (uint8_t)(8 - g_cgram_next));
 
+  // Blank row 0 so gap areas between widgets stay clean.
+  lcd_write_row(0, "");
+
   // Register the event text widget (row 1, full width, background — no auto-refresh).
   // relay_icons_init() registers the relay widget on top of this after lcd_setup() returns.
   memset(g_event_buf, ' ', LCD_COLS);
@@ -191,6 +222,19 @@ void lcd_set_event(const char* msg) {
 void lcd_tick() {
   if (g_menu_active) return;
   uint32_t now = millis();
+
+  static uint32_t last_reinit_ms = 0;
+  // Reinit when I2C has failed repeatedly OR unconditionally every 30 s.
+  // The periodic case recovers from HD44780 brownouts that the PCF8574 I2C
+  // can't detect (the backpack chip keeps ACKing even when the LCD controller
+  // has lost its state).
+  if (g_i2c_fail_count >= 5 || (now - last_reinit_ms) >= 30000) {
+    last_reinit_ms = now;
+    g_i2c_fail_count = 0;
+    lcd_hard_reinit();
+    return;
+  }
+
   char buf[LCD_COLS + 1];
   for (uint8_t i = 0; i < g_widget_count; i++) {
     if (g_widgets[i].refresh_ms == 0) continue;

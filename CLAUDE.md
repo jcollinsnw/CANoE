@@ -1,6 +1,6 @@
 # Antique Car CAN Bus Accessory System
 
-A parallel 12V accessory wiring system for an antique car, built around three ESP32 nodes on a shared CAN bus with ESP-NOW wireless fallback and a self-hosted web console. This file exists to onboard future Claude sessions quickly — read it top to bottom before making changes.
+A parallel 12V accessory wiring system for an antique car, built around four ESP32 nodes on a shared CAN bus with ESP-NOW wireless fallback and a self-hosted web console. This file exists to onboard future Claude sessions quickly — read it top to bottom before making changes.
 
 ## Project goals (from the owner)
 
@@ -24,7 +24,8 @@ A parallel 12V accessory wiring system for an antique car, built around three ES
     ├── configs/                                # one header per physical node
     │   ├── relay_controller.h
     │   ├── switch_panel.h
-    │   └── viper_interface.h
+    │   ├── viper_interface.h
+    │   └── ecu_node.h
     └── accessory_node/                         # single unified sketch (all nodes)
         ├── accessory_node.ino                  # setup() / loop() / frame dispatch
         ├── node_config.h                       # ← overwritten by Makefile before each build
@@ -44,6 +45,8 @@ A parallel 12V accessory wiring system for an antique car, built around three ES
         ├── mod_mpu6050.h / mod_mpu6050.cpp     # MPU-6050 accelerometer / shake detection
         ├── mod_dht22.h / mod_dht22.cpp         # AM2302 temperature/humidity sensor
         ├── mod_rpm.h / mod_rpm.cpp             # engine RPM via PC817C optocoupler + interrupt counting
+        ├── mod_wbo2.h / mod_wbo2.cpp           # wideband O2 sensor analog read + WBO2_DATA broadcast
+        ├── mod_ecu.h / mod_ecu.cpp             # dual-mode fuel controller (carb PI + TBI injection)
         └── mod_gps.h / mod_gps.cpp             # GPS speed/heading via NMEA UART (u-blox Neo-6M/8M)
 ```
 
@@ -53,7 +56,7 @@ A parallel 12V accessory wiring system for an antique car, built around three ES
 
 ## Architecture overview
 
-Three ESP32 nodes, each runs up to four things concurrently:
+Four ESP32 nodes, each runs up to four things concurrently:
 
 1. **TWAI** (ESP32's CAN controller) — primary bus transport at 125 kbit/s.
 2. **ESP-NOW** — secondary transport, broadcasts every frame to all peers on the same WiFi channel. Works as a failover if the wire breaks.
@@ -69,6 +72,7 @@ Three ESP32 nodes, each runs up to four things concurrently:
 | switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_RULES, ENABLE_LCD, ENABLE_MENU, ENABLE_BUZZER, ENABLE_LEDS |
 | relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RPM                                                    |
 | viper_interface  | 0x03    | configs/viper_interface.h        | ENABLE_VIPER, ENABLE_LCD, ENABLE_MPU6050                                    |
+| ecu_node         | 0x04    | configs/ecu_node.h               | ENABLE_RPM, ENABLE_WBO2, ENABLE_ECU (MAP, TPS, CLT, IAT, carb solenoid, dual injectors) |
 
 ## Feature flags (defined in configs/*.h)
 
@@ -86,6 +90,8 @@ Three ESP32 nodes, each runs up to four things concurrently:
 | `ENABLE_DHT22`    | mod_dht22           | AM2302 temperature/humidity broadcast                                |
 | `ENABLE_RPM`      | mod_rpm             | Engine RPM sensor (if `RPM_PIN` defined) and/or LCD bar widget (if `RPM_WIDGET_ROW` defined); redline configurable over CAN (`CFG_KEY_RPM_REDLINE 0x40`) |
 | `ENABLE_GPS`      | mod_gps             | GPS speed/heading via NMEA UART; `GPS_SERIAL_NUM`, `GPS_RX_PIN`, `GPS_TX_PIN`, `GPS_BAUD` |
+| `ENABLE_WBO2`     | mod_wbo2            | Wideband O2 analog read (0–5V controller output); `WBO2_PIN`, `WBO2_SAMPLE_MS`, `WBO2_MIN/MAX_V`, `WBO2_MIN/MAX_AFR` |
+| `ENABLE_ECU`      | mod_ecu             | Dual-mode fuel controller: Mode 0 = carb air-bleed solenoid (LEDC PWM PI loop); Mode 1 = TBI dual injectors (esp_timer pulse). Reads MAP, TPS, CLT, IAT. VE table + STFT closed-loop from WBO2_DATA. |
 
 `ENABLE_MENU` subflags (defined alongside `ENABLE_MENU` in the node config):
 
@@ -193,6 +199,9 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x303  | SHAKE_EVENT       | `[magnitude, axis_mask]`                               |
 | 0x304  | ENGINE_DATA       | `[rpm_lo, rpm_hi]` — uint16 LE RPM; broadcast at `RPM_SAMPLE_MS` interval |
 | 0x305  | GPS_DATA          | `[speed_lo, speed_hi, heading_lo, heading_hi, flags]` — speed 0.1 mph, heading 0.1 deg, flags: bit0=fix, bit1=speed valid, bit2=heading valid |
+| 0x306  | WBO2_DATA         | `[afr_lo, afr_hi]` — uint16 LE, AFR × 100 (e.g. 1470 = 14.70 AFR)                                                                             |
+| 0x307  | ECU_DATA          | `[mode, map_kpa, tps_pct, clt_enc, iat_enc, pw_lo, pw_hi, flags]` — mode: 0=carb 1=inject; temps encoded as °C+40; pw = duty×100 (carb) or μs (inject); flags: bit0=closed_loop, bit1=enriching, bit2=inj_saturated, bit3=running |
+| 0x308  | ECU_CMD           | `[cmd, arg0, arg1, arg2]` — cmd: 0x01 set mode (arg0: 0/1), 0x02 set target AFR×100 (arg1+arg2 uint16 LE), 0x03 fuel cut (arg0: 0/1), 0x04 reset trim |
 | 0x400  | CONFIG_WRITE      | `[target, key, index, _reserved, arg, arg2_lo, arg2_hi, flags]` |
 | 0x401  | CONFIG_READ_REQ   | `[target, key, index]` (index 0xFF = all)              |
 | 0x402  | CONFIG_READ_RESP  | same layout as CONFIG_WRITE (flags byte unused)        |
@@ -201,11 +210,14 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x510  | VIPER_CMD         | `[cmd]` — any node → viper_interface; cmd: 0x01 lock, 0x02 unlock, 0x03 remote start |
 | 0x511  | VIPER_STATUS      | `[b0..b4]` — viper_interface → everyone; raw 5-byte Viper alarm packet |
 
-Config targets: `0x01 SWITCH_PANEL`, `0x02 RELAY_CTRL`, `0x03 VIPER`, `0xFF BROADCAST`.
+Config targets: `0x01 SWITCH_PANEL`, `0x02 RELAY_CTRL`, `0x03 VIPER`, `0x04 ECU`, `0xFF BROADCAST`.
 
 Config keys:
 - `0x20 CFG_KEY_RELAY_MAX_ON_MS` — per-relay safety auto-off timeout
 - `0x40 CFG_KEY_RPM_REDLINE` — RPM redline for display widget (arg2_lo/hi = uint16 RPM)
+- `0x51 CFG_KEY_ECU_MODE` — 0=carb, 1=inject; arg[4]=value; persisted to NVS
+- `0x52 CFG_KEY_ECU_TARGET_AFR` — target AFR × 100 (uint16 LE in arg2_lo/hi)
+- `0x53 CFG_KEY_ECU_BASE_PW` — injection base pulse width μs at 100% VE, 100 kPa (uint16 LE)
 
 Switch events (0x200 data[1]): `0 RELEASE`, `1 PRESS`, `2 LONG_PRESS`, `3 DOUBLE_PRESS`.
 
@@ -244,10 +256,12 @@ Using arduino-cli:
 make relay_controller                              # compile for relay controller
 make switch_panel                                  # compile for switch panel
 make viper_interface                               # compile for viper interface
-make all                                           # compile all three in sequence
+make ecu_node                                      # compile for ECU node
+make all                                           # compile all four in sequence
 make upload-switch_panel PORT=/dev/cu.usbserial-XXXX
 make upload-relay_controller PORT=/dev/cu.usbserial-YYYY
 make upload-viper_interface PORT=/dev/cu.usbserial-ZZZZ
+make upload-ecu_node PORT=/dev/cu.usbserial-WWWW
 make monitor PORT=/dev/cu.usbserial-XXXX
 ```
 

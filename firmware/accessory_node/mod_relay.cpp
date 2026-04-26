@@ -233,11 +233,8 @@ const char* lcd_relay_label(uint8_t idx) {
 
 #ifdef RELAY_WIDGET_ROW
 static void relay_render(char* buf, uint8_t width) {
-  uint8_t pos = 0;
-  if (pos < width) buf[pos++] = '[';
-  for (uint8_t i = 0; i < g_relay_display_count && pos + 1 < width; i++)
-    buf[pos++] = lcd_relay_char(i, (g_relay_mirror >> i) & 1);
-  if (pos < width) buf[pos] = ']';
+  for (uint8_t i = 0; i < g_relay_display_count && i < width; i++)
+    buf[i] = lcd_relay_char(i, (g_relay_mirror >> i) & 1);
 }
 #endif
 

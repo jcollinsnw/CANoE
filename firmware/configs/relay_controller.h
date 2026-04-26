@@ -5,7 +5,8 @@
 
 #define NODE_NAME           "relay-ctrl"
 #define NODE_ID             0x02
-#define USE_CAN_TRANSCEIVER 0
+#define USE_CAN_TRANSCEIVER 1
+#define CAN_BUS_SPEED       125   // kbps — change all nodes together: 125, 250, or 500
 #define USE_WIFI            1
 #define AP_SSID     "RelayBus"
 #define AP_PASSWORD ""        // change to WPA2 passphrase before field use
@@ -15,7 +16,7 @@
 
 // ---- Features enabled on this node ----
 #define ENABLE_RELAY
-#define ENABLE_RPM
+// #define ENABLE_RPM
 
 // ---- Relay module ----
 #define NUM_RELAYS          6

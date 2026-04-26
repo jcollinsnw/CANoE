@@ -9,7 +9,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>AccBus Console</title>
 <style>
   :root { color-scheme: dark; }
@@ -43,7 +43,11 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
   #cmd { flex: 1; background: transparent; color: #cfe2b0; border: none; outline: none;
          font: inherit; padding: 4px 0; }
   #help { color: #808a95; font-size: 11px; padding: 0 14px 6px; }
-  label.toggle { display: inline-flex; align-items: center; gap: 6px; color: #cfe2b0; }
+  .txm-group { display: inline-flex; border-radius: 6px; overflow: hidden; border: 1px solid #2a3a4a; }
+  .txm-btn { background: #0b131c; color: #808a95; border: none; border-right: 1px solid #2a3a4a;
+             padding: 2px 8px; font: inherit; font-size: 11px; cursor: pointer; }
+  .txm-btn:last-child { border-right: none; }
+  .txm-btn.active { background: #1e3a1e; color: #9bd770; }
   .tabs { display: flex; gap: 0; border-bottom: 1px solid #1e2a38; background: #0f1a24; }
   .tab { padding: 6px 18px; cursor: pointer; color: #808a95; border-bottom: 2px solid transparent;
          font: inherit; background: none; border-top: none; border-left: none; border-right: none; }
@@ -158,7 +162,11 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
   <span>id: <b id="node-id">…</b></span>
   <span class="pill" id="p-can">can ?</span>
   <span class="pill" id="p-wifi">wifi peer ?</span>
-  <label class="toggle"><input type="checkbox" id="wifi-only"> force wifi-only</label>
+  <div class="txm-group" title="CAN transmission mode">
+    <button class="txm-btn" id="txm-0" onclick="setTxMode(0)">CAN+WiFi</button>
+    <button class="txm-btn" id="txm-1" onclick="setTxMode(1)">WiFi Only</button>
+    <button class="txm-btn" id="txm-2" onclick="setTxMode(2)">CAN Only</button>
+  </div>
   <span style="margin-left:auto;color:#808a95" id="fps">—</span>
 </header>
 <main>
@@ -200,7 +208,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
 const log   = document.getElementById('log');
 const slog  = document.getElementById('serial-log');
 const cmd   = document.getElementById('cmd');
-const wifiOnly = document.getElementById('wifi-only');
+let currentTxMode = 0;
 let sinceSeq = 0;
 let serialCursor = 0;
 let activeTab = 'can';
@@ -377,6 +385,7 @@ async function initControl() {
     const r = await fetch('/api/config');
     cfg = await r.json();
     buildControlPanel();
+    if (!cfg.has_rules) document.getElementById('tab-rules').style.display = 'none';
   } catch(e) {}
 }
 
@@ -472,7 +481,8 @@ async function pollStatus() {
     const pw = document.getElementById('p-wifi');
     pw.textContent = 'wifi peer ' + (s.wifi_peer ? 'OK' : 'IDLE');
     pw.className = 'pill ' + (s.wifi_peer ? 'ok' : 'warn');
-    wifiOnly.checked = !!s.wifi_only;
+    const m = s.tx_mode || 0;
+    if (m !== currentTxMode) { currentTxMode = m; updateTxModeButtons(m); }
     document.getElementById('fps').textContent = s.uptime_s + 's up';
   } catch (e) { /* ignore */ }
 }
@@ -498,11 +508,19 @@ async function pollSerial() {
     }
   } catch (e) { /* ignore */ }
 }
-async function setWifiOnly(on) {
-  await fetch('/api/wifi_only', {
+function updateTxModeButtons(mode) {
+  for (let i = 0; i < 3; i++) {
+    const b = document.getElementById('txm-' + i);
+    if (b) b.className = 'txm-btn' + (i === mode ? ' active' : '');
+  }
+}
+async function setTxMode(mode) {
+  updateTxModeButtons(mode);
+  currentTxMode = mode;
+  await fetch('/api/tx_mode', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ on })
+    body: JSON.stringify({ mode })
   });
 }
 
@@ -795,13 +813,12 @@ cmd.addEventListener('keydown', e => {
   else if (e.key === 'ArrowUp')   { if (histIdx > 0) { histIdx--; cmd.value = history[histIdx]; } }
   else if (e.key === 'ArrowDown') { if (histIdx < history.length - 1) { histIdx++; cmd.value = history[histIdx]; } else { histIdx = history.length; cmd.value = ''; } }
 });
-wifiOnly.addEventListener('change', () => setWifiOnly(wifiOnly.checked));
+updateTxModeButtons(0);
 
 initControl();
 pollStatus(); setInterval(pollStatus, 1500);
 pollFrames(); setInterval(pollFrames, 250);
 pollSerial(); setInterval(pollSerial, 500);
-cmd.focus();
 </script>
 </body>
 </html>

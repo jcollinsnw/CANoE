@@ -19,30 +19,53 @@ FQBN    := esp32:esp32:esp32
 BAUD    := 115200
 PORT    ?= /dev/cu.usbserial-0001
 
+
+
 SKETCH  := firmware/accessory_node
 CONFIGS := firmware/configs
+MINIFY  := $(SKETCH)/minify_index_html.sh
+HTMLDST := $(SKETCH)/index_html.h
 
 # ---- select node config ----
-.PHONY: relay_controller switch_panel viper_interface
+.PHONY: relay_controller switch_panel viper_interface ecu_node
+
+
 
 relay_controller:
 	cp $(CONFIGS)/relay_controller.h $(SKETCH)/node_config.h
 	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
 
+
+
 switch_panel:
 	cp $(CONFIGS)/switch_panel.h $(SKETCH)/node_config.h
 	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
+
+
 
 viper_interface:
 	cp $(CONFIGS)/viper_interface.h $(SKETCH)/node_config.h
 	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
 
-# ---- compile all three ----
+
+
+ecu_node:
+	cp $(CONFIGS)/ecu_node.h $(SKETCH)/node_config.h
+	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
+
+# ---- HTML minification (disabled — minify_index_html.sh broken) ----
+# .PHONY: minify-html
+# minify-html: $(HTMLDST) $(MINIFY)
+# 	@echo "Minifying index_html.h in-place..."
+# 	@bash $(MINIFY) $(HTMLDST)
+# 	@echo "Minified index_html.h updated."
+
+# ---- compile all four ----
 .PHONY: all
-all: relay_controller switch_panel viper_interface
+all: relay_controller switch_panel viper_interface ecu_node
 
 # ---- upload ----
-.PHONY: upload-relay_controller upload-switch_panel upload-viper_interface
+.PHONY: upload-relay_controller upload-switch_panel upload-viper_interface upload-ecu_node
 
 upload-relay_controller: relay_controller
 	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
@@ -53,6 +76,10 @@ upload-switch_panel: switch_panel
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
 upload-viper_interface: viper_interface
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
+
+upload-ecu_node: ecu_node
 	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 

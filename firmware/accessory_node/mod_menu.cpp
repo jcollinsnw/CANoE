@@ -34,6 +34,7 @@
 #define MENU_ID_BUS     3
 #define MENU_ID_DISPLAY 4
 #define MENU_ID_WIFI    5
+#define MENU_ID_TX_MODE 6
 
 struct MenuItem {
   uint8_t     id;
@@ -53,7 +54,7 @@ static const uint8_t     VIPER_CMDS[]   = { VIPER_CMD_LOCK, VIPER_CMD_UNLOCK, VI
 static bool g_node_wifi[3] = { true, false, true };
 #endif
 
-static MenuItem g_items[8];  // max 7 sections + spare
+static MenuItem g_items[9];  // max 8 sections + spare
 static uint8_t  g_item_count = 0;
 
 static uint8_t  g_level    = 0;
@@ -171,6 +172,20 @@ static void menu_draw() {
       }
 #endif
 
+#ifdef MENU_HAS_TX_MODE
+      case MENU_ID_TX_MODE: {
+        static const char* const MODE_LABELS[] = { "CAN+WiFi", "WiFi Only", "CAN Only" };
+        BusTxMode cur = bus_get_tx_mode();
+        snprintf(r0, sizeof(r0), "CAN Mode: %-8s", MODE_LABELS[(uint8_t)cur]);
+        if (is_back)
+          snprintf(r1, sizeof(r1), "\x7F Back");
+        else
+          snprintf(r1, sizeof(r1), "%s%-8s", (g_sub_sel == (uint8_t)cur ? "\x7E*" : "\x7E "),
+                   MODE_LABELS[g_sub_sel]);
+        break;
+      }
+#endif
+
       default:
         snprintf(r0, sizeof(r0), "Menu");
         snprintf(r1, sizeof(r1), "---");
@@ -198,6 +213,9 @@ void menu_setup() {
 #ifdef MENU_HAS_DISPLAY
   g_items[g_item_count++] = { MENU_ID_DISPLAY, "Display",    2 };  // Backlight + Back
 #endif
+#ifdef MENU_HAS_TX_MODE
+  g_items[g_item_count++] = { MENU_ID_TX_MODE, "CAN Mode",   4 };  // 3 modes + Back
+#endif
 #ifdef MENU_HAS_WIFI
   g_items[g_item_count++] = { MENU_ID_WIFI,    "WiFi",       4 };  // 3 nodes + Back
   Preferences p; p.begin(NVS_NAMESPACE, true);
@@ -211,6 +229,8 @@ bool menu_is_active() { return g_menu_active; }
 
 void menu_exit() {
   g_menu_active = false;
+  lcd_write_row(0, "");
+  lcd_write_row(1, "");
   lcd_update_status();
   buzzer_menu_exit();
   wlogln("[menu] exit");
@@ -324,6 +344,14 @@ void menu_action() {
       }
       break;
     }
+#endif
+
+#ifdef MENU_HAS_TX_MODE
+    case MENU_ID_TX_MODE:
+      bus_set_tx_mode((BusTxMode)idx);
+      wlog("[menu] tx_mode=%u\n", idx);
+      menu_draw();
+      break;
 #endif
 
     default: break;

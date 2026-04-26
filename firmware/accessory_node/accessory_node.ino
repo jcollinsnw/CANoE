@@ -44,8 +44,11 @@
 #include "mod_viper.h"
 #include "mod_mpu6050.h"
 #include "mod_dht22.h"
+#include "mod_wbo2.h"
+#include "mod_ecu.h"
 #include "mod_rpm.h"
 #include "mod_gps.h"
+#include "mod_serial_shell.h"
 
 // --------------------------------------------------------------
 // Shared state definitions (declared extern in node_state.h)
@@ -63,7 +66,17 @@ static void setup_can() {
   twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_5, GPIO_NUM_4, TWAI_MODE_NO_ACK);
 #endif
   g.tx_queue_len = 10; g.rx_queue_len = 20;
+  // CAN_BUS_SPEED set in node_config.h — all nodes must agree. Default 125 kbps.
+#ifndef CAN_BUS_SPEED
+#define CAN_BUS_SPEED 125
+#endif
+#if CAN_BUS_SPEED == 500
+  twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();
+#elif CAN_BUS_SPEED == 250
+  twai_timing_config_t t = TWAI_TIMING_CONFIG_250KBITS();
+#else
   twai_timing_config_t t = TWAI_TIMING_CONFIG_125KBITS();
+#endif
   twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
   if (twai_driver_install(&g, &t, &f) != ESP_OK || twai_start() != ESP_OK) {
     wlogln("[CAN] init failed"); while (true) delay(1000);
@@ -99,13 +112,32 @@ void setup() {
 #if USE_WIFI
   {
     Preferences p; p.begin(NVS_NAMESPACE, true);
-    bool wifi_en = p.getBool("wifi_en", true);
+    bool ap_en, espnow_en;
+    if (p.isKey("ap_en") || p.isKey("espnow_en")) {
+      ap_en     = p.getBool("ap_en",     true);
+      espnow_en = p.getBool("espnow_en", true);
+    } else {
+      // Migrate from legacy wifi_en flag (sets both).
+      bool wifi_en = p.getBool("wifi_en", true);
+      ap_en = espnow_en = wifi_en;
+    }
     p.end();
-    if (wifi_en) {
+
+    if (ap_en && espnow_en) {
       webui_init(NODE_NAME, NODE_ID);
       bus_init(NODE_ID);
+    } else if (ap_en) {
+      // AP + web UI up, but ESP-NOW radio disabled.
+      webui_init(NODE_NAME, NODE_ID);
+      bus_init_no_wifi(NODE_ID);
+      wlogln("[boot] ESP-NOW disabled by config");
+    } else if (espnow_en) {
+      // ESP-NOW only — WiFi in STA mode on ch6, no AP, no web server.
+      bus_init_no_ap(NODE_ID);
+      wlogln("[boot] AP disabled, ESP-NOW only");
     } else {
-      wlogln("[boot] WiFi disabled by NVS flag");
+      // WiFi radio completely off.
+      wlogln("[boot] WiFi radio disabled by config");
       bus_init_no_wifi(NODE_ID);
     }
   }
@@ -159,13 +191,21 @@ void setup() {
 #ifdef ENABLE_WBO2
   wbo2_setup();
 #endif
+#ifdef ENABLE_ECU
+  ecu_setup();
+#endif
 
 #ifdef ENABLE_LCD
   lcd_update_status();
   lcd_set_event(NODE_NAME);
 #endif
 
+  serial_shell_setup();
   wlogln("[boot] ready");
+
+#ifdef ENABLE_BUZZER
+  buzzer_startup();
+#endif
 }
 
 void loop() {
@@ -173,6 +213,7 @@ void loop() {
   webui_tick();
 #endif
   bus_tick();
+  serial_shell_tick();
 
   // Per-module periodic work
 #ifdef ENABLE_SWITCHES
@@ -209,10 +250,14 @@ void loop() {
 #ifdef ENABLE_WBO2
   wbo2_loop();
 #endif
+#ifdef ENABLE_ECU
+  ecu_loop();
+#endif
 
   // CAN frame dispatch — update shared state then route to modules
   BusFrame f;
   while (bus_rx(f)) {
+    serial_shell_print(f);
     // Maintain the shared relay mirror for any node that observes relay state
     if (f.id == CAN_ID_RELAY_STATUS && f.dlc >= 1) {
       g_relay_mirror = f.data[0];
@@ -221,16 +266,28 @@ void loop() {
       g_relay_mirror = (g_relay_mirror & ~mask) | (state & mask);
     }
 
-    // WiFi enable/disable — handled on every node that has WiFi.
+    // WiFi / AP / ESP-NOW enable-disable — handled on every node that has WiFi.
 #if USE_WIFI
     if (f.id == CAN_ID_CONFIG_WRITE && f.dlc >= 5 &&
-        (f.data[0] == NODE_ID || f.data[0] == CFG_TARGET_BROADCAST) &&
-        f.data[1] == CFG_KEY_WIFI_ENABLED) {
-      bool en = (f.data[4] != 0);
-      Preferences p; p.begin(NVS_NAMESPACE, false);
-      p.putBool("wifi_en", en); p.end();
-      wlog("[cfg] wifi_en=%u -> restart\n", en);
-      delay(100); ESP.restart();
+        (f.data[0] == NODE_ID || f.data[0] == CFG_TARGET_BROADCAST)) {
+      uint8_t key = f.data[1];
+      if (key == CFG_KEY_WIFI_ENABLED ||
+          key == CFG_KEY_AP_ENABLED   ||
+          key == CFG_KEY_ESPNOW_ENABLED) {
+        bool en = (f.data[4] != 0);
+        Preferences p; p.begin(NVS_NAMESPACE, false);
+        if (key == CFG_KEY_WIFI_ENABLED) {
+          p.putBool("ap_en",     en);   // legacy key: sets both
+          p.putBool("espnow_en", en);
+        } else if (key == CFG_KEY_AP_ENABLED) {
+          p.putBool("ap_en", en);
+        } else {
+          p.putBool("espnow_en", en);
+        }
+        p.end();
+        wlog("[cfg] key=0x%02X en=%u -> restart\n", key, en);
+        delay(100); ESP.restart();
+      }
     }
 #endif
 
@@ -258,19 +315,17 @@ void loop() {
     viper_handle_frame(f);
 #endif
 
-  // WBO2 sensor loop
-#ifdef ENABLE_WBO2
-  wbo2_loop();
-#endif
 #ifdef ENABLE_LEDS
     led_handle_frame(f);
 #endif
 #ifdef ENABLE_RPM
     rpm_handle_frame(f);
 #endif
-
 #ifdef ENABLE_WBO2
-  wbo2_handle_frame(f);
+    wbo2_handle_frame(f);
+#endif
+#ifdef ENABLE_ECU
+    ecu_handle_frame(f);
 #endif
   }
 
@@ -282,6 +337,25 @@ void loop() {
     if (bus_twai_check()) {
 #ifdef ENABLE_LCD
       lcd_update_status();
+#endif
+#ifdef ENABLE_BUZZER
+      if (bus_twai_running()) buzzer_can_up();
+      else                    buzzer_can_down();
+#endif
+    }
+  }
+
+  // ESP-NOW peer count changes — pitch rises with each new peer, falls as they drop off.
+  static uint8_t last_peer_count = 0;
+  {
+    uint8_t pc = bus_peer_count();
+    if (pc != last_peer_count) {
+      last_peer_count = pc;
+#ifdef ENABLE_LCD
+      lcd_update_status();
+#endif
+#ifdef ENABLE_BUZZER
+      buzzer_peer_count(pc);
 #endif
     }
   }

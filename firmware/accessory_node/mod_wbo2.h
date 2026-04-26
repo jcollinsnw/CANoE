@@ -10,7 +10,8 @@ void wbo2_handle_frame(const BusFrame& f);
 
 #else
 
-static inline void wbo2_setup() {}
-static inline void wbo2_loop()  {}
+static inline void wbo2_setup()                       {}
+static inline void wbo2_loop()                        {}
+static inline void wbo2_handle_frame(const BusFrame&) {}
 
 #endif // ENABLE_WBO2

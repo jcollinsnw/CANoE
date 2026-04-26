@@ -4,7 +4,7 @@
   <img src="logo.svg" alt="CANoE logo" width="420"/>
 </p>
 
-A parallel 12V accessory wiring system for an antique car. Three ESP32 nodes talk over a shared CAN bus (with ESP-NOW WiFi fallback), driven by a switch panel, with a browser-based web console on each node and a Viper 5305V car alarm bridged in as a fourth participant.
+A parallel 12V accessory wiring system for an antique car. Four ESP32 nodes talk over a shared CAN bus (with ESP-NOW WiFi fallback), driven by a switch panel, with a browser-based web console on each node and a Viper 5305V car alarm bridged in as a fourth participant.
 
 ---
 
@@ -38,19 +38,19 @@ A parallel 12V accessory wiring system for an antique car. Three ESP32 nodes tal
                              │ 12 V
           ┌──────────────────┼───────────────────┐
           │                  │                   │
- ┌────────┴────────┐ ┌───────┴───────┐  ┌────────┴────────┐
- │  SWITCH PANEL   │ │RELAY CTRL     │  │ VIPER IFACE     │
- │  ESP32 #1       │ │ESP32 #2       │  │ ESP32 #3        │
- │  NODE_ID 0x01   │ │NODE_ID 0x02   │  │ NODE_ID 0x03    │
- │                 │ │               │  │                 │
- │  6 latching sw  │ │  6 relays     │  │  Viper 5305V    │
- │  4 buttons      │ │  (ULN2803)    │  │  serial bridge  │
- │  Rotary encoder │ │  Batt voltage │  │                 │
- │  16×2 LCD       │ │  ADC monitor  │  │                 │
- └────────┬────────┘ └───────┬───────┘  └────────┬────────┘
-          │                  │                   │
-          └──────────────────┼───────────────────┘
-                       CAN BUS (0x510)
+ ┌────────┴────────┐ ┌───────┴───────┐  ┌────────┴────────┐  ┌────────┴────────┐
+ │  SWITCH PANEL   │ │RELAY CTRL     │  │ VIPER IFACE     │  │ ECU NODE        │
+ │  ESP32 #1       │ │ESP32 #2       │  │ ESP32 #3        │  │ ESP32 #4        │
+ │  NODE_ID 0x01   │ │NODE_ID 0x02   │  │ NODE_ID 0x03    │  │ NODE_ID 0x04    │
+ │                 │ │               │  │                 │  │                 │
+ │  6 latching sw  │ │  6 relays     │  │  Viper 5305V    │  │  MAP/TPS/CLT    │
+ │  4 buttons      │ │  (ULN2803)    │  │  serial bridge  │  │  WBO2 sensor    │
+ │  Rotary encoder │ │  Batt voltage │  │                 │  │  Fuel control   │
+ │  16×2 LCD       │ │  ADC monitor  │  │                 │  │  RPM sensor     │
+ └────────┬────────┘ └───────┬───────┘  └────────┬────────┘  └────────┬────────┘
+          │                  │                   │                    │
+          └──────────────────┼───────────────────┴────────────────────┘
+                       CAN BUS
                     125 kbit/s, 11-bit IDs
                 (+ ESP-NOW on WiFi channel 6 as fallback)
 ```
@@ -87,6 +87,7 @@ All three nodes are compiled from the same unified sketch (`firmware/accessory_n
 | 1 | Rotary encoder | CJMCU-111 (EC11-based); has onboard 3.3 kΩ pull-ups — connect module VCC to 3V3, no external resistors needed. No SW pin (see note below). |
 | 1 | Momentary push-button | Encoder select/back for menu system — wire to any free BTN GPIO (e.g. BTN1, GPIO 14) |
 | 1 | HD44780-compatible 16×2 LCD with PCF8574 I2C backpack | Default I2C address 0x27; try 0x3F if blank |
+| 1 | 100 µF electrolytic capacitor, 10 V+ | Decoupling cap across LCD module VCC/GND — prevents HD44780 from losing state on power glitches |
 | 1 | Passive piezo buzzer | 3.3 V-compatible; positive leg to GPIO 16 (optionally via 100Ω series resistor), negative to GND |
 | 1 | 100 Ω resistor, ¼ W *(optional)* | Series resistor on buzzer positive leg to reduce volume |
 | 3 | LED (any colour, 3 mm or 5 mm) | Status LEDs on GPIO 17, 19, 23; controlled over CAN |
@@ -178,7 +179,9 @@ Encoder GND ─── GND
 | SDA | GPIO 21 | I2C data |
 | SCL | GPIO 22 | I2C clock |
 
-Default I2C address is `0x27`. If the display stays blank after boot, try `0x3F` (change `LCD_I2C_ADDR` in `switch_panel.ino`).
+Default I2C address is `0x27`. If the display stays blank after boot, try `0x3F` (change `LCD_I2C_ADDR` in `switch_panel.h`).
+
+> **Decoupling capacitor:** Solder a **100 µF electrolytic capacitor** directly across the LCD module's VCC and GND pins (positive leg to VCC). Power glitches — especially when relays switch — can momentarily dip the LCD supply voltage and cause the HD44780 controller to lose its initialization state, leaving the display blank or showing garbage. The firmware will self-recover within 30 seconds, but the cap prevents the glitch from happening at all.
 
 ### 3.6 Piezo Buzzer
 
@@ -732,13 +735,21 @@ Menu opens on the first real item. **"← Exit"** (top level) and **"← Back"**
 
 **Idle (auto-display):**
 ```
-C✦W✦ [✦-----]       ← row 0: CAN status icon, WiFi status icon, relay bitmap
+C✦N-A✦    ✦-----   ← row 0: status indicators + relay bitmap
 Headlights ON        ← row 1: last meaningful event
 ```
 
-Row 0 format: `C` = CAN bus health, `W` = WiFi/ESP-NOW peer seen, icon = filled (link up) or hollow (link down), followed by the 6-relay bitmap. If CGRAM slots were exhausted by relay icons, `+`/`-` ASCII is used as fallback for the status icons.
+Row 0 indicators (cols 0–5, 2 chars each):
 
-Custom icons and labels for each relay are defined in `firmware/configs/switch_panel.h` with `RELAY_n_LABEL`, `RELAY_n_ICON_ON`, and `RELAY_n_ICON_OFF` macros. HD44780 has 8 CGRAM slots; slot 0 is reserved (maps to C null terminator), and 2 slots are consumed by the shared CAN/WiFi status icons, leaving up to **5 custom relay icons** total.
+| Chars | Label | Meaning |
+|-------|-------|---------|
+| `C✦` / `C-` | CAN | Wired CAN bus healthy (RX or TX seen in last 5 s) |
+| `N✦` / `N-` | ESP-NOW | A peer frame received via ESP-NOW in the last 5 s |
+| `A✦` / `A-` | AP | WiFi SoftAP is active on this node |
+
+The filled icon (✦) = OK, hollow (-) = down. Cols 6–9 are a spacer; cols 10–15 are the 6-relay bitmap (one char per relay, defined by `RELAY_n_ICON_ON/OFF`).
+
+Custom icons and labels for each relay are defined in `firmware/configs/switch_panel.h` with `RELAY_n_LABEL`, `RELAY_n_ICON_ON`, and `RELAY_n_ICON_OFF` macros. HD44780 has 8 CGRAM slots; slot 0 is reserved (maps to C null terminator), and 2 slots are consumed by the shared status icons (filled/hollow — shared by all three indicators), leaving up to **5 custom relay icons** total.
 
 **Navigating top-level menu:**
 ```
@@ -774,7 +785,7 @@ Each relay can have a human-readable label and custom HD44780 CGRAM icons for it
 Each icon is an 8-byte HD44780 5×8 pixel bitmap. Omit any macro to use the defaults: label = "Relay N", ON = full block (`█`), OFF = `-`.
 
 **Limits:**
-- Up to **5** custom relay icons total. HD44780 has 8 CGRAM slots; slot 0 is reserved (maps to C null terminator, truncates `snprintf`), and 2 slots are used by the shared CAN/WiFi status icons loaded at the end of `lcd_setup()`.
+- Up to **5** custom relay icons total. HD44780 has 8 CGRAM slots; slot 0 is reserved (maps to C null terminator, truncates `snprintf`), and 2 slots are used by the shared status icons (filled/hollow glyphs, shared by the CAN/ESP-NOW/AP row-0 indicators) loaded at the end of `lcd_setup()`.
 - Labels appear in the LCD menu Relays submenu and in the web UI relay tiles (relay controller node).
 - Icons appear on the LCD idle display and the Relays submenu state bitmap.
 
@@ -846,7 +857,15 @@ Changes without `!` are RAM-only and lost on reboot. Save with:
 | 0x103 | LED_STATUS | Target node → all | `[node_id, bitmap]` — sent on change |
 | 0x200 | SWITCH_EVENT | switch_panel → all | `[input_id, event]` — event: 0 release, 1 press, 2 long, 3 double |
 | 0x201 | ENCODER_EVENT | switch_panel → all | `[event, count]` — event: 0 CW, 1 CCW, 2 press, 3 release, 4 long |
-| 0x300 | TELEMETRY | relay_controller → all | `[vbat_cv_lo, vbat_cv_hi, …]` — battery in centvolts; 1 Hz |
+| 0x300 | TELEMETRY | relay_controller → all | `[vbat_cv_lo, vbat_cv_hi, i_da_lo, i_da_hi, vsol_cv_lo, vsol_cv_hi, flags, _]` — battery centvolts; 1 Hz |
+| 0x301 | ENV_DATA | any → all | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` — 0.1 °C / 0.1 % (DHT22) |
+| 0x302 | IMU_DATA | viper_interface → all | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` |
+| 0x303 | SHAKE_EVENT | viper_interface → all | `[magnitude, axis_mask]` |
+| 0x304 | ENGINE_DATA | relay_controller / ecu_node → all | `[rpm_lo, rpm_hi]` — uint16 LE RPM; broadcast at `RPM_SAMPLE_MS` interval |
+| 0x305 | GPS_DATA | any → all | `[speed_lo, speed_hi, heading_lo, heading_hi, flags]` — speed 0.1 mph, heading 0.1 °, flags: bit0=fix, bit1=speed valid, bit2=heading valid |
+| 0x306 | WBO2_DATA | ecu_node → all | `[afr_lo, afr_hi]` — uint16 LE AFR × 100 (e.g. 1470 = 14.70 AFR) |
+| 0x307 | ECU_DATA | ecu_node → all | `[mode, map_kpa, tps_pct, clt_enc, iat_enc, pw_lo, pw_hi, flags]` — mode: 0=carb 1=inject; temps = °C+40; pw = duty×100 (carb) or µs (inject) |
+| 0x308 | ECU_CMD | any → ecu_node | `[cmd, arg0, arg1, arg2]` — 0x01 set mode, 0x02 set target AFR×100, 0x03 fuel cut, 0x04 reset trim |
 | 0x400 | CONFIG_WRITE | any → target node | `[target, key, idx, kind, arg, arg2_lo, arg2_hi, flags]` |
 | 0x401 | CONFIG_READ_REQ | any → target node | `[target, key, idx]` — idx 0xFF = all |
 | 0x402 | CONFIG_READ_RESP | target → sender | same layout as CONFIG_WRITE |
@@ -855,9 +874,14 @@ Changes without `!` are RAM-only and lost on reboot. Save with:
 | 0x510 | VIPER_CMD | any → viper_interface | `[cmd]` — 0x01 lock, 0x02 unlock, 0x03 remote start |
 | 0x511 | VIPER_STATUS | viper_interface → all | `[b0..b4]` — raw 5-byte Viper alarm response packet |
 
-**Config targets:** `0x01` switch_panel · `0x02` relay_controller · `0x03` viper_interface · `0xFF` broadcast
+**Config targets:** `0x01` switch_panel · `0x02` relay_controller · `0x03` viper_interface · `0x04` ecu_node · `0xFF` broadcast
 
-**Config keys:** `0x20` CFG_KEY_RELAY_MAX_ON_MS (per-relay safety auto-off timeout)
+**Config keys:**
+- `0x20` `CFG_KEY_RELAY_MAX_ON_MS` — per-relay safety auto-off timeout
+- `0x40` `CFG_KEY_RPM_REDLINE` — RPM redline for LCD bar widget (arg2_lo/hi = uint16 RPM)
+- `0x51` `CFG_KEY_ECU_MODE` — 0 = carb PI loop, 1 = TBI dual injectors
+- `0x52` `CFG_KEY_ECU_TARGET_AFR` — target AFR × 100 (uint16 LE)
+- `0x53` `CFG_KEY_ECU_BASE_PW` — injection base pulse width µs at 100% VE, 100 kPa
 
 ---
 
@@ -901,6 +925,8 @@ Both nodes must always match. A mismatch between `USE_CAN_TRANSCEIVER = 0` and `
 - Try I2C address `0x3F` instead of `0x27` (change `LCD_I2C_ADDR` in `firmware/configs/switch_panel.h` or `viper_interface.h`).
 - Confirm LCD VCC is on 5 V, not 3.3 V.
 - Use an I2C scanner sketch to confirm the backpack is visible on the bus.
+- **Power glitch / relay switching:** The HD44780 controller can lose its initialization state if supply voltage dips briefly — relay coils switching are a common cause. The firmware automatically re-runs the full init sequence every 30 seconds, so the display will self-recover within that window. To prevent it from happening at all, solder a **100 µF electrolytic capacitor** directly across the LCD module's VCC and GND pins.
+- **After re-init the display shows garbage briefly:** This is normal — the ~70 ms re-initialization flash involves a display-off / clear / display-on cycle. It is harmless and will settle back to the correct status display.
 
 ### Encoder Behaves Erratically
 

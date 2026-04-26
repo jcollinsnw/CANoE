@@ -6,6 +6,7 @@
 #define NODE_NAME           "viper-iface"
 #define NODE_ID             0x03
 #define USE_CAN_TRANSCEIVER 0
+#define CAN_BUS_SPEED       125   // kbps — change all nodes together: 125, 250, or 500
 #define USE_WIFI            1
 #define NVS_NAMESPACE       "viperiface"
 

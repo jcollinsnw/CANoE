@@ -27,6 +27,22 @@
 
 #define CAN_ID_WBO2_DATA         0x306  // WBO2 node     -> everyone: [afr_lo, afr_hi] (AFR × 100)
 
+#define CAN_ID_ECU_DATA          0x307  // ECU node      -> everyone, 250 ms:
+                                        //   [0] mode (0=carb, 1=inject)
+                                        //   [1] MAP kPa  (0–255)
+                                        //   [2] TPS %    (0–100)
+                                        //   [3] CLT °C + 40  (0 = −40°C)
+                                        //   [4] IAT °C + 40
+                                        //   [5] pw_lo — solenoid duty×100 or inj PW μs (uint16 LE)
+                                        //   [6] pw_hi
+                                        //   [7] flags: bit0=closed_loop, bit1=enriching,
+                                        //              bit2=inj_saturated, bit3=running
+#define CAN_ID_ECU_CMD           0x308  // Any node      -> ECU: [cmd, arg0, arg1, arg2]
+                                        //   cmd 0x01: set mode   (arg0: 0=carb 1=inject)
+                                        //   cmd 0x02: set target AFR×100 (arg1+arg2 = uint16 LE)
+                                        //   cmd 0x03: fuel cut   (arg0: 0=off 1=on)
+                                        //   cmd 0x04: reset fuel trim
+
 // Config-over-CAN — change behavior at runtime without reflashing.
 #define CAN_ID_CONFIG_WRITE      0x400
 #define CAN_ID_CONFIG_READ_REQ   0x401
@@ -46,6 +62,7 @@
 #define VIPER_CMD_REMOTE_START   0x03   // Remote start engine
 
 #define CFG_TARGET_VIPER         0x03
+#define CFG_TARGET_ECU           0x04
 
 // --------------------------------------------------------------
 // CAN_ID_RELAY_CMD (2 bytes)
@@ -175,8 +192,13 @@ struct CanRule {
 //   Relay controller side:
 #define CFG_KEY_RELAY_MAX_ON_MS   0x20   // per-relay safety auto-off (0 = no limit)
 #define CFG_KEY_RPM_REDLINE       0x40   // RPM redline for display widget; arg2_lo/hi = RPM uint16
+#define CFG_KEY_ECU_MODE          0x51   // 0=carb, 1=inject; arg[4]=value, flags bit0=persist
+#define CFG_KEY_ECU_TARGET_AFR    0x52   // target AFR × 100; arg2_lo/hi = uint16
+#define CFG_KEY_ECU_BASE_PW       0x53   // base pulse width μs at 100% VE, 100 kPa; arg2_lo/hi
 //   Any node:
-#define CFG_KEY_WIFI_ENABLED      0x30   // data[4]=0 disable / 1 enable; node restarts to apply
+#define CFG_KEY_WIFI_ENABLED      0x30   // legacy: sets both ap_en and espnow_en; node restarts
+#define CFG_KEY_AP_ENABLED        0x31   // data[4]=0/1 — enable/disable SoftAP + web server; restarts
+#define CFG_KEY_ESPNOW_ENABLED    0x32   // data[4]=0/1 — enable/disable ESP-NOW radio; restarts
 
 // Save actions (for CAN_ID_CONFIG_SAVE data[1]):
 #define CFG_SAVE_COMMIT           0x01   // flush RAM config to NVS
