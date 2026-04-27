@@ -1070,39 +1070,121 @@ Changes without `!` are RAM-only and lost on reboot. Save with:
 
 ## 15. CAN Frame Reference
 
+### 15.1 Frame Table
+
 | ID | Name | Direction | Payload |
 |----|------|-----------|---------|
-| 0x100 | RELAY_CMD | Any → relay_controller | `[mask, state]` — bit N = relay N+1; only mask bits change |
+| 0x0F0 | NODE_ANNOUNCE | every node → all | `[node_id, peer_count, can_ok]` — broadcast every 5 s; `node_id` identifies the sender since all nodes share this ID |
+| 0x100 | RELAY_CMD | any → relay_controller | `[mask, state]` — bit N = relay N+1; only bits set in mask are changed |
 | 0x101 | RELAY_STATUS | relay_controller → all | `[bitmap]` — bit N = relay N+1 on/off; 5 Hz |
-| 0x102 | LED_CMD | Any → target node | `[target_node_id, mask, state]` — 0xFF target = broadcast |
-| 0x103 | LED_STATUS | Target node → all | `[node_id, bitmap]` — sent on change |
-| 0x200 | SWITCH_EVENT | switch_panel → all | `[input_id, event]` — event: 0 release, 1 press, 2 long, 3 double |
-| 0x201 | ENCODER_EVENT | switch_panel → all | `[event, count]` — event: 0 CW, 1 CCW, 2 press, 3 release, 4 long |
+| 0x102 | LED_CMD | any → target node | `[target_node_id, mask, state]` — `0xFF` target = broadcast to all nodes with `ENABLE_LEDS` |
+| 0x103 | LED_STATUS | target node → all | `[node_id, bitmap]` — sent on change |
+| 0x200 | SWITCH_EVENT | switch_panel → all | `[input_id, event]` — event: 0 release, 1 press, 2 long-press, 3 double-press |
+| 0x201 | ENCODER_EVENT | switch_panel → all | `[event, count]` — event: 0 CW, 1 CCW, 2 press, 3 release, 4 long-press; count = detent steps |
 | 0x300 | TELEMETRY | relay_controller → all | `[vbat_cv_lo, vbat_cv_hi, i_da_lo, i_da_hi, vsol_cv_lo, vsol_cv_hi, flags, _]` — battery centvolts; 1 Hz |
 | 0x301 | ENV_DATA | any → all | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` — 0.1 °C / 0.1 % (DHT22) |
 | 0x302 | IMU_DATA | viper_interface → all | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` |
 | 0x303 | SHAKE_EVENT | viper_interface → all | `[magnitude, axis_mask]` |
-| 0x304 | ENGINE_DATA | relay_controller / ecu_node → all | `[rpm_lo, rpm_hi]` — uint16 LE RPM; broadcast at `RPM_SAMPLE_MS` interval |
-| 0x305 | GPS_DATA | any → all | `[speed_lo, speed_hi, heading_lo, heading_hi, flags]` — speed 0.1 mph, heading 0.1 °, flags: bit0=fix, bit1=speed valid, bit2=heading valid |
+| 0x304 | ENGINE_DATA | relay_controller / ecu_node → all | `[rpm_lo, rpm_hi]` — uint16 LE RPM; period set by `RPM_SAMPLE_MS` |
+| 0x305 | GPS_DATA | any → all | `[speed_lo, speed_hi, heading_lo, heading_hi, flags]` — speed 0.1 mph, heading 0.1 °; flags: bit0=fix, bit1=speed valid, bit2=heading valid |
 | 0x306 | WBO2_DATA | ecu_node → all | `[afr_lo, afr_hi]` — uint16 LE AFR × 100 (e.g. 1470 = 14.70 AFR) |
-| 0x307 | ECU_DATA | ecu_node → all | `[mode, map_kpa, tps_pct, clt_enc, iat_enc, pw_lo, pw_hi, flags]` — mode: 0=carb 1=inject; temps = °C+40; pw = duty×100 (carb) or µs (inject) |
-| 0x308 | ECU_CMD | any → ecu_node | `[cmd, arg0, arg1, arg2]` — 0x01 set mode, 0x02 set target AFR×100, 0x03 fuel cut, 0x04 reset trim |
-| 0x400 | CONFIG_WRITE | any → target node | `[target, key, idx, kind, arg, arg2_lo, arg2_hi, flags]` |
-| 0x401 | CONFIG_READ_REQ | any → target node | `[target, key, idx]` — idx 0xFF = all |
-| 0x402 | CONFIG_READ_RESP | target → sender | same layout as CONFIG_WRITE |
-| 0x403 | CONFIG_SAVE | any → target node | `[target, action]` — 0x01 commit, 0x02 reload, 0x03 factory reset |
-| 0x500 | LCD_CMD | any → switch_panel | `[row, col, char…]` or `[0xFF]` clear |
-| 0x510 | VIPER_CMD | any → viper_interface | `[cmd]` — 0x01 lock, 0x02 unlock, 0x03 remote start |
+| 0x307 | ECU_DATA | ecu_node → all | `[mode, map_kpa, tps_pct, clt_enc, iat_enc, pw_lo, pw_hi, flags]` — mode: 0=carb 1=inject; temps = °C+40; pw = duty×100 (carb) or µs (inject); flags: bit0=closed_loop, bit1=enriching, bit2=inj_saturated, bit3=running |
+| 0x308 | ECU_CMD | any → ecu_node | `[cmd, arg0, arg1, arg2]` — see §15.3 |
+| 0x400 | CONFIG_WRITE | any → target node | `[target, key, idx, kind, arg, arg2_lo, arg2_hi, flags]` — see §15.2 |
+| 0x401 | CONFIG_READ_REQ | any → target node | `[target, key, idx]` — idx `0xFF` = all indices for this key |
+| 0x402 | CONFIG_READ_RESP | target → requester | same layout as CONFIG_WRITE (flags byte unused) |
+| 0x403 | CONFIG_SAVE | any → target node | `[target, action]` — 0x01 commit to NVS, 0x02 reload from NVS, 0x03 factory reset |
+| 0x500 | LCD_CMD | any → switch_panel | `[row, col, char…]` — write text at position; or `[0xFF]` to clear |
+| 0x510 | VIPER_CMD | any → viper_interface | `[cmd]` — 0x01 lock/arm, 0x02 unlock/disarm, 0x03 remote start |
 | 0x511 | VIPER_STATUS | viper_interface → all | `[b0..b4]` — raw 5-byte Viper alarm response packet |
 
-**Config targets:** `0x01` switch_panel · `0x02` relay_controller · `0x03` viper_interface · `0x04` ecu_node · `0xFF` broadcast
+### 15.2 Config Protocol (0x400 – 0x403)
+
+**CONFIG_WRITE frame layout:**
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | `target` | Destination node ID, or `0xFF` for broadcast |
+| 1 | `key` | Which setting to change (see key table below) |
+| 2 | `index` | Sub-index within a key (e.g. relay 0–5); `0` if unused |
+| 3 | `kind` | Reserved — set to `0x00` |
+| 4 | `arg` | Primary single-byte argument |
+| 5 | `arg2_lo` | Low byte of a 16-bit argument (uint16 LE) |
+| 6 | `arg2_hi` | High byte of a 16-bit argument |
+| 7 | `flags` | `bit 0` = persist to NVS immediately after applying |
+
+**Config targets:**
+
+| Value | Target |
+|-------|--------|
+| `0x01` | switch_panel |
+| `0x02` | relay_controller |
+| `0x03` | viper_interface |
+| `0x04` | ecu_node |
+| `0xFF` | broadcast (all nodes) — **not accepted** by `CFG_KEY_NODE_ID` |
 
 **Config keys:**
-- `0x20` `CFG_KEY_RELAY_MAX_ON_MS` — per-relay safety auto-off timeout
-- `0x40` `CFG_KEY_RPM_REDLINE` — RPM redline for LCD bar widget (arg2_lo/hi = uint16 RPM)
-- `0x51` `CFG_KEY_ECU_MODE` — 0 = carb PI loop, 1 = TBI dual injectors
-- `0x52` `CFG_KEY_ECU_TARGET_AFR` — target AFR × 100 (uint16 LE)
-- `0x53` `CFG_KEY_ECU_BASE_PW` — injection base pulse width µs at 100% VE, 100 kPa
+
+| Key | Name | Applies to | `arg` | `arg2_lo/hi` | Notes |
+|-----|------|-----------|-------|-------------|-------|
+| `0x01` | `CFG_KEY_NODE_ID` | any node | new node_id (0x01–0xFE) | — | Saves to NVS and restarts. Broadcast target rejected. |
+| `0x20` | `CFG_KEY_RELAY_MAX_ON_MS` | relay_controller | — | safety timeout ms (0 = no limit) | Per-relay; `index` = relay 0–5 |
+| `0x30` | `CFG_KEY_WIFI_ENABLED` | any WiFi node | 0/1 | — | Legacy: sets both AP and ESP-NOW; restarts |
+| `0x31` | `CFG_KEY_AP_ENABLED` | any WiFi node | 0/1 | — | Enable/disable SoftAP + web server; restarts |
+| `0x32` | `CFG_KEY_ESPNOW_ENABLED` | any WiFi node | 0/1 | — | Enable/disable ESP-NOW radio; restarts |
+| `0x40` | `CFG_KEY_RPM_REDLINE` | relay_controller, ecu_node | — | redline RPM (uint16 LE) | Sets LCD bar widget redline |
+| `0x51` | `CFG_KEY_ECU_MODE` | ecu_node | 0=carb, 1=inject | — | Persisted; overrideable at runtime |
+| `0x52` | `CFG_KEY_ECU_TARGET_AFR` | ecu_node | — | AFR × 100 (uint16 LE) | e.g. `0x05BA` = 14.66 AFR |
+| `0x53` | `CFG_KEY_ECU_BASE_PW` | ecu_node | — | base pulse width µs (uint16 LE) | At 100% VE, 100 kPa |
+
+**CONFIG_SAVE actions (`data[1]`):**
+
+| Value | Action |
+|-------|--------|
+| `0x01` | Flush current RAM config to NVS |
+| `0x02` | Discard RAM changes, reload from NVS |
+| `0x03` | Clear NVS, revert to compiled defaults |
+
+### 15.3 ECU Command Reference (0x308)
+
+| `data[0]` cmd | Name | Arguments |
+|--------------|------|-----------|
+| `0x01` | Set mode | `arg0`: 0 = carb, 1 = TBI injection |
+| `0x02` | Set target AFR | `arg1 + arg2` = uint16 LE, AFR × 100 |
+| `0x03` | Fuel cut | `arg0`: 0 = off, 1 = on |
+| `0x04` | Reset fuel trim | — (clears STFT to 0%) |
+
+### 15.4 Raw Frame Examples
+
+```
+# Relay control
+100 01 01        relay 1 ON
+100 01 00        relay 1 OFF
+100 3F 00        all relays OFF
+
+# Viper alarm
+510 01           lock / arm
+510 02           unlock / disarm
+510 03           remote start
+
+# Node ID reassignment (switch_panel 0x01 → 0x05); node restarts
+400 01 01 00 00 05 00 00 01
+
+# WiFi/AP control
+400 01 31 00 00 00 00 00 00    disable AP on switch_panel (no restart args needed — always restarts)
+400 FF 30 00 00 01 00 00 00    re-enable WiFi on all nodes
+
+# ECU: switch to injection mode, set target 14.7 AFR, reset trim
+308 01 01 00 00
+308 02 00 93 05      (0x0593 = 1427 → 14.27 AFR × 100)
+308 04 00 00 00
+
+# RPM redline: set relay_controller redline to 6000 RPM (0x1770)
+400 02 40 00 00 00 70 17 01
+
+# Relay safety timeout: relay 5 (horn) cut off after 30 s
+400 02 20 04 00 00 30 75 01    (index=4, arg2=0x7530=30000 ms, persist)
+```
 
 ---
 

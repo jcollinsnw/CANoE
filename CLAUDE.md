@@ -187,6 +187,7 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 
 | ID     | Name              | Payload                                                |
 |--------|-------------------|--------------------------------------------------------|
+| 0x0F0  | NODE_ANNOUNCE     | `[node_id, peer_count, can_ok]` — every node broadcasts every 5 s; node_id in data[0] identifies sender |
 | 0x100  | RELAY_CMD         | `[mask, state]` — only bits set in mask are applied    |
 | 0x101  | RELAY_STATUS      | `[bitmap]` — broadcast at 5 Hz                         |
 | 0x102  | LED_CMD           | `[target_node_id, mask, state]` — any node → target; 0xFF target = broadcast |
@@ -213,7 +214,11 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 Config targets: `0x01 SWITCH_PANEL`, `0x02 RELAY_CTRL`, `0x03 VIPER`, `0x04 ECU`, `0xFF BROADCAST`.
 
 Config keys:
-- `0x20 CFG_KEY_RELAY_MAX_ON_MS` — per-relay safety auto-off timeout
+- `0x01 CFG_KEY_NODE_ID` — reassign node_id; arg (data[4]) = new ID (0x01–0xFE); saves to NVS and restarts. Broadcast target **not accepted**.
+- `0x20 CFG_KEY_RELAY_MAX_ON_MS` — per-relay safety auto-off timeout (arg2_lo/hi = ms, 0 = no limit; index = relay 0–5)
+- `0x30 CFG_KEY_WIFI_ENABLED` — legacy: sets both ap_en and espnow_en; arg=0/1; node restarts
+- `0x31 CFG_KEY_AP_ENABLED` — enable/disable SoftAP + web server; arg=0/1; node restarts
+- `0x32 CFG_KEY_ESPNOW_ENABLED` — enable/disable ESP-NOW radio; arg=0/1; node restarts
 - `0x40 CFG_KEY_RPM_REDLINE` — RPM redline for display widget (arg2_lo/hi = uint16 RPM)
 - `0x51 CFG_KEY_ECU_MODE` — 0=carb, 1=inject; arg[4]=value; persisted to NVS
 - `0x52 CFG_KEY_ECU_TARGET_AFR` — target AFR × 100 (uint16 LE in arg2_lo/hi)
