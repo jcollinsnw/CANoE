@@ -103,6 +103,7 @@ static void handle_status() {
   s += "\"can_ok\":"; s += (bus_can_healthy() ? "true" : "false"); s += ",";
   s += "\"wifi_peer\":"; s += (bus_wifi_seen_peer() ? "true" : "false"); s += ",";
   s += "\"tx_mode\":";   s += (uint8_t)bus_get_tx_mode(); s += ",";
+  s += "\"peer_nodes\":"; s += bus_peer_node_bitmap(); s += ",";
   s += "\"uptime_s\":"; s += uptime_s;
   s += "}";
   g_http.send(200, "application/json", s);

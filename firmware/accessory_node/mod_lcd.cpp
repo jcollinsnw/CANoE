@@ -157,9 +157,10 @@ void lcd_write_row(uint8_t row, const char* text) {
 void lcd_set_backlight(bool on) { g_lcd_backlight = on; }
 bool lcd_get_backlight()        { return g_lcd_backlight; }
 
-// Replay the full HD44780 power-on init + CGRAM rewrite. Called when I2C failures
-// suggest the LCD lost power or its control register state was corrupted.
-static void lcd_hard_reinit() {
+// Replay the full HD44780 power-on init + CGRAM rewrite.
+// Returns true if all I2C writes succeeded (fail count stayed at 0).
+static bool lcd_hard_reinit(const char* reason) {
+  g_i2c_fail_count = 0;
   delay(50);
   lcd_nibble(0x03, false); delay(5);
   lcd_nibble(0x03, false); delayMicroseconds(150);
@@ -175,7 +176,10 @@ static void lcd_hard_reinit() {
   lcd_cmd_raw(0x80);
   lcd_write_row(0, "");
   render_widgets(0xFF);
-  wlogln("[LCD] re-initialized after I2C failure");
+  bool ok = (g_i2c_fail_count == 0);
+  wlog("[LCD] reinit (%s) %s\n", reason, ok ? "OK" : "I2C not responding");
+  g_i2c_fail_count = 0;  // clear again so failed reinit writes don't immediately retrigger
+  return ok;
 }
 
 void lcd_setup() {
@@ -223,17 +227,24 @@ void lcd_tick() {
   if (g_menu_active) return;
   uint32_t now = millis();
 
-  static uint32_t last_reinit_ms = 0;
-  // Reinit when I2C has failed repeatedly OR unconditionally every 30 s.
-  // The periodic case recovers from HD44780 brownouts that the PCF8574 I2C
-  // can't detect (the backpack chip keeps ACKing even when the LCD controller
-  // has lost its state).
-  if (g_i2c_fail_count >= 5 || (now - last_reinit_ms) >= 30000) {
+  static uint32_t last_reinit_ms  = 0;
+  static bool     last_reinit_ok  = true;   // was the most recent reinit attempt successful?
+
+  // Error-triggered reinit: only when the previous attempt worked (don't spam if hardware
+  // is absent or address is wrong) and at least 5 s have passed since the last attempt.
+  bool error_due    = (g_i2c_fail_count >= 5) && last_reinit_ok && (now - last_reinit_ms >= 5000);
+  // Periodic reinit every 30 s handles HD44780 brownouts the PCF8574 can't detect.
+  bool periodic_due = (now - last_reinit_ms) >= 30000;
+
+  if (error_due || periodic_due) {
     last_reinit_ms = now;
-    g_i2c_fail_count = 0;
-    lcd_hard_reinit();
+    last_reinit_ok = lcd_hard_reinit(error_due ? "errors" : "periodic");
     return;
   }
+
+  // If errors accumulated but we're still in the cooldown window, cap the counter so
+  // the check above doesn't spin on every tick.
+  if (g_i2c_fail_count >= 5) g_i2c_fail_count = 4;
 
   char buf[LCD_COLS + 1];
   for (uint8_t i = 0; i < g_widget_count; i++) {

@@ -17,9 +17,7 @@
 
 FQBN    := esp32:esp32:esp32
 BAUD    := 115200
-PORT    ?= /dev/cu.usbserial-0001
-
-
+PORT    ?= /dev/cu.SLAB_USBtoUART
 
 SKETCH  := firmware/accessory_node
 CONFIGS := firmware/configs
@@ -29,36 +27,25 @@ HTMLDST := $(SKETCH)/index_html.h
 # ---- select node config ----
 .PHONY: relay_controller switch_panel viper_interface ecu_node
 
-
-
 relay_controller:
+	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/relay_controller.h $(SKETCH)/node_config.h
 	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
 
-
-
 switch_panel:
+	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/switch_panel.h $(SKETCH)/node_config.h
 	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
 
-
-
 viper_interface:
+	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/viper_interface.h $(SKETCH)/node_config.h
 	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
 
-
-
 ecu_node:
+	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/ecu_node.h $(SKETCH)/node_config.h
 	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
-
-# ---- HTML minification (disabled — minify_index_html.sh broken) ----
-# .PHONY: minify-html
-# minify-html: $(HTMLDST) $(MINIFY)
-# 	@echo "Minifying index_html.h in-place..."
-# 	@bash $(MINIFY) $(HTMLDST)
-# 	@echo "Minified index_html.h updated."
 
 # ---- compile all four ----
 .PHONY: all

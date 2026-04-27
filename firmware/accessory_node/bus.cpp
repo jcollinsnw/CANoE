@@ -44,7 +44,7 @@ static bus_observer_t g_observer = nullptr;
 
 // Per-peer activity tracking — used to report connect/disconnect counts.
 // Slot node_id==0 means empty. Timeout matches bus_wifi_seen_peer() window.
-static const uint32_t PEER_TIMEOUT_MS = 6000;
+static const uint32_t PEER_TIMEOUT_MS = 12000; // 2.4× announce interval; node must miss 2 beats
 struct PeerEntry { uint8_t node_id; uint32_t last_seen_ms; };
 static PeerEntry g_peers[8] = {};
 
@@ -281,6 +281,19 @@ uint8_t bus_peer_count() {
   for (int i = 0; i < 8; i++)
     if (g_peers[i].node_id && (now - g_peers[i].last_seen_ms) < PEER_TIMEOUT_MS) n++;
   return n;
+}
+
+// Bitmask of active ESP-NOW peer node IDs seen within PEER_TIMEOUT_MS.
+// Bit N is set if node 0xN has been heard from recently (nodes are 0x01-0x04).
+uint8_t bus_peer_node_bitmap() {
+  uint32_t now = millis();
+  uint8_t bits = 0;
+  for (int i = 0; i < 8; i++) {
+    uint8_t nid = g_peers[i].node_id;
+    if (nid && nid < 8 && (now - g_peers[i].last_seen_ms) < PEER_TIMEOUT_MS)
+      bits |= (1u << nid);
+  }
+  return bits;
 }
 void     bus_set_tx_mode(BusTxMode mode) { g_tx_mode = mode; }
 BusTxMode bus_get_tx_mode()              { return g_tx_mode; }

@@ -17,6 +17,7 @@ static const Note* g_seq     = nullptr;
 static uint8_t     g_seq_len = 0;
 static uint8_t     g_seq_pos = 0;
 static uint32_t    g_note_end = 0;
+static bool        g_muted   = false;
 
 // Queue for sequences that should play back-to-back without interrupting each other.
 #define BZ_QUEUE_SIZE 8
@@ -63,8 +64,8 @@ void buzzer_tick() {
   }
 
   const Note& n = g_seq[g_seq_pos++];
-  if (n.freq == 0) noTone(BUZZER_PIN);
-  else             tone(BUZZER_PIN, n.freq);
+  if (n.freq == 0 || g_muted) noTone(BUZZER_PIN);
+  else                         tone(BUZZER_PIN, n.freq);
   g_note_end = now + n.ms;
 }
 
@@ -148,6 +149,9 @@ void buzzer_peer_count(uint8_t n) {
   uint8_t idx = (n < 6) ? n : 5;
   enqueue_seq(PEER_TONES[idx], 2);
 }
+
+void buzzer_set_muted(bool muted) { g_muted = muted; if (muted) noTone(BUZZER_PIN); }
+bool buzzer_is_muted()            { return g_muted; }
 
 void buzzer_handle_frame(const BusFrame& f) {
   if (f.id != CAN_ID_RELAY_CMD || f.dlc < 2) return;

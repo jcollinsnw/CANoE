@@ -35,6 +35,7 @@
 #define MENU_ID_DISPLAY 4
 #define MENU_ID_WIFI    5
 #define MENU_ID_TX_MODE 6
+#define MENU_ID_BEEP    7
 
 struct MenuItem {
   uint8_t     id;
@@ -186,6 +187,16 @@ static void menu_draw() {
       }
 #endif
 
+#ifdef MENU_HAS_BEEP
+      case MENU_ID_BEEP:
+        snprintf(r0, sizeof(r0), "Beep");
+        if (is_back)
+          snprintf(r1, sizeof(r1), "\x7F Back");
+        else
+          snprintf(r1, sizeof(r1), "\x7E Beep %s", buzzer_is_muted() ? "OFF" : "ON ");
+        break;
+#endif
+
       default:
         snprintf(r0, sizeof(r0), "Menu");
         snprintf(r1, sizeof(r1), "---");
@@ -221,6 +232,9 @@ void menu_setup() {
   Preferences p; p.begin(NVS_NAMESPACE, true);
   g_node_wifi[0] = p.getBool("wifi_en", true);
   p.end();
+#endif
+#ifdef MENU_HAS_BEEP
+  g_items[g_item_count++] = { MENU_ID_BEEP,    "Beep",       2 };  // toggle + Back
 #endif
   g_items[g_item_count++] = { MENU_ID_EXIT,    "\x7F Exit",  0 };  // always last
 }
@@ -350,6 +364,14 @@ void menu_action() {
     case MENU_ID_TX_MODE:
       bus_set_tx_mode((BusTxMode)idx);
       wlog("[menu] tx_mode=%u\n", idx);
+      menu_draw();
+      break;
+#endif
+
+#ifdef MENU_HAS_BEEP
+    case MENU_ID_BEEP:
+      buzzer_set_muted(!buzzer_is_muted());
+      wlog("[menu] beep muted=%u\n", buzzer_is_muted());
       menu_draw();
       break;
 #endif

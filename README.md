@@ -15,17 +15,18 @@ A parallel 12V accessory wiring system for an antique car. Four ESP32 nodes talk
 3. [Node Wiring — Switch Panel](#3-node-wiring--switch-panel)
 4. [Node Wiring — Relay Controller](#4-node-wiring--relay-controller)
 5. [Node Wiring — Viper Interface](#5-node-wiring--viper-interface)
-6. [CAN Bus Backbone](#6-can-bus-backbone)
-7. [Power Distribution](#7-power-distribution)
-8. [Build and Flash](#8-build-and-flash)
-9. [First Boot Checklist](#9-first-boot-checklist)
-10. [Web Console](#10-web-console)
-11. [LCD Menu System](#11-lcd-menu-system)
-12. [Relay Customization (Labels and Icons)](#12-relay-customization-labels-and-icons)
-13. [Runtime Configuration](#13-runtime-configuration)
-14. [CAN Frame Reference](#14-can-frame-reference)
-15. [Bench Mode vs Production Mode](#15-bench-mode-vs-production-mode)
-16. [Troubleshooting](#16-troubleshooting)
+6. [Node Wiring — ECU Node](#6-node-wiring--ecu-node)
+7. [CAN Bus Backbone](#7-can-bus-backbone)
+8. [Power Distribution](#8-power-distribution)
+9. [Build and Flash](#9-build-and-flash)
+10. [First Boot Checklist](#10-first-boot-checklist)
+11. [Web Console](#11-web-console)
+12. [LCD Menu System](#12-lcd-menu-system)
+13. [Relay Customization (Labels and Icons)](#13-relay-customization-labels-and-icons)
+14. [Runtime Configuration](#14-runtime-configuration)
+15. [CAN Frame Reference](#15-can-frame-reference)
+16. [Bench Mode vs Production Mode](#16-bench-mode-vs-production-mode)
+17. [Troubleshooting](#17-troubleshooting)
 
 ---
 
@@ -108,6 +109,10 @@ All three nodes are compiled from the same unified sketch (`firmware/accessory_n
 |-----|------|-------|
 | 1 | 3.3 V ↔ 5 V bidirectional level shifter | 2-channel minimum (TX + RX lines) |
 | — | Viper 5305V alarm (or compatible) | Existing install |
+
+### ECU Node
+
+See [§6.2 ECU Node Bill of Materials](#62-ecu-node-bill-of-materials) for the full parts list. Key items: 3× IRLZ44N logic-level MOSFET, 3× 1N5822 Schottky flyback diode, 1× PC817C optocoupler, 1× MPX4250AP MAP sensor, 2× GM NTC thermistor (10 kΩ), wideband O2 controller + LSU 4.9 sensor.
 
 ---
 
@@ -458,7 +463,221 @@ Common modules (u-blox Neo-6M / Neo-8M) default to 9600 baud, NMEA output. Set `
 
 ---
 
-## 6. CAN Bus Backbone
+## 6. Node Wiring — ECU Node
+
+**ESP32 #4 · NODE_ID 0x04**
+
+The ECU node reads engine sensors (RPM, MAP, TPS, CLT, IAT, and wideband O2) and drives either a carburetor mixture-control solenoid in closed-loop mode or dual throttle-body fuel injectors. Mode is selected by a physical switch on GPIO 13 and can be overridden at runtime via CAN.
+
+### 6.1 CAN Bus
+
+Same as all other nodes — GPIO 5 = TX, GPIO 4 = RX to the transceiver or shared wire.
+
+### 6.2 ECU Node Bill of Materials
+
+| Qty | Part | Notes |
+|-----|------|-------|
+| 3 | IRLZ44N logic-level N-MOSFET (TO-220) | One per output: solenoid, injector 1, injector 2. **Must be logic-level** — fully switches at 3.3V gate. Standard IRF540/IRF3205/IRFZ44N will NOT turn on reliably at 3.3V. |
+| 3 | 1N5822 Schottky diode | Flyback suppression; cathode to +12V, anode to MOSFET drain. ≥ 3A, 40V rated. |
+| 3 | 100 Ω resistor, ¼ W | MOSFET gate series resistor — damps switching ringing |
+| 3 | 10 kΩ resistor, ¼ W | MOSFET gate pull-down to GND — holds gate LOW if ESP32 resets |
+| 6 | 100 kΩ resistor, ¼ W | 2:1 voltage dividers for MAP, TPS, WBO2 (two resistors each) |
+| 2 | 10 kΩ resistor, ¼ W | NTC thermistor pull-up to 3.3V (CLT + IAT) |
+| 1 | 10 kΩ resistor, ¼ W | Mode switch pull-up to 3.3V (GPIO 13) |
+| 1 | 10 kΩ resistor, ¼ W | RPM optocoupler pull-up to 3.3V (GPIO 34) |
+| 1 | PC817C optocoupler | RPM input isolation from ignition high-voltage transients |
+| 1 | 270 Ω resistor, ¼ W | PC817C LED current limiter (coil negative side) |
+| 1 | MPX4250AP (or equivalent) MAP sensor | 0–250 kPa, 0.2–4.9V output; common in GM/Ford TBI applications |
+| 2 | GM-style 10 kΩ NTC thermistor | CLT (coolant) + IAT (intake air); Beta=3540, R₀=2590Ω at 25°C |
+| 1 | Wideband O2 controller | Innovate LC-2, AEM X-Series, or equivalent; must have 0–5V analog output |
+| 1 | Wideband sensor (Bosch LSU 4.9) | Usually bundled with controller |
+| 1 | TPS potentiometer | 0–5V wiper; many GM/Ford throttle bodies have one built in |
+| 2 | Fuel injectors (750 cc/min each) | For a 351W V8. Single injector works but saturates above ~2500 RPM WOT |
+| 2 | 5 A automotive fuse + holder | One dedicated fuse per injector; separate +12V run, NOT through relay controller |
+| 1 | 3 A automotive fuse + holder | Carb solenoid dedicated +12V run |
+
+### 6.3 Voltage Divider Wiring (MAP, TPS, WBO2)
+
+All three 5V sensor outputs must be scaled to the ESP32's 0–3.3V ADC range. A 2:1 resistor divider with 100 kΩ resistors keeps load current low (~25 µA) and avoids affecting the sensor's output stage.
+
+```
+Sensor 0–5V ──[100kΩ]──┬──[100kΩ]── GND
+                         └── GPIO (ADC input, sees 0–2.5V)
+```
+
+| Signal | GPIO | Raw sensor range | ADC range after divider |
+|--------|------|-----------------|------------------------|
+| MAP (MPX4250AP) | 36 | 0.2–4.9 V | 0.1–2.45 V |
+| TPS (pot wiper) | 39 | 0–5 V | 0–2.5 V |
+| WBO2 (controller out) | 35 | 0–5 V | 0–2.5 V |
+
+GPIOs 35, 36, and 39 are **input-only with no internal pull-up or pull-down**. The voltage divider provides the required bias — do not add a separate pull-up.
+
+> **ADC1-only constraint (critical):** When WiFi is active, ADC2 (GPIOs 0, 2, 4, 12–15, 25–27) is entirely unavailable — it shares hardware with the radio. All ECU analog inputs must be on ADC1 (GPIOs 32–39). Do not relocate sensors to ADC2 pins.
+
+> **Do not use resistors below 10 kΩ.** Some MAP sensors source current through a few kΩ minimum load; values below that can affect output accuracy. Some sources suggest 10 kΩ + 10 kΩ for a simpler build — that works and keeps the divider well within the sensor's drive spec.
+
+### 6.4 NTC Thermistor Wiring (CLT, IAT)
+
+GM-style NTC thermistors form a voltage divider with a 10 kΩ pull-up to 3.3V. Resistance drops as temperature rises, so the voltage at the GPIO increases with temperature. The firmware converts ADC readings to °C using the Beta approximation (Beta=3540, R₀=2590 Ω at 25°C).
+
+```
+3.3V ──[10kΩ]──┬── GPIO 32 (CLT)      3.3V ──[10kΩ]──┬── GPIO 33 (IAT)
+                └── NTC thermistor ── GND               └── NTC thermistor ── GND
+```
+
+No voltage divider is needed here — the pull-up to **3.3V** (not 5V) guarantees the GPIO pin stays within the ESP32 safe input range at all temperatures. Using 5V for the pull-up would require a divider and is not recommended.
+
+| Sensor | GPIO | Pull-up | Placement |
+|--------|------|---------|-----------|
+| CLT | 32 | 10 kΩ to 3.3V | Engine block coolant passage (standard GM-thread fitting) |
+| IAT | 33 | 10 kΩ to 3.3V | Intake manifold or air cleaner before throttle body |
+
+**Non-GM sensors:** Update `ECU_NTC_BETA` and `ECU_NTC_R0` in `firmware/configs/ecu_node.h` if your thermistors have different Beta or R₀ values.
+
+### 6.5 RPM Sensor (PC817C Optocoupler)
+
+RPM is read from the coil's negative terminal (same tap point as a traditional tachometer). The PC817C optocoupler isolates the ignition's high-voltage transients from the ESP32.
+
+```
+Ignition coil (–) ──[270Ω]──── PC817C pin 1 (LED +)
+                                PC817C pin 2 (LED –) ──── GND
+
+3.3V ──[10kΩ]──┬── PC817C pin 3 (collector)
+                └── GPIO 34 (RPM_PIN)
+                    PC817C pin 4 (emitter) ──── GND
+```
+
+The 270 Ω resistor limits LED current to ~14 mA at 12V during points-closed dwell. Each coil fire pulls GPIO 34 LOW; the firmware counts falling edges via interrupt, divides by `RPM_CYLINDERS` (8 for V8), and computes RPM from the elapsed time.
+
+| PC817C Pin | Signal | Connection |
+|-----------|--------|------------|
+| 1 (LED +) | Coil (–) | Coil negative terminal via 270 Ω resistor |
+| 2 (LED –) | LED GND | GND |
+| 3 (collector) | Output | GPIO 34 + 10 kΩ to 3.3V |
+| 4 (emitter) | GND | GND |
+
+> **GPIO 34 has no internal pull-up.** The external 10 kΩ to 3.3V is mandatory. Without it, the pin floats between coil fires and generates phantom RPM counts.
+
+> **Distributor vs. DIS:** On points/distributor ignitions the coil fires once per distributor revolution, which is 4 times per 2 crankshaft revolutions for a V8 — `RPM_CYLINDERS = 8` is correct. On distributorless (DIS) or coil-on-plug systems the pulse rate is different; verify your trigger count matches the setting.
+
+RPM is broadcast on CAN ID `0x304` every 250 ms (`RPM_SAMPLE_MS` in `ecu_node.h`).
+
+### 6.6 Mode Selection Switch
+
+A toggle switch selects carb mode (LOW) or injection mode (HIGH). GPIO 13 reads the switch at boot and the mode is cached in RAM; a CAN command can override it at runtime without reflashing.
+
+```
+3.3V ──[10kΩ]──┬── GPIO 13
+                └── Mode switch ── GND
+```
+
+Switch open → GPIO 13 HIGH → **injection mode**. Switch closed to GND → **carb mode**.
+
+> **GPIO 13 is a strapping pin** on some ESP32 modules. The boot mode is sampled during power-on reset; a switch pulled LOW at that instant can force the ESP32 into download mode or cause erratic boot behavior. Use a normally-open (NO) switch so the pin defaults HIGH (injection) at boot. You can switch to carb mode after boot via CAN:
+> ```
+> 308 01 00 00 00    # ECU_CMD: set mode = carb (0)
+> ```
+> If GPIO 13 is truly problematic on your module, move the switch to a non-strapping GPIO and update `ECU_MODE_SWITCH_PIN` in `ecu_node.h`.
+
+### 6.7 Carb Mixture-Control Solenoid (Mode 0)
+
+An air-bleed mixture-control solenoid (common on emissions-era carbs — Rochester Q-jet, feedback Holley, etc.) is driven at 12 Hz PWM. Higher duty = more air bleed = leaner mixture. The PI controller adjusts duty based on WBO2 error relative to `ECU_CARB_TARGET_AFR` (default 14.7).
+
+```
+GPIO 25 ──[100Ω]──┬── IRLZ44N Gate
+                   │
+                  [10kΩ to GND]
+                   │
+                   IRLZ44N Drain ──── Solenoid (–)
+                   IRLZ44N Source ─── GND
+
+Solenoid (+) ──── +12V (3 A fuse, dedicated run)
+1N5822: cathode to +12V, anode to IRLZ44N Drain
+```
+
+The PI is clamped to `ECU_CARB_DUTY_MIN` (10%) and `ECU_CARB_DUTY_MAX` (90%) — a fully-closed or fully-open bleed can cause a no-start condition.
+
+**Tuning KP / KI:** Start with KP=1.5, KI=0.3. Increase KP if the loop responds slowly to AFR excursions; reduce it if the mixture hunts (oscillates around target). KI corrects steady-state offset — increase it if AFR is consistently wrong at idle even after the loop has settled.
+
+> **LEDC channel conflict:** The solenoid uses LEDC channel 0 for PWM. `ENABLE_BUZZER` also uses LEDC and will conflict — it is not enabled on the ECU node.
+
+### 6.8 Dual Fuel Injectors (Mode 1)
+
+Both injectors fire simultaneously on a pulse-width interval derived from RPM, MAP, VE table, CLT enrichment, and STFT. Combined flow of 1500 cc/min (2 × 750) covers a 351W V8 to redline.
+
+Each injector uses the identical MOSFET + flyback circuit:
+
+```
+GPIO 26 (Inj 1) ──[100Ω]──┬── IRLZ44N Gate
+GPIO 27 (Inj 2) ──[100Ω]──┴── IRLZ44N Gate (separate MOSFET each)
+                               [10kΩ] Gate to GND per MOSFET
+
+IRLZ44N Drain ──── Injector (–) ──── Injector (+) ──── +12V (5 A fuse per injector)
+IRLZ44N Source ─── GND
+1N5822: cathode to +12V, anode to IRLZ44N Drain
+```
+
+> **Dedicated injector power:** Injectors must be powered from a **separate fused +12V run** directly from the fuse block — do NOT route through the relay controller. Inductive closure spikes from injectors will induce noise on shared relay supply rails. Use 5 A automotive fuses, one per injector.
+
+**Pulse timing:** The firmware uses `esp_timer_start_once()` for the injector close event — this gives microsecond accuracy independent of `loop()` timing, which matters at high RPM (pulse widths of 2–6 ms at 3000+ RPM).
+
+**BASE_PW:** At startup the serial log prints:
+```
+[ecu] base_pw=3250 us  disp/cyl=719 cc  n_inj=2
+```
+This is the computed base pulse width at 100% VE, 100 kPa MAP. If the engine runs consistently rich or lean across the RPM range, adjust via CAN:
+```
+400 04 53 00 00 A0 0F 01    # CONFIG_WRITE: ECU (0x04), key 0x53 (BASE_PW), value 0x0FA0 = 4000 µs, persist
+```
+Or using the ECU_CMD shortcut:
+```
+308 00 00 A0 0F    # ECU_CMD byte 0x00 is reserved; use CONFIG_WRITE for BASE_PW
+```
+
+**Short-term fuel trim (STFT):** Closed-loop correction is clamped to ±30% (`ECU_STFT_MAX_PCT`). Trim railing at +30% = engine lean (increase `BASE_PW`); −30% = engine rich (decrease `BASE_PW`). The ECU_DATA flags byte (0x307 data[7]) indicates: bit0=closed_loop active, bit1=enriching, bit2=injector saturated, bit3=running.
+
+**Single injector:** Comment out `ECU_INJ2_PIN` in `ecu_node.h` to use only GPIO 26. The computed `BASE_PW` doubles. A single 750 cc/min injector saturates at roughly 2500–3000 RPM WOT on a 351W — usable for light loads or smaller displacement.
+
+### 6.9 Runtime ECU Control via CAN
+
+The ECU node responds to `ECU_CMD (0x308)` from any node or the web console:
+
+```
+308 01 00 00 00    # set mode = carb (0)
+308 01 01 00 00    # set mode = injection (1)
+308 02 00 7E 05    # set target AFR to 0x057E = 1406 → 14.06 AFR × 100
+308 03 01 00 00    # fuel cut ON
+308 03 00 00 00    # fuel cut OFF
+308 04 00 00 00    # reset STFT to 0%
+```
+
+Mode and target AFR are persisted to NVS (namespace `"ecu"`) when sent. `BASE_PW` is persisted via `CONFIG_WRITE` (key `0x53`, target `0x04`).
+
+### 6.10 Full ECU Node Pin Summary
+
+```
+ESP32 #4 (ECU Node)
+─────────────────────────────────────────
+3.3V ──── 10kΩ pull-ups: GPIO 13 (mode sw), GPIO 32 (CLT), GPIO 33 (IAT), GPIO 34 (RPM)
+GND  ──── sensor GND, MOSFET sources, PC817C cathode/emitter, optocoupler GND
+GPIO 4   CAN RX  ←── CAN bus (transceiver RXD)
+GPIO 5   CAN TX  ──→ CAN bus (transceiver TXD)
+GPIO 13  Mode switch (10kΩ to 3.3V; LOW=carb, HIGH=inject — strapping pin, see §6.6)
+GPIO 25  Carb solenoid MOSFET gate  ──[100Ω]── gate; [10kΩ] gate-to-GND
+GPIO 26  Injector 1 MOSFET gate     ──[100Ω]── gate; [10kΩ] gate-to-GND
+GPIO 27  Injector 2 MOSFET gate     ──[100Ω]── gate; [10kΩ] gate-to-GND
+GPIO 32  CLT ←── 10kΩ pull-up to 3.3V + NTC thermistor to GND
+GPIO 33  IAT ←── 10kΩ pull-up to 3.3V + NTC thermistor to GND
+GPIO 34  RPM ←── PC817C collector (10kΩ pull-up to 3.3V; input-only, no internal pull-up)
+GPIO 35  WBO2 ←── 100kΩ + 100kΩ ÷2 divider from wideband controller 0–5V (input-only)
+GPIO 36  MAP  ←── 100kΩ + 100kΩ ÷2 divider from MAP sensor 0.2–4.9V (input-only)
+GPIO 39  TPS  ←── 100kΩ + 100kΩ ÷2 divider from throttle pot 0–5V (input-only)
+```
+
+---
+
+## 7. CAN Bus Backbone
 
 All three nodes connect to the same two-wire CAN bus (CANH / CANL). The bus runs at **125 kbit/s** with standard 11-bit IDs.
 
@@ -512,7 +731,7 @@ All nodes' GPIO 5 (CAN TX) ──┬──── [1 kΩ – 4.7 kΩ pull-up] ─
 
 ---
 
-## 7. Power Distribution
+## 8. Power Distribution
 
 The system runs off a **dedicated accessory battery** isolated from the factory wiring.
 
@@ -540,9 +759,9 @@ The system runs off a **dedicated accessory battery** isolated from the factory 
 
 ---
 
-## 8. Build and Flash
+## 9. Build and Flash
 
-### 8.1 Prerequisites
+### 9.1 Prerequisites
 
 - [Arduino IDE 2.x](https://www.arduino.cc/en/software) or [arduino-cli](https://arduino.github.io/arduino-cli/)
 - ESP32 board package: **arduino-esp32 v2.x** (v3.x changed TWAI APIs — verify compilation if upgrading)
@@ -550,7 +769,7 @@ The system runs off a **dedicated accessory battery** isolated from the factory 
 
 Install arduino-esp32 in Arduino IDE: **File → Preferences → Additional boards manager URLs** → add `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`. Then **Tools → Board → Boards Manager**, search "esp32", install.
 
-### 8.2 Configure the Target Node
+### 9.2 Configure the Target Node
 
 Each node has a config header in `firmware/configs/`. Open the appropriate one and set the transceiver mode:
 
@@ -562,7 +781,7 @@ Each node has a config header in `firmware/configs/`. Open the appropriate one a
 
 All three nodes must agree on this setting.
 
-### 8.3 Compile and Upload
+### 9.3 Compile and Upload
 
 The Makefile copies the right config header, then compiles the single unified sketch.
 
@@ -588,7 +807,7 @@ cp firmware/configs/switch_panel.h firmware/accessory_node/node_config.h
 ```
 Then open `firmware/accessory_node/accessory_node.ino`, select **Tools → Board → ESP32 Dev Module**, choose the correct port, and click Upload. Repeat for each node.
 
-### 8.5 Monitor All Three Nodes Simultaneously
+### 9.5 Monitor All Three Nodes Simultaneously
 
 ```bash
 # Requires tmux (brew install tmux)
@@ -600,7 +819,7 @@ tmux new-session \; \
 
 ---
 
-## 9. First Boot Checklist
+## 10. First Boot Checklist
 
 1. **All three nodes** show `=== ... boot ===` on serial at 115200 baud.
 2. `[CAN] BENCH mode` or `[CAN] TRANSCEIVER mode` matches your wiring.
@@ -615,13 +834,13 @@ tmux new-session \; \
 
 ---
 
-## 10. Web Console
+## 11. Web Console
 
 Each node runs an HTTP server with a captive DNS portal on its `AccessoryBus` AP. Any device on the same WiFi will reach the same bus — frames are shared across nodes via ESP-NOW.
 
 **Access:** Connect to WiFi SSID `AccessoryBus` (configurable via `AP_SSID` in the node config) → browser auto-opens, or navigate to `http://192.168.4.1`.
 
-### 10.1 Raw CAN Frame Entry
+### 11.1 Raw CAN Frame Entry
 
 ```
 <id_hex> <byte0> <byte1> ...    # up to 8 bytes, hex, space-separated
@@ -637,7 +856,7 @@ Examples:
 510 03          Viper remote start
 ```
 
-### 10.2 Alias Commands
+### 11.2 Alias Commands
 
 All aliases start with `:`.
 
@@ -656,7 +875,7 @@ All aliases start with `:`.
 
 Trailing `!` on `:cfgrelay` persists the change to NVS immediately.
 
-### 10.3 Control Tab
+### 11.3 Control Tab
 
 The **Control** tab provides a graphical panel that adapts to the connected node:
 
@@ -672,7 +891,7 @@ Six tiles showing each relay's live state (green = ON). State tracks automatical
 
 **Lock / Arm**, **Unlock / Disarm**, and **Remote Start** buttons. The last raw Viper status response (0x511) is shown below.
 
-### 10.4 Rules Tab
+### 11.4 Rules Tab
 
 The **Rules** tab lists all rules stored in NVS. Each rule shows a human-readable description of its trigger and action. You can:
 - **Add** a new rule using the inline editor (pick trigger ID, byte conditions, action kind, args)
@@ -682,13 +901,13 @@ The **Rules** tab lists all rules stored in NVS. Each rule shows a human-readabl
 
 Changes persist to NVS immediately.
 
-### 10.4 Force WiFi-Only Mode
+### 11.5 Force WiFi-Only Mode
 
 The checkbox in the page header cuts wired CAN TX. Useful to test that the ESP-NOW fallback path works. Uncheck to restore the wired bus. (This setting is RAM-only and resets on power cycle.)
 
 ---
 
-## 11. LCD Menu System
+## 12. LCD Menu System
 
 The switch panel has a built-in menu driven by the rotary encoder and BTN1 (GPIO 14).
 
@@ -771,7 +990,7 @@ Relays ✦-----
 
 ---
 
-## 12. Relay Customization (Labels and Icons)
+## 13. Relay Customization (Labels and Icons)
 
 Each relay can have a human-readable label and custom HD44780 CGRAM icons for its ON and OFF states. These are defined at compile time in the node config header.
 
@@ -791,11 +1010,11 @@ Each icon is an 8-byte HD44780 5×8 pixel bitmap. Omit any macro to use the defa
 
 ---
 
-## 13. Runtime Configuration — Rules Engine
+## 14. Runtime Configuration — Rules Engine
 
 Switch-to-relay/LED/alarm mappings are stored in NVS as **rules** and can be changed without reflashing. Rules are managed in the **Rules** tab of the web console.
 
-### 13.1 How Rules Work
+### 14.1 How Rules Work
 
 Each rule has:
 - **Trigger** — a CAN frame ID to watch for, plus up to two byte conditions (`byte_index == value & mask`). A condition is skipped when its mask is `0x00`.
@@ -803,7 +1022,7 @@ Each rule has:
 
 Because `bus_tx()` self-echoes every outgoing frame, rules also fire on frames that *this node* sent — meaning a rule triggered by a RELAY_CMD can drive a secondary LED, and a rule triggered by RELAY_STATUS keeps LEDs in sync automatically.
 
-### 13.2 Default Rules (switch_panel)
+### 14.2 Default Rules (switch_panel)
 
 | Trigger | Action |
 |---------|--------|
@@ -821,13 +1040,13 @@ Because `bus_tx()` self-echoes every outgoing frame, rules also fire on frames t
 
 These are compiled into `RULES_DEFAULT_INIT` in `firmware/configs/switch_panel.h` and applied when there are no rules in NVS (first boot) or after a factory reset.
 
-### 13.3 Adding / Editing Rules at Runtime
+### 14.3 Adding / Editing Rules at Runtime
 
 Use the **Rules** tab in the web console — no CLI alias exists for rule editing. The editor presents dropdowns for trigger ID, byte index, expected value, mask, action kind, and args.
 
 To factory-reset all rules to compiled defaults, use the **Reset to Defaults** button in the Rules tab.
 
-### 13.4 Set Relay Safety Timeout
+### 14.4 Set Relay Safety Timeout
 
 ```
 :cfgrelay <relay_index> maxon <milliseconds> [!]
@@ -847,7 +1066,7 @@ Changes without `!` are RAM-only and lost on reboot. Save with:
 
 ---
 
-## 14. CAN Frame Reference
+## 15. CAN Frame Reference
 
 | ID | Name | Direction | Payload |
 |----|------|-----------|---------|
@@ -885,7 +1104,7 @@ Changes without `!` are RAM-only and lost on reboot. Save with:
 
 ---
 
-## 15. Bench Mode vs Production Mode
+## 16. Bench Mode vs Production Mode
 
 | | Bench Mode | Production Mode |
 |---|---|---|
@@ -900,7 +1119,7 @@ Both nodes must always match. A mismatch between `USE_CAN_TRANSCEIVER = 0` and `
 
 ---
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
 ### CAN Bus Not Working
 
@@ -946,6 +1165,36 @@ Both nodes must always match. A mismatch between `USE_CAN_TRANSCEIVER = 0` and `
 - The frame log will show `[via wifi]` on received frames when the wired bus is cut and ESP-NOW is carrying traffic.
 - Check "force wifi-only" in the web UI header to simulate a wire failure without disconnecting anything.
 
-### GPIO 13 (SW6) Misbehaves at Boot
+### GPIO 13 (SW6 or ECU mode switch) Misbehaves at Boot
 
-GPIO 13 is a strapping pin on some ESP32 modules. If SW6 triggers spurious events during power-on, move it to another GPIO and update `INPUT_PINS_INIT` in `firmware/configs/switch_panel.h`.
+GPIO 13 is a strapping pin on some ESP32 modules. If SW6 on the switch panel triggers spurious events during power-on, move it to another GPIO and update `INPUT_PINS_INIT` in `firmware/configs/switch_panel.h`. On the ECU node, the mode switch uses GPIO 13 — use a normally-open switch so the pin is pulled HIGH (injection mode) by default at boot. You can switch to carb mode via CAN after boot.
+
+### ECU Node: Engine Reads Rich/Lean Across All RPM
+
+If the AFR is consistently off at all RPM and load points (not just at one corner of the map), the `BASE_PW` is wrong. Check the boot log for the computed value (`[ecu] base_pw=XXXX us`) and verify `ECU_DISPLACEMENT_CC`, `ECU_CYLINDERS`, and `ECU_INJ_CC_MIN` match your engine. Adjust `BASE_PW` at runtime via `CONFIG_WRITE` (target=0x04, key=0x53) without reflashing.
+
+### ECU Node: Short-Term Fuel Trim Rails at ±30%
+
+STFT hitting its limit means `BASE_PW` needs adjustment — the loop cannot correct far enough. Trim at +30% = lean (increase `BASE_PW`); at −30% = rich (decrease it). The ECU_DATA frame (0x307) flags byte shows `bit0=closed_loop` and `bit1=enriching` — watch these in the web console frame log.
+
+### ECU Node: No RPM Reading
+
+- Confirm the external 10 kΩ pull-up from GPIO 34 to 3.3V is present. GPIO 34 has no internal pull-up; without it the pin floats and may count noise or read nothing.
+- Verify the PC817C LED side: the optocoupler LED must conduct on every coil fire. At cranking speeds, touching a finger to the optocoupler should feel slightly warm. Cold and no RPM = LED not conducting (wrong resistor, reversed polarity, or wrong coil tap).
+- On HEI distributors, the coil negative terminal may not see a clean square wave — try tapping the tach output terminal on the distributor cap instead.
+
+### ECU Node: Analog Readings All Zero or Stuck
+
+This is usually the ADC2 conflict. If `USE_WIFI 1` is set, ADC2 pins are locked out by the radio hardware. Confirm all analog sensor GPIOs are on ADC1 (32–39). Also confirm the voltage divider is correctly wired: with no sensor connected, the ADC pin should read roughly 1.65V (midpoint of the divider) — if it reads 0V or 3.3V the divider is open or shorted.
+
+### ECU Node: Injectors Fire Continuously or Not at All
+
+- **Continuous:** Check the gate pull-down resistor (10 kΩ from gate to GND). A floating gate can latch the MOSFET on. Verify the IRLZ44N is logic-level — a standard IRFZ44N may be partially on at 3.3V and dissipate heat even at "off" duty.
+- **Not firing:** Confirm injector power (+12V fused) reaches the injector positive terminal. Measure drain-to-source voltage with the injector unplugged — at pulse time it should switch from ~12V to ~0V. No switch = MOSFET not turning on; check gate voltage and confirm it is an IRLZ44N.
+- **Flyback diode:** A missing or backwards flyback diode will destroy the MOSFET in short order. Verify cathode (banded end of 1N5822) connects to +12V and anode connects to the MOSFET drain.
+
+### ECU Node: WBO2 Reads Wrong AFR
+
+- Check that `WBO2_MIN_V` and `WBO2_MAX_V` in `ecu_node.h` are set to the voltage **at the ADC pin after the 2:1 divider**, not the raw controller output. For an Innovate LC-2 outputting 0–5V, these should be 0.0 and 2.5.
+- Verify the wideband controller is warmed up (LC-2 takes ~60 seconds to reach operating temperature; it outputs a fixed voltage during warm-up).
+- At idle near stoich, the ADC pin should read approximately (14.7 − WBO2_MIN_AFR) / (WBO2_MAX_AFR − WBO2_MIN_AFR) × 2.5V. Cross-check with a multimeter.

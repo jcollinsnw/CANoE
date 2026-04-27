@@ -43,6 +43,11 @@
                                         //   cmd 0x03: fuel cut   (arg0: 0=off 1=on)
                                         //   cmd 0x04: reset fuel trim
 
+// Node presence heartbeat — every node broadcasts this every 5 s.
+// data[0]=node_id, data[1]=peer_count, data[2]=can_ok (0/1)
+// The web UI uses data[0] to identify the sender so all nodes share one CAN ID.
+#define CAN_ID_NODE_ANNOUNCE     0x0F0
+
 // Config-over-CAN — change behavior at runtime without reflashing.
 #define CAN_ID_CONFIG_WRITE      0x400
 #define CAN_ID_CONFIG_READ_REQ   0x401

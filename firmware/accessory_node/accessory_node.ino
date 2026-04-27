@@ -206,6 +206,7 @@ void setup() {
 #ifdef ENABLE_BUZZER
   buzzer_startup();
 #endif
+  lcd_set_event("Ready");
 }
 
 void loop() {
@@ -264,6 +265,21 @@ void loop() {
     } else if (f.id == CAN_ID_RELAY_CMD && f.dlc >= 2) {
       uint8_t mask = f.data[0], state = f.data[1];
       g_relay_mirror = (g_relay_mirror & ~mask) | (state & mask);
+      {
+        char msg[17];
+        if (mask == 0x3F && state == 0) {
+          lcd_set_event("All OFF");
+        } else {
+          for (uint8_t i = 0; i < 6; i++) {
+            if (mask & (1u << i)) {
+              snprintf(msg, sizeof(msg), "%.10s %s",
+                       lcd_relay_label(i), (state & (1u << i)) ? "ON" : "OFF");
+              lcd_set_event(msg);
+              break;
+            }
+          }
+        }
+      }
     }
 
     // WiFi / AP / ESP-NOW enable-disable — handled on every node that has WiFi.
@@ -335,29 +351,65 @@ void loop() {
   if (now - last_can_check >= 2000) {
     last_can_check = now;
     if (bus_twai_check()) {
+      bool can_up = bus_twai_running();
 #ifdef ENABLE_LCD
       lcd_update_status();
 #endif
+      lcd_set_event(can_up ? "CAN ok" : "CAN down");
 #ifdef ENABLE_BUZZER
-      if (bus_twai_running()) buzzer_can_up();
-      else                    buzzer_can_down();
+      if (can_up) buzzer_can_up();
+      else        buzzer_can_down();
 #endif
     }
   }
 
-  // ESP-NOW peer count changes — pitch rises with each new peer, falls as they drop off.
-  static uint8_t last_peer_count = 0;
+  // ESP-NOW peer presence changes — show which named nodes came/went.
+  static uint8_t last_peer_bitmap = 0;
   {
-    uint8_t pc = bus_peer_count();
-    if (pc != last_peer_count) {
-      last_peer_count = pc;
+    uint8_t bm = bus_peer_node_bitmap();
+    if (bm != last_peer_bitmap) {
+      uint8_t pc      = __builtin_popcount(bm);
+      uint8_t changed = bm ^ last_peer_bitmap;
+      last_peer_bitmap = bm;
 #ifdef ENABLE_LCD
       lcd_update_status();
 #endif
+      {
+        // Short display names indexed by node_id (0x01–0x04)
+        static const char* const PEER_NAME[] = { "", "sw", "relay", "viper", "ecu" };
+        char msg[17] = {};
+        if (bm == 0) {
+          strncpy(msg, "No peers", sizeof(msg) - 1);
+        } else if (__builtin_popcount(changed) == 1) {
+          // Single node changed — name it and say online/offline
+          uint8_t bit = __builtin_ctz(changed);
+          bool came_on = !!(bm & (1u << bit));
+          const char* nm = (bit >= 1 && bit <= 4) ? PEER_NAME[bit] : "node";
+          snprintf(msg, sizeof(msg), "%s %s", nm, came_on ? "online" : "offline");
+        } else {
+          // Multiple changes — list count then all active nodes
+          int pos = snprintf(msg, sizeof(msg), "%u:", pc);
+          for (uint8_t i = 1; i <= 4 && pos < 16; i++) {
+            if (bm & (1u << i))
+              pos += snprintf(msg + pos, sizeof(msg) - pos, " %s", PEER_NAME[i]);
+          }
+        }
+        lcd_set_event(msg);
+      }
 #ifdef ENABLE_BUZZER
       buzzer_peer_count(pc);
 #endif
     }
+  }
+
+  // Node announce heartbeat — lets every peer know we're alive.
+  // All nodes broadcast on the same CAN ID; data[0] carries the node_id so
+  // the web UI can identify the sender without per-node CAN IDs.
+  static uint32_t last_announce = 0;
+  if (now - last_announce >= 5000) {
+    last_announce = now;
+    uint8_t ann[3] = { NODE_ID, bus_peer_count(), (uint8_t)(bus_can_healthy() ? 1 : 0) };
+    bus_tx(CAN_ID_NODE_ANNOUNCE, ann, 3);
   }
 
   // Brief yield for switch panel input polling responsiveness
