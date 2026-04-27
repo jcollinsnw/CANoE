@@ -164,6 +164,9 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
   .net-node { background: #0f1a24; border: 1px solid #1e2a38; border-radius: 8px;
               padding: 14px; transition: border-color .3s; }
   .net-node.online { border-color: #253a25; }
+  .net-node.unknown { border-color: #3a2c00; }
+  .nn-led.on.unknown { background: #d4a020; border-color: #a07010; box-shadow: 0 0 6px #805010; }
+  .nn-pill.unknown { border-color: #504a00; color: #d4a020; background: #130f00; }
   .nn-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
   .nn-led { width: 10px; height: 10px; border-radius: 50%;
             background: #2a3a4a; border: 2px solid #1a2a38; flex-shrink: 0; }
@@ -245,7 +248,7 @@ let serialCursor = 0;
 let activeTab = 'can';
 let history  = [];
 let histIdx  = -1;
-let statusData = { can_ok: false, wifi_peer: false, peer_nodes: 0 };
+let statusData = { can_ok: false, wifi_peer: false, peer_nodes: 0, peer_ids: [] };
 
 // ---------- tabs ----------
 function switchTab(tab) {
@@ -834,6 +837,7 @@ const FRAME_TO_NID = {};
 for (const n of KNOWN_NODES) for (const id of n.txIds) FRAME_TO_NID[id] = n.id;
 
 const netState = {};
+const unknownFrameIds = {}; // fid → { lastMs, src } for CAN IDs not in FRAME_TO_NID
 
 function netObserveAnnounce(nid, src) {
   if (!netState[nid]) netState[nid] = { lastMs: 0, canMs: 0, wifiMs: 0 };
@@ -846,7 +850,10 @@ function netObserveAnnounce(nid, src) {
 function netObserve(fid, src, out) {
   if (out) return;
   const nid = FRAME_TO_NID[fid];
-  if (!nid) return;
+  if (!nid) {
+    unknownFrameIds[fid] = { lastMs: Date.now(), src };
+    return;
+  }
   if (!netState[nid]) netState[nid] = { lastMs: 0, canMs: 0, wifiMs: 0 };
   const s = netState[nid];
   s.lastMs = Date.now();
@@ -902,6 +909,60 @@ function renderNetwork() {
     h += '</div>';
   }
   h += '</div>';
+
+  // Unknown nodes: nids seen via announce or peer_ids that aren't in KNOWN_NODES
+  const knownIds = new Set(KNOWN_NODES.map(n => n.id));
+  const foreignIds = new Set();
+  for (const nid of Object.keys(netState).map(Number)) {
+    if (!knownIds.has(nid) && netState[nid].lastMs && (now - netState[nid].lastMs) < NET_TTL)
+      foreignIds.add(nid);
+  }
+  for (const nid of (statusData.peer_ids || [])) {
+    if (!knownIds.has(nid)) foreignIds.add(nid);
+  }
+  if (foreignIds.size) {
+    h += '<div class="net-grid" style="margin-top:10px">';
+    for (const nid of foreignIds) {
+      const st     = netState[nid] || {};
+      const peerBit = !!(statusData.peer_nodes & (1 << nid));
+      const canOk  = !!(st.canMs  && (now - st.canMs)  < NET_TTL);
+      const wifiOk = peerBit || !!(st.wifiMs && (now - st.wifiMs) < NET_TTL);
+      const lastSeen = st.lastMs ? ((now - st.lastMs) / 1000).toFixed(1) + 's ago' : 'active peer';
+      h += '<div class="net-node online unknown">';
+      h +=   '<div class="nn-header">';
+      h +=     '<div class="nn-led on unknown"></div>';
+      h +=     '<div class="nn-name">unknown</div>';
+      h +=     `<div class="nn-id">0x${nid.toString(16).padStart(2,'0')}</div>`;
+      h +=   '</div>';
+      h +=   '<div class="nn-role">Unrecognized node</div>';
+      h +=   '<div class="nn-meta"><div class="nn-transports">';
+      h +=     `<span class="nn-pill${canOk  ? ' can'  : ''}">CAN</span>`;
+      h +=     `<span class="nn-pill${wifiOk ? ' wifi' : ''}">WiFi</span>`;
+      h +=     '<span class="nn-pill unknown">?</span>';
+      h +=   `</div><span class="nn-last">${lastSeen}</span></div>`;
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  // Unknown CAN frame IDs — CAN traffic from devices not in KNOWN_NODES
+  const recentUnknown = Object.entries(unknownFrameIds)
+    .filter(([, v]) => (now - v.lastMs) < NET_TTL);
+  if (recentUnknown.length) {
+    h += '<div class="net-grid" style="margin-top:10px"><div class="net-node online unknown">';
+    h +=   '<div class="nn-header">';
+    h +=     '<div class="nn-led on unknown"></div>';
+    h +=     '<div class="nn-name">foreign traffic</div>';
+    h +=     '<div class="nn-id">CAN</div>';
+    h +=   '</div>';
+    h +=   '<div class="nn-role">Unrecognized CAN frame IDs</div>';
+    h +=   '<div class="nn-ids">';
+    for (const [fid, v] of recentUnknown)
+      h += `<span class="nn-frid" title="${v.src}">0x${Number(fid).toString(16).toUpperCase()}</span>`;
+    h +=   '</div>';
+    h += '</div></div>';
+  }
+
   panel.innerHTML = h;
 }
 

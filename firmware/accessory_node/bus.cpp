@@ -283,6 +283,16 @@ uint8_t bus_peer_count() {
   return n;
 }
 
+uint8_t bus_get_peer_ids(uint8_t* out, uint8_t max) {
+  uint32_t now = millis();
+  uint8_t n = 0;
+  for (int i = 0; i < 8 && n < max; i++) {
+    if (g_peers[i].node_id && (now - g_peers[i].last_seen_ms) < PEER_TIMEOUT_MS)
+      out[n++] = g_peers[i].node_id;
+  }
+  return n;
+}
+
 // Bitmask of active ESP-NOW peer node IDs seen within PEER_TIMEOUT_MS.
 // Bit N is set if node 0xN has been heard from recently (nodes are 0x01-0x04).
 uint8_t bus_peer_node_bitmap() {

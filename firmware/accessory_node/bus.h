@@ -36,6 +36,7 @@ bool    bus_can_healthy();
 bool    bus_wifi_seen_peer();
 uint8_t bus_peer_count();          // number of distinct ESP-NOW peers seen within the last ~6 s
 uint8_t bus_peer_node_bitmap();    // bitmask: bit N set if node 0xN is an active ESP-NOW peer
+uint8_t bus_get_peer_ids(uint8_t* out, uint8_t max); // fills out[] with all active peer node_ids; returns count
 bool    bus_twai_running(); // current cached TWAI state (updated by bus_twai_check())
 bool bus_twai_check();    // run TWAI health check + bus-off recovery; returns true if health changed
 enum BusTxMode : uint8_t {
