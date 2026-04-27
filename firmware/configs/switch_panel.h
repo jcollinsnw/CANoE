@@ -99,9 +99,6 @@
 // default characters (\xFF block = ON, '-' = OFF).
 
 #define RELAY_1_LABEL    "Headlights"
-#define RELAY_1_ICON_ON  {0b10101, 0b10101, 0b10101, 0b00000, 0b11111, 0b11111, 0b01110, 0b00000}
-#define RELAY_1_ICON_OFF {0b00000, 0b00000, 0b00000, 0b11111, 0b10001, 0b11111, 0b01110, 0b00000}
-
 #define RELAY_2_LABEL    "Fuel Pump"
 #define RELAY_3_LABEL    "Choke"
 #define RELAY_5_LABEL    "Horn"
