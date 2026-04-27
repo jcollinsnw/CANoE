@@ -19,7 +19,7 @@
 #define AP_HIDDEN   0
 
 // ---- Features enabled on this node ----
-#define ENABLE_SWITCHES   // 6 latching switches + 4 buttons + encoder
+#define ENABLE_SWITCHES   // 3 latching switches + 7 buttons + encoder
 #define ENABLE_LCD        // HD44780 16x2 via PCF8574 I2C backpack
 #define ENABLE_MENU       // LCD menu system (requires ENABLE_LCD)
 #define ENABLE_BUZZER     // passive piezo on BUZZER_PIN
@@ -35,11 +35,24 @@
 #define LED_ACTIVE_HIGH   true  // LED anode to GPIO via resistor, cathode to GND
 
 // ---- Switch / button inputs ----
-// First NUM_SWITCHES entries are latching switches; rest are momentary buttons.
+// First NUM_SWITCHES entries are latching (toggle) switches; rest are momentary buttons.
 // GPIO 36 and 39 are input-only with no internal pull-up — wire a 10kΩ resistor
 // from each pin to 3V3 and connect the button between pin and GND.
-#define NUM_SWITCHES      6
-#define NUM_BUTTONS       4
+// GPIO 13 is a strapping pin; if it misbehaves at boot move it to a spare GPIO.
+//
+// Index → GPIO → role
+//   0  GPIO 25  SW1  Fuel Pump     (latching switch → relay 2 follows)
+//   1  GPIO 26  SW2  Carb Choke    (latching switch → relay 3 follows)
+//   2  GPIO 27  SW3  spare switch
+//   3  GPIO 32  BTN1 Menu          (short = select, long = enter/back)
+//   4  GPIO 33  BTN2 Horn          (hold = relay 5 on, release = off)
+//   5  GPIO 13  BTN3 Headlights    (press = toggle relay 1)
+//   6  GPIO 14  BTN4 All Off       (press = all relays off)
+//   7  GPIO 18  BTN5 spare button
+//   8  GPIO 36  BTN6 spare button  (ext 10kΩ pull-up to 3V3 required)
+//   9  GPIO 39  BTN7 spare button  (ext 10kΩ pull-up to 3V3 required)
+#define NUM_SWITCHES      3
+#define NUM_BUTTONS       7
 #define INPUT_PINS_INIT   {25, 26, 27, 32, 33, 13, 14, 18, 36, 39}
 
 // ---- Rotary encoder ----
@@ -89,10 +102,14 @@
 #define RELAY_1_ICON_ON  {0b10101, 0b10101, 0b10101, 0b00000, 0b11111, 0b11111, 0b01110, 0b00000}
 #define RELAY_1_ICON_OFF {0b00000, 0b00000, 0b00000, 0b11111, 0b10001, 0b11111, 0b01110, 0b00000}
 
+#define RELAY_2_LABEL    "Fuel Pump"
+#define RELAY_3_LABEL    "Choke"
+#define RELAY_5_LABEL    "Horn"
+
 // ---- RPM ----
 // Frame handler + redline config enabled; LCD bar widget is disabled until hardware is ready.
 // To re-enable the bar: add RPM_WIDGET_ROW 0, RPM_WIDGET_COL <col>, RPM_WIDGET_WIDTH <w>.
-#define ENABLE_RPM
+// #define ENABLE_RPM
 #define RPM_REDLINE 6500
 
 // ---- Rules engine ----
@@ -111,24 +128,25 @@
 #define MAX_RULES 16
 
 #define RULES_DEFAULT_INIT {                                                              \
-  /* Latching switches → relay toggles */                                                 \
-  RULE(TRIG_SW_PRESS(0),      ACT_RELAY_TOGGLE(0)),  /* SW1 → R1 */                     \
-  RULE(TRIG_SW_PRESS(1),      ACT_RELAY_TOGGLE(1)),  /* SW2 → R2 */                     \
-  RULE(TRIG_SW_PRESS(2),      ACT_RELAY_TOGGLE(2)),  /* SW3 → R3 */                     \
-  RULE(TRIG_SW_PRESS(3),      ACT_RELAY_TOGGLE(3)),  /* SW4 → R4 */                     \
-  /* SW5: hold-style (horn) — relay on while switch held, off on release */               \
-  RULE(TRIG_SW_PRESS(4),      ACT_RELAY_ON(4)),      /* SW5 press   → R5 on  */         \
-  RULE(TRIG_SW_RELEASE(4),    ACT_RELAY_OFF(4)),     /* SW5 release → R5 off */         \
-  /* SW6: relay follows switch position (relay controller MAX_ON_MS caps run time) */     \
-  RULE(TRIG_SW_PRESS(5),      ACT_RELAY_ON(5)),      /* SW6 on  → R6 on  */             \
-  RULE(TRIG_SW_RELEASE(5),    ACT_RELAY_OFF(5)),     /* SW6 off → R6 off */             \
-  /* BTN1: LCD menu navigation */                                                         \
-  RULE(TRIG_SW_PRESS(6),      ACT_MENU_SELECT()),    /* BTN1 short → menu select */     \
-  RULE(TRIG_SW_LONG(6),       ACT_MENU_ENTER()),     /* BTN1 long  → menu enter */      \
-  /* BTN2: all relays off */                                                              \
-  RULE(TRIG_SW_PRESS(7),      ACT_ALL_OFF()),        /* BTN2 → all off */               \
-  /* Status LEDs mirror relay 1 state */                                                  \
-  RULE(TRIG_RELAY_BIT_ON(0),  ACT_LED_ON(NODE_ID, 0)),  /* R1 on  → LED1 on  */        \
-  RULE(TRIG_RELAY_BIT_OFF(0), ACT_LED_OFF(NODE_ID, 0)), /* R1 off → LED1 off */        \
-  /* BTN3 and BTN4 publish SW_PRESS only — add rules here to give them actions */        \
+  /* SW1 (idx 0) — Fuel Pump: relay follows switch position */                           \
+  RULE(TRIG_SW_PRESS(0),      ACT_RELAY_ON(1)),      /* SW1 on  → R2 on  */            \
+  RULE(TRIG_SW_RELEASE(0),    ACT_RELAY_OFF(1)),     /* SW1 off → R2 off */            \
+  /* SW2 (idx 1) — Carb Choke: relay follows switch position */                          \
+  RULE(TRIG_SW_PRESS(1),      ACT_RELAY_ON(2)),      /* SW2 on  → R3 on  */            \
+  RULE(TRIG_SW_RELEASE(1),    ACT_RELAY_OFF(2)),     /* SW2 off → R3 off */            \
+  /* SW3 (idx 2) — spare; add rules here */                                              \
+  /* BTN1 (idx 3) — Menu navigation */                                                   \
+  RULE(TRIG_SW_PRESS(3),      ACT_MENU_SELECT()),    /* BTN1 short → menu select */    \
+  RULE(TRIG_SW_LONG(3),       ACT_MENU_ENTER()),     /* BTN1 long  → menu enter/back */\
+  /* BTN2 (idx 4) — Horn: hold-style (relay on while held, off on release) */           \
+  RULE(TRIG_SW_PRESS(4),      ACT_RELAY_ON(4)),      /* BTN2 press   → R5 on  */       \
+  RULE(TRIG_SW_RELEASE(4),    ACT_RELAY_OFF(4)),     /* BTN2 release → R5 off */       \
+  /* BTN3 (idx 5) — Headlights: momentary press toggles relay */                        \
+  RULE(TRIG_SW_PRESS(5),      ACT_RELAY_TOGGLE(0)), /* BTN3 → toggle R1 */            \
+  /* BTN4 (idx 6) — All Off */                                                           \
+  RULE(TRIG_SW_PRESS(6),      ACT_ALL_OFF()),        /* BTN4 → all relays off */       \
+  /* Status LED 1 mirrors headlights (relay 1) */                                        \
+  RULE(TRIG_RELAY_BIT_ON(0),  ACT_LED_ON(NODE_ID, 0)),  /* R1 on  → LED1 on  */       \
+  RULE(TRIG_RELAY_BIT_OFF(0), ACT_LED_OFF(NODE_ID, 0)), /* R1 off → LED1 off */       \
+  /* BTN5–BTN7 (idx 7–9) — spare; add rules here */                                     \
 }
