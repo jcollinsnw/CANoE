@@ -30,22 +30,22 @@ HTMLDST := $(SKETCH)/index_html.h
 relay_controller:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/relay_controller.h $(SKETCH)/node_config.h
-	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
 switch_panel:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/switch_panel.h $(SKETCH)/node_config.h
-	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
 viper_interface:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/viper_interface.h $(SKETCH)/node_config.h
-	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
 ecu_node:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/ecu_node.h $(SKETCH)/node_config.h
-	arduino-cli compile --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
 # ---- compile all four ----
 .PHONY: all
