@@ -109,6 +109,15 @@ void setup() {
 
   setup_can();
 
+  // NVS may override the compile-time NODE_ID (via CFG_KEY_NODE_ID).
+  uint8_t eff_id;
+  {
+    Preferences p; p.begin(NVS_NAMESPACE, true);
+    eff_id = p.getUChar("node_id", NODE_ID);
+    p.end();
+  }
+  if (eff_id != NODE_ID) wlog("[boot] node_id overridden: 0x%02X -> 0x%02X\n", NODE_ID, eff_id);
+
 #if USE_WIFI
   {
     Preferences p; p.begin(NVS_NAMESPACE, true);
@@ -124,25 +133,25 @@ void setup() {
     p.end();
 
     if (ap_en && espnow_en) {
-      webui_init(NODE_NAME, NODE_ID);
-      bus_init(NODE_ID);
+      webui_init(NODE_NAME, eff_id);
+      bus_init(eff_id);
     } else if (ap_en) {
       // AP + web UI up, but ESP-NOW radio disabled.
-      webui_init(NODE_NAME, NODE_ID);
-      bus_init_no_wifi(NODE_ID);
+      webui_init(NODE_NAME, eff_id);
+      bus_init_no_wifi(eff_id);
       wlogln("[boot] ESP-NOW disabled by config");
     } else if (espnow_en) {
       // ESP-NOW only — WiFi in STA mode on ch6, no AP, no web server.
-      bus_init_no_ap(NODE_ID);
+      bus_init_no_ap(eff_id);
       wlogln("[boot] AP disabled, ESP-NOW only");
     } else {
       // WiFi radio completely off.
       wlogln("[boot] WiFi radio disabled by config");
-      bus_init_no_wifi(NODE_ID);
+      bus_init_no_wifi(eff_id);
     }
   }
 #else
-  bus_init_no_wifi(NODE_ID);
+  bus_init_no_wifi(eff_id);
 #endif
 
 // I2C — initialize once for all modules that share the bus (LCD, MPU-6050).
@@ -285,9 +294,19 @@ void loop() {
     // WiFi / AP / ESP-NOW enable-disable — handled on every node that has WiFi.
 #if USE_WIFI
     if (f.id == CAN_ID_CONFIG_WRITE && f.dlc >= 5 &&
-        (f.data[0] == NODE_ID || f.data[0] == CFG_TARGET_BROADCAST)) {
+        (f.data[0] == bus_node_id() || f.data[0] == CFG_TARGET_BROADCAST)) {
       uint8_t key = f.data[1];
-      if (key == CFG_KEY_WIFI_ENABLED ||
+      if (key == CFG_KEY_NODE_ID && f.data[0] == bus_node_id()) {
+        // Broadcast not allowed — reassigning all nodes to the same ID is chaos.
+        uint8_t new_id = f.data[4];
+        if (new_id >= 0x01 && new_id <= 0xFE) {
+          Preferences p; p.begin(NVS_NAMESPACE, false);
+          p.putUChar("node_id", new_id);
+          p.end();
+          wlog("[cfg] node_id 0x%02X -> 0x%02X -> restart\n", bus_node_id(), new_id);
+          delay(100); ESP.restart();
+        }
+      } else if (key == CFG_KEY_WIFI_ENABLED ||
           key == CFG_KEY_AP_ENABLED   ||
           key == CFG_KEY_ESPNOW_ENABLED) {
         bool en = (f.data[4] != 0);
@@ -408,7 +427,7 @@ void loop() {
   static uint32_t last_announce = 0;
   if (now - last_announce >= 5000) {
     last_announce = now;
-    uint8_t ann[3] = { NODE_ID, bus_peer_count(), (uint8_t)(bus_can_healthy() ? 1 : 0) };
+    uint8_t ann[3] = { bus_node_id(), bus_peer_count(), (uint8_t)(bus_can_healthy() ? 1 : 0) };
     bus_tx(CAN_ID_NODE_ANNOUNCE, ann, 3);
   }
 

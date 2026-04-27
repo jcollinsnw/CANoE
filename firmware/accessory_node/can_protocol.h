@@ -195,6 +195,7 @@ struct CanRule {
 
 // Keys — what piece of config is being addressed.
 //   Relay controller side:
+#define CFG_KEY_NODE_ID           0x01   // data[4] = new node_id (0x01-0xFE); node restarts. Broadcast target NOT accepted.
 #define CFG_KEY_RELAY_MAX_ON_MS   0x20   // per-relay safety auto-off (0 = no limit)
 #define CFG_KEY_RPM_REDLINE       0x40   // RPM redline for display widget; arg2_lo/hi = RPM uint16
 #define CFG_KEY_ECU_MODE          0x51   // 0=carb, 1=inject; arg[4]=value, flags bit0=persist

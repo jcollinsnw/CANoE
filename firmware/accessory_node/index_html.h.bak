@@ -182,6 +182,13 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
   .nn-pill.wifi { border-color: #1a4a6a; color: #1ab4ff; background: #061320; }
   .nn-pill.self { border-color: #504a00; color: #ffd166; background: #130f00; }
   .nn-last { font-size: 10px; color: #4a5a6a; white-space: nowrap; }
+  .nid-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .nid-current { font-family: monospace; font-size: 13px; color: #9bd770; background: #091508;
+                 border: 1px solid #355e1f; border-radius: 4px; padding: 2px 8px; }
+  .nid-input { width: 70px; background: #0b0f14; color: #cfe2b0; border: 1px solid #2a3a4a;
+               border-radius: 4px; padding: 4px 8px; font-family: monospace; font-size: 13px; }
+  .nid-input:focus { outline: none; border-color: #4a8040; }
+  .nid-hint { font-size: 11px; color: #4a5a6a; margin-top: 5px; }
   .nn-ids { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1a2a38;
             display: flex; flex-wrap: wrap; gap: 3px; }
   .nn-frid { font-size: 10px; font-family: ui-monospace, monospace; padding: 1px 5px;
@@ -405,6 +412,17 @@ function buildControlPanel() {
     h += '</div>';
   }
 
+  h += '<div class="ctrl-section">';
+  h += '<div class="ctrl-head">Node Settings</div>';
+  h += `<div class="nid-row">`;
+  h += `  <span style="color:#8a9aaa;font-size:12px">Node ID</span>`;
+  h += `  <span class="nid-current" id="nid-display">0x${nodeId.toString(16).padStart(2,'0')}</span>`;
+  h += `  <input type="text" id="nid-input" class="nid-input" placeholder="0x02" maxlength="4">`;
+  h += `  <button class="ctrl-btn" onclick="changeNodeId()">Reassign</button>`;
+  h += '</div>';
+  h += '<div class="nid-hint">Saves to NVS and restarts. Must be unique on the bus (0x01–0xFE). Use raw frame: <code>400 &lt;cur&gt; 01 00 00 &lt;new&gt; 00 00 01</code></div>';
+  h += '</div>';
+
   document.getElementById('control-panel').innerHTML = h;
   updateRelayTiles();
   updateSwitchDisplay();
@@ -421,6 +439,23 @@ async function initControl() {
 }
 
 // ---------- control actions ----------
+async function changeNodeId() {
+  const inp = document.getElementById('nid-input');
+  const val = inp.value.trim();
+  const newId = /^0x/i.test(val) ? parseInt(val, 16) : parseInt(val, 10);
+  if (isNaN(newId) || newId < 1 || newId > 0xFE) {
+    inp.style.borderColor = '#c04040'; return;
+  }
+  inp.style.borderColor = '';
+  const cur = nodeId.toString(16).padStart(2, '0');
+  const nxt = newId.toString(16).padStart(2, '0');
+  // CONFIG_WRITE: target=cur_id, key=0x01(CFG_KEY_NODE_ID), idx=0, kind=0, arg=new_id, lo=0, hi=0, flags=persist
+  await fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ frame: `400 ${cur} 01 00 00 ${nxt} 00 00 01` }) });
+  inp.value = ''; inp.placeholder = 'restarting…'; inp.disabled = true;
+  document.getElementById('nid-display').textContent = `0x${nxt} →`;
+}
+
 function toggleRelay(idx) {
   const on = (relayMask >> idx) & 1;
   const mask = 1 << idx;
