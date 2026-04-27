@@ -4,7 +4,7 @@
   <img src="logo.svg" alt="CANoE logo" width="420"/>
 </p>
 
-**Paddle your own canoe** — a maker-friendly, off-the-shelf microcontroller platform for wiring up anything with a 12V battery and opinions about fuel. Four ESP32 nodes ride a shared CAN bus, with ESP-NOW as a sixth sense when the wire gives up. Out of the box it handles a switch panel, a 6-relay fuse box, a Viper 5305V alarm bridge, and a dual-mode fuel controller that'll run a carburetor or a throttle-body injector setup — firing on all cylinders, no dealer visit required.
+**Paddle your own canoe** — a maker-friendly, off-the-shelf microcontroller platform for wiring up anything with a 12V battery and opinions about fuel. Four ESP32 nodes ride a shared CAN bus, with ESP-NOW as extra sensory perception when the wire gives up. Out of the box it handles a switch panel, a 6-relay fuse box, a Viper 5305V alarm bridge, and a dual-mode fuel controller that'll run a carburetor or a throttle-body injector setup — firing on all cylinders, no dealer visit required.
 
 Each node hosts its own browser-based web console, so you're always in the driver's seat whether you're tuning AFR targets, editing rules, or just watching raw CAN frames scroll by. ESP-NOW keeps every node talking even when the wired bus is underwater (metaphorically). The whole thing builds from one unified Arduino sketch — just pick a config header and go. No soldering iron talent required beyond "hot end goes on the pad."
 
