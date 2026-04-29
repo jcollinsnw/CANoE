@@ -85,17 +85,16 @@ All three nodes are compiled from the same unified sketch (`firmware/accessory_n
 ### Switch Panel Node
 | Qty | Part | Notes |
 |-----|------|-------|
-| 6 | Latching toggle or rocker switch | Normally open, one pole to GPIO, other to GND |
-| 4 | Momentary push-button | Same wiring as switches |
+| 3 | Latching toggle or rocker switch | Normally open, one pole to GPIO, other to GND |
+| 7 | Momentary push-button | Same wiring as switches |
 | 1 | Rotary encoder | CJMCU-111 (EC11-based); has onboard 3.3 kΩ pull-ups — connect module VCC to 3V3, no external resistors needed. No SW pin (see note below). |
-| 1 | Momentary push-button | Encoder select/back for menu system — wire to any free BTN GPIO (e.g. BTN1, GPIO 14) |
 | 1 | HD44780-compatible 16×2 LCD with PCF8574 I2C backpack | Default I2C address 0x27; try 0x3F if blank |
 | 1 | 100 µF electrolytic capacitor, 10 V+ | Decoupling cap across LCD module VCC/GND — prevents HD44780 from losing state on power glitches |
 | 1 | Passive piezo buzzer | 3.3 V-compatible; positive leg to GPIO 16 (optionally via 100Ω series resistor), negative to GND |
 | 1 | 100 Ω resistor, ¼ W *(optional)* | Series resistor on buzzer positive leg to reduce volume |
 | 3 | LED (any colour, 3 mm or 5 mm) | Status LEDs on GPIO 17, 19, 23; controlled over CAN |
 | 3 | 330 Ω resistor, ¼ W | Series resistor for each LED (adjust for desired brightness) |
-| 2 | 10 kΩ resistor, ¼ W | Pull-up to 3V3 for BTN3 (GPIO 36) and BTN4 (GPIO 39) — these pins have no internal pull-up |
+| 2 | 10 kΩ resistor, ¼ W | Pull-up to 3V3 for BTN6 (GPIO 36) and BTN7 (GPIO 39) — these pins have no internal pull-up |
 
 ### Relay Controller Node
 | Qty | Part | Notes |
@@ -131,29 +130,29 @@ See [§6.2 ECU Node Bill of Materials](#62-ecu-node-bill-of-materials) for the f
 | 3V3 | 3V3 | Transceiver VCC (if using TJA1051T) |
 | GND | GND | Transceiver GND |
 
-### 3.2 Switches (SW1–SW6, latching)
+### 3.2 Switches (SW1–SW3, latching)
 
 All switch inputs use internal INPUT_PULLUP. Wire one terminal to the ESP32 GPIO and the other to GND. Switch closed = LOW = pressed.
 
 | Label | ESP32 Pin | Default Rule |
 |-------|-----------|--------------|
-| SW1 | GPIO 25 | Press → toggle relay 1 |
-| SW2 | GPIO 26 | Press → toggle relay 2 |
-| SW3 | GPIO 27 | Press → toggle relay 3 |
-| SW4 | GPIO 32 | Press → toggle relay 4 |
-| SW5 | GPIO 33 | Press → relay 5 ON; Release → relay 5 OFF (HOLD / horn) |
-| SW6 | GPIO 13 | Configurable. **GPIO 13 is a strapping pin — move to another GPIO if you see boot problems** |
+| SW1 | GPIO 25 | ON → relay 2 ON (fuel pump); OFF → relay 2 OFF |
+| SW2 | GPIO 26 | ON → relay 3 ON (choke); OFF → relay 3 OFF |
+| SW3 | GPIO 27 | Spare — add rules in `switch_panel.h` |
 
-### 3.3 Buttons (BTN1–BTN4, momentary)
+### 3.3 Buttons (BTN1–BTN7, momentary)
 
-Same wiring as switches: one pin to GPIO, other to GND.
+Same wiring as switches: one pin to GPIO, other to GND. GPIO 36 and 39 have no internal pull-up — see §3.8.
 
 | Label | ESP32 Pin | Default Rule |
 |-------|-----------|--------------|
-| BTN1 | GPIO 14 | Long-press → enter menu; short-press in menu → select |
-| BTN2 | GPIO 18 | Press → all 6 relays off |
-| BTN3 | GPIO 36 | Configurable (EVENT_ONLY by default) |
-| BTN4 | GPIO 39 | Configurable (EVENT_ONLY by default) |
+| BTN1 | GPIO 32 | Hold → relay 5 ON (horn); release → relay 5 OFF |
+| BTN2 | GPIO 33 | Press → toggle relay 1 (headlights) |
+| BTN3 | GPIO 13 | Press → all relays off. **GPIO 13 is a strapping pin — move to a spare GPIO if you see boot problems** |
+| BTN4 | GPIO 14 | Long-press → enter/back menu; short-press → select |
+| BTN5 | GPIO 18 | Spare |
+| BTN6 | GPIO 36 | Spare (ext 10kΩ pull-up to 3V3 required) |
+| BTN7 | GPIO 39 | Spare (ext 10kΩ pull-up to 3V3 required) |
 
 All input-to-action mappings are driven by the **rules engine** (`RULES_DEFAULT_INIT` in `switch_panel.h`) and fully reassignable at runtime via the web console Rules tab.
 
@@ -161,7 +160,7 @@ All input-to-action mappings are driven by the **rules engine** (`RULES_DEFAULT_
 
 Module: **CJMCU-111** (EC11-based). Has onboard 3.3 kΩ pull-up resistors (marked `332`) on GA and GB — no external resistors required. Connect module VCC to the ESP32 3V3 rail.
 
-> **No SW pin:** The CJMCU-111 physically clicks when you press the shaft but the switch contact is not wired to any pin header on the PCB. BTN1 (GPIO 14) serves as the encoder button for the LCD menu system — long-press to enter/back, short-press to select.
+> **No SW pin:** The CJMCU-111 physically clicks when you press the shaft but the switch contact is not wired to any pin header on the PCB. BTN4 (GPIO 14) serves as the encoder button for the LCD menu system — long-press to enter/back, short-press to select.
 
 ```
 Encoder GA ──── GPIO 34   (onboard pull-up via module VCC)
@@ -254,18 +253,18 @@ Adjust the series resistor for your LED's forward voltage and desired brightness
 102 FF 07 07    # broadcast: all LEDs on all nodes that have ENABLE_LEDS
 ```
 
-### 3.8 BTN3 / BTN4 External Pull-ups
+### 3.8 BTN6 / BTN7 External Pull-ups
 
-BTN3 and BTN4 were moved to GPIO 36 and 39 to free GPIO 19 and 23 for LED outputs. These pins are input-only and have **no internal pull-up** on the ESP32 — the firmware's `INPUT_PULLUP` request is silently ignored.
+BTN6 and BTN7 use GPIO 36 and 39 — input-only pins with **no internal pull-up** on the ESP32. The firmware's `INPUT_PULLUP` request is silently ignored on these pins.
 
 Wire a 10kΩ resistor from each pin to 3V3:
 
 ```
-3V3 ──[10kΩ]──┬── GPIO 36   BTN3 connects pin to GND when pressed
-               └── BTN3
+3V3 ──[10kΩ]──┬── GPIO 36   BTN6 connects pin to GND when pressed
+               └── BTN6
 
-3V3 ──[10kΩ]──┬── GPIO 39   BTN4 connects pin to GND when pressed
-               └── BTN4
+3V3 ──[10kΩ]──┬── GPIO 39   BTN7 connects pin to GND when pressed
+               └── BTN7
 ```
 
 ### 3.9 Full Switch Panel Pin Summary
@@ -273,28 +272,28 @@ Wire a 10kΩ resistor from each pin to 3V3:
 ```
 ESP32 #1 (Switch Panel)
 ─────────────────────────────────────────
-3V3  ──── encoder VCC, BTN3/BTN4 10kΩ pull-ups
-GND  ──── switch commons, encoder GND, buzzer (–), LED cathodes
+3V3  ──── encoder VCC, BTN6/BTN7 10kΩ pull-ups
+GND  ──── switch/button commons, encoder GND, buzzer (–), LED cathodes
 GPIO 4   CAN RX  ←── CAN bus
 GPIO 5   CAN TX  ──→ CAN bus
-GPIO 13  SW6
-GPIO 14  BTN1  (encoder select/back button for menu)
+GPIO 13  BTN3  (All OFF — GPIO 13 is a strapping pin; move if boot issues)
+GPIO 14  BTN4  (menu select/back)
 GPIO 16  Buzzer (+)  via optional 100Ω series resistor
 GPIO 17  LED 1  ──→ 330Ω ──→ LED anode
-GPIO 18  BTN2  (All OFF)
+GPIO 18  BTN5  (spare)
 GPIO 19  LED 2  ──→ 330Ω ──→ LED anode
 GPIO 21  LCD SDA
 GPIO 22  LCD SCL
 GPIO 23  LED 3  ──→ 330Ω ──→ LED anode
-GPIO 25  SW1
-GPIO 26  SW2
-GPIO 27  SW3
-GPIO 32  SW4
-GPIO 33  SW5
+GPIO 25  SW1  (Fuel Pump)
+GPIO 26  SW2  (Choke)
+GPIO 27  SW3  (spare)
+GPIO 32  BTN1  (Horn — hold)
+GPIO 33  BTN2  (Headlights toggle)
 GPIO 34  ENC GA  (CJMCU-111 — no external pull-up needed)
 GPIO 35  ENC GB  (CJMCU-111 — no external pull-up needed)
-GPIO 36  BTN3   requires external 10kΩ pull-up to 3V3
-GPIO 39  BTN4   requires external 10kΩ pull-up to 3V3
+GPIO 36  BTN6  (spare — requires external 10kΩ pull-up to 3V3)
+GPIO 39  BTN7  (spare — requires external 10kΩ pull-up to 3V3)
 5V (VIN) LCD VCC
 ```
 

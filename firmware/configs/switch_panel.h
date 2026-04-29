@@ -44,10 +44,10 @@
 //   0  GPIO 25  SW1  Fuel Pump     (latching switch → relay 2 follows)
 //   1  GPIO 26  SW2  Carb Choke    (latching switch → relay 3 follows)
 //   2  GPIO 27  SW3  spare switch
-//   3  GPIO 32  BTN1 Menu          (short = select, long = enter/back)
-//   4  GPIO 33  BTN2 Horn          (hold = relay 5 on, release = off)
-//   5  GPIO 13  BTN3 Headlights    (press = toggle relay 1)
-//   6  GPIO 14  BTN4 All Off       (press = all relays off)
+//   3  GPIO 32  BTN1 Horn          (hold = relay 5 on, release = off)
+//   4  GPIO 33  BTN2 Headlights    (press = toggle relay 1)
+//   5  GPIO 13  BTN3 All Off       (press = all relays off)
+//   6  GPIO 14  BTN4 Menu          (short = select, long = enter/back)
 //   7  GPIO 18  BTN5 spare button
 //   8  GPIO 36  BTN6 spare button  (ext 10kΩ pull-up to 3V3 required)
 //   9  GPIO 39  BTN7 spare button  (ext 10kΩ pull-up to 3V3 required)
@@ -132,16 +132,16 @@
   RULE(TRIG_SW_PRESS(1),      ACT_RELAY_ON(2)),      /* SW2 on  → R3 on  */            \
   RULE(TRIG_SW_RELEASE(1),    ACT_RELAY_OFF(2)),     /* SW2 off → R3 off */            \
   /* SW3 (idx 2) — spare; add rules here */                                              \
-  /* BTN1 (idx 3) — Menu navigation */                                                   \
-  RULE(TRIG_SW_PRESS(3),      ACT_MENU_SELECT()),    /* BTN1 short → menu select */    \
-  RULE(TRIG_SW_LONG(3),       ACT_MENU_ENTER()),     /* BTN1 long  → menu enter/back */\
-  /* BTN2 (idx 4) — Horn: hold-style (relay on while held, off on release) */           \
-  RULE(TRIG_SW_PRESS(4),      ACT_RELAY_ON(4)),      /* BTN2 press   → R5 on  */       \
-  RULE(TRIG_SW_RELEASE(4),    ACT_RELAY_OFF(4)),     /* BTN2 release → R5 off */       \
-  /* BTN3 (idx 5) — Headlights: momentary press toggles relay */                        \
-  RULE(TRIG_SW_PRESS(5),      ACT_RELAY_TOGGLE(0)), /* BTN3 → toggle R1 */            \
-  /* BTN4 (idx 6) — All Off */                                                           \
-  RULE(TRIG_SW_PRESS(6),      ACT_ALL_OFF()),        /* BTN4 → all relays off */       \
+  /* BTN1 (idx 3) — Horn: hold-style (relay on while held, off on release) */           \
+  RULE(TRIG_SW_PRESS(3),      ACT_RELAY_ON(4)),      /* BTN1 press   → R5 on  */       \
+  RULE(TRIG_SW_RELEASE(3),    ACT_RELAY_OFF(4)),     /* BTN1 release → R5 off */       \
+  /* BTN2 (idx 4) — Headlights: momentary press toggles relay */                        \
+  RULE(TRIG_SW_PRESS(4),      ACT_RELAY_TOGGLE(0)), /* BTN2 → toggle R1 */            \
+  /* BTN3 (idx 5) — All Off */                                                           \
+  RULE(TRIG_SW_PRESS(5),      ACT_ALL_OFF()),        /* BTN3 → all relays off */       \
+  /* BTN4 (idx 6) — Menu navigation (same GPIO as old BTN1) */                          \
+  RULE(TRIG_SW_PRESS(6),      ACT_MENU_SELECT()),    /* BTN4 short → menu select */    \
+  RULE(TRIG_SW_LONG(6),       ACT_MENU_ENTER()),     /* BTN4 long  → menu enter/back */\
   /* Status LED 1 mirrors headlights (relay 1) */                                        \
   RULE(TRIG_RELAY_BIT_ON(0),  ACT_LED_ON(NODE_ID, 0)),  /* R1 on  → LED1 on  */       \
   RULE(TRIG_RELAY_BIT_OFF(0), ACT_LED_OFF(NODE_ID, 0)), /* R1 off → LED1 off */       \

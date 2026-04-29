@@ -16,6 +16,7 @@
 
 // ---- Features enabled on this node ----
 #define ENABLE_RELAY
+#define ENABLE_RULES
 // #define ENABLE_RPM
 
 // ---- Relay module ----
@@ -35,3 +36,12 @@
 // ---- Battery ADC ----
 #define VBAT_ADC_PIN        34
 #define VBAT_DIVIDER_RATIO  5.545f   // 10k + 2.2k divider; re-tune to your resistors
+
+// ---- Rules engine ----
+#define MAX_RULES 8
+
+#define RULES_DEFAULT_INIT {                                      \
+  /* On boot: turn on fuel pump (R2) and choke (R3) */           \
+  RULE(TRIG_BOOT(), ACT_RELAY_ON(1)),  /* boot → R2 (fuel pump) ON */ \
+  RULE(TRIG_BOOT(), ACT_RELAY_ON(2)),  /* boot → R3 (choke) ON  */    \
+}

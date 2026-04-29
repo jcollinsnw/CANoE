@@ -6,18 +6,22 @@
 # firmware for each node.
 #
 # Usage:
-#   make relay_controller                             # compile
-#   make switch_panel
-#   make viper_interface
-#   make all                                          # compile all three
-#   make upload-relay_controller  PORT=/dev/cu.usbserial-XXXX
-#   make upload-switch_panel      PORT=/dev/cu.usbserial-YYYY
-#   make upload-viper_interface   PORT=/dev/cu.usbserial-ZZZZ
-#   make monitor                  PORT=/dev/cu.usbserial-XXXX
+#   make relay                                        # compile
+#   make switch
+#   make viper
+#   make ecu
+#   make all                                          # compile all four
+#   make upload-relay   PORT=/dev/cu.usbserial-XXXX
+#   make upload-switch  PORT=/dev/cu.usbserial-YYYY
+#   make upload-viper   PORT=/dev/cu.usbserial-ZZZZ
+#   make upload-ecu     PORT=/dev/cu.usbserial-WWWW
+#   make monitor        PORT=/dev/cu.usbserial-XXXX
 
 FQBN    := esp32:esp32:esp32
 BAUD    := 115200
-PORT    ?= /dev/cu.SLAB_USBtoUART
+UPLOAD_SPEED ?= 115200 # 921600
+PORT    ?= /dev/cu.SLAB_USBtoUART   # switch panel
+# PORT  ?= /dev/cu.usbserial-0001   # relay controller
 
 SKETCH  := firmware/accessory_node
 CONFIGS := firmware/configs
@@ -25,49 +29,53 @@ MINIFY  := $(SKETCH)/minify_index_html.sh
 HTMLDST := $(SKETCH)/index_html.h
 
 # ---- select node config ----
-.PHONY: relay_controller switch_panel viper_interface ecu_node
+.PHONY: relay switch viper ecu
 
-relay_controller:
+relay:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/relay_controller.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
-switch_panel:
+switch:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/switch_panel.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
-viper_interface:
+viper:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/viper_interface.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
-ecu_node:
+ecu:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/ecu_node.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
 # ---- compile all four ----
 .PHONY: all
-all: relay_controller switch_panel viper_interface ecu_node
+all: relay switch viper ecu
 
 # ---- upload ----
-.PHONY: upload-relay_controller upload-switch_panel upload-viper_interface upload-ecu_node
+.PHONY: upload-relay upload-switch upload-viper upload-ecu
 
-upload-relay_controller: relay_controller
-	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+upload-relay: relay
+	@pids=$$(lsof -t $(PORT) 2>/dev/null); [ -n "$$pids" ] && kill -9 $$pids 2>/dev/null || true
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) --upload-field upload.speed=$(UPLOAD_SPEED) $(SKETCH)
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
-upload-switch_panel: switch_panel
-	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+upload-switch: switch
+	@pids=$$(lsof -t $(PORT) 2>/dev/null); [ -n "$$pids" ] && kill -9 $$pids 2>/dev/null || true
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) --upload-field upload.speed=$(UPLOAD_SPEED) $(SKETCH)
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
-upload-viper_interface: viper_interface
-	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+upload-viper: viper
+	@pids=$$(lsof -t $(PORT) 2>/dev/null); [ -n "$$pids" ] && kill -9 $$pids 2>/dev/null || true
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) --upload-field upload.speed=$(UPLOAD_SPEED) $(SKETCH)
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
-upload-ecu_node: ecu_node
-	arduino-cli upload -p $(PORT) --fqbn $(FQBN) $(SKETCH)
+upload-ecu: ecu
+	@pids=$$(lsof -t $(PORT) 2>/dev/null); [ -n "$$pids" ] && kill -9 $$pids 2>/dev/null || true
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) --upload-field upload.speed=$(UPLOAD_SPEED) $(SKETCH)
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
 # ---- serial monitor ----

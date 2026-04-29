@@ -210,6 +210,7 @@ void setup() {
 #endif
 
   serial_shell_setup();
+  { uint8_t b = bus_node_id(); bus_tx(CAN_ID_BOOT_EVENT, &b, 1); }
   wlogln("[boot] ready");
 
 #ifdef ENABLE_BUZZER

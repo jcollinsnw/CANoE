@@ -52,11 +52,24 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
              padding: 2px 8px; font: inherit; font-size: 11px; cursor: pointer; }
   .txm-btn:last-child { border-right: none; }
   .txm-btn.active { background: #1e3a1e; color: #9bd770; }
-  .tabs { display: flex; gap: 0; border-bottom: 1px solid #1e2a38; background: #0f1a24; }
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid #1e2a38; background: #0f1a24;
+          position: relative; }
   .tab { padding: 6px 18px; cursor: pointer; color: #808a95; border-bottom: 2px solid transparent;
          font: inherit; background: none; border-top: none; border-left: none; border-right: none; }
   .tab.active { color: #9bd770; border-bottom-color: #9bd770; }
   .tab:hover { color: #cfe2b0; }
+  .tab-more-btn { margin-left: auto; padding: 6px 14px; cursor: pointer; color: #808a95;
+                  border: none; background: none; font: inherit; font-size: 16px;
+                  border-bottom: 2px solid transparent; }
+  .tab-more-btn:hover { color: #cfe2b0; }
+  .tab-more-btn.active { color: #9bd770; border-bottom-color: #9bd770; }
+  .tab-dropdown { display: none; position: absolute; right: 0; top: 100%; z-index: 100;
+                  background: #0f1a24; border: 1px solid #1e2a38; border-top: none;
+                  min-width: 130px; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+  .tab-dropdown.open { display: block; }
+  .tab-dropdown .tab { display: block; width: 100%; text-align: left; border-bottom: none;
+                       border-left: 3px solid transparent; padding: 8px 16px; }
+  .tab-dropdown .tab.active { border-left-color: #9bd770; border-bottom: none; }
   #serial-log { flex: 1; overflow-y: auto; padding: 6px 14px; font-size: 12.5px;
                 line-height: 1.5; white-space: pre-wrap; word-break: break-all;
                 color: #a0b0c0; display: none; }
@@ -102,7 +115,8 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
   /* buttons */
   .btn-input-grid { display: flex; flex-wrap: wrap; gap: 8px; }
   .btn-input { background: #0f1a24; border: 2px solid #2a3a4a; border-radius: 20px;
-               padding: 6px 16px; font: inherit; font-size: 12px; color: #808a95; cursor: pointer; }
+               padding: 6px 16px; font: inherit; font-size: 12px; color: #808a95; cursor: pointer;
+               user-select: none; -webkit-user-select: none; touch-action: manipulation; }
   .btn-input:hover { background: #152030; }
   .btn-input.pressed { background: #0a1a2a; border-color: #1ab4ff; color: #1ab4ff; }
   /* status LEDs */
@@ -209,12 +223,16 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
   <span style="margin-left:auto;color:#808a95" id="fps">-</span>
 </header>
 <main>
-  <div class="tabs">
-    <button class="tab active" id="tab-can" onclick="switchTab('can')">CAN Frames</button>
-    <button class="tab" id="tab-serial" onclick="switchTab('serial')">Serial</button>
+  <div class="tabs" id="tabs">
+    <button class="tab active" id="tab-can" onclick="switchTab('can')">CAN</button>
     <button class="tab" id="tab-control" onclick="switchTab('control')">Control</button>
     <button class="tab" id="tab-rules" onclick="switchTab('rules')">Rules</button>
     <button class="tab" id="tab-net" onclick="switchTab('net')">Network</button>
+    <button class="tab-more-btn" id="tab-more-btn" onclick="toggleMoreMenu()">&#8942;</button>
+    <div class="tab-dropdown" id="tab-dropdown">
+      <button class="tab" id="tab-serial" onclick="switchTab('serial')">Serial</button>
+      <button class="tab" id="tab-settings" onclick="switchTab('settings')">Settings</button>
+    </div>
   </div>
   <div id="help">
     Enter a CAN frame as hex bytes: <b>&lt;id&gt; &lt;byte0&gt; &lt;byte1&gt;...</b>  (up to 8 bytes).<br>
@@ -227,6 +245,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
   <div id="control-panel"></div>
   <div id="rules-panel"></div>
   <div id="net-panel"></div>
+  <div id="settings-panel" style="display:none;flex:1;overflow-y:auto;"></div>
   <div id="bar">
     <button onclick="runAlias(':relay 1 on')">R1 ON</button>
     <button onclick="runAlias(':relay 1 off')">R1 OFF</button>
@@ -260,20 +279,31 @@ let statusData = { can_ok: false, wifi_peer: false, peer_nodes: 0, peer_ids: [] 
 // ---------- tabs ----------
 function switchTab(tab) {
   activeTab = tab;
-  ['can','serial','control','rules','net'].forEach(t => {
+  const inMenu = tab === 'serial' || tab === 'settings';
+  ['can','serial','control','rules','net','settings'].forEach(t => {
     document.getElementById('tab-' + t).className = 'tab' + (tab===t ? ' active' : '');
   });
-  document.getElementById('log').style.display            = tab==='can'     ? '' : 'none';
-  document.getElementById('help').style.display           = tab==='can'     ? '' : 'none';
-  document.getElementById('serial-log').style.display     = tab==='serial'  ? 'block' : 'none';
-  document.getElementById('control-panel').style.display  = tab==='control' ? 'block' : 'none';
-  document.getElementById('rules-panel').style.display    = tab==='rules'   ? 'block' : 'none';
-  document.getElementById('net-panel').style.display      = tab==='net'     ? 'block' : 'none';
-  document.getElementById('bar').style.display            = tab==='can'     ? '' : 'none';
-  document.getElementById('input-row').style.display      = tab==='can'     ? '' : 'none';
+  document.getElementById('tab-more-btn').className = 'tab-more-btn' + (inMenu ? ' active' : '');
+  document.getElementById('tab-dropdown').classList.remove('open');
+  document.getElementById('log').style.display             = tab==='can'      ? '' : 'none';
+  document.getElementById('help').style.display            = tab==='can'      ? '' : 'none';
+  document.getElementById('serial-log').style.display      = tab==='serial'   ? 'block' : 'none';
+  document.getElementById('control-panel').style.display   = tab==='control'  ? 'block' : 'none';
+  document.getElementById('rules-panel').style.display     = tab==='rules'    ? 'block' : 'none';
+  document.getElementById('net-panel').style.display       = tab==='net'      ? 'block' : 'none';
+  document.getElementById('settings-panel').style.display  = tab==='settings' ? 'block' : 'none';
+  document.getElementById('bar').style.display             = tab==='can'      ? '' : 'none';
+  document.getElementById('input-row').style.display       = tab==='can'      ? '' : 'none';
   if (tab === 'rules') loadRules();
   if (tab === 'net') renderNetwork();
 }
+function toggleMoreMenu() {
+  document.getElementById('tab-dropdown').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  if (!document.getElementById('tabs').contains(e.target))
+    document.getElementById('tab-dropdown').classList.remove('open');
+});
 
 // ---------- rendering ----------
 function append(cls, text) {
@@ -380,7 +410,7 @@ function buildControlPanel() {
     h += '<div class="btn-input-grid">';
     for (let i = 0; i < cfg.button_count; i++) {
       const idx = cfg.switch_count + i;
-      h += `<div class="btn-input" id="bti-${idx}" onclick="simButton(${idx})">BTN${i + 1}</div>`;
+      h += `<div class="btn-input" id="bti-${idx}" onmousedown="btnDown(${idx})" onmouseup="btnUp(${idx})" onmouseleave="btnUp(${idx})" ontouchstart="btnDown(${idx});event.preventDefault()" ontouchend="btnUp(${idx})" ontouchcancel="btnUp(${idx})">BTN${i + 1}</div>`;
     }
     h += '</div>';
     h += '</div>';
@@ -412,17 +442,6 @@ function buildControlPanel() {
     h += '</div>';
   }
 
-  h += '<div class="ctrl-section">';
-  h += '<div class="ctrl-head">Node Settings</div>';
-  h += `<div class="nid-row">`;
-  h += `  <span style="color:#8a9aaa;font-size:12px">Node ID</span>`;
-  h += `  <span class="nid-current" id="nid-display">0x${nodeId.toString(16).padStart(2,'0')}</span>`;
-  h += `  <input type="text" id="nid-input" class="nid-input" placeholder="0x02" maxlength="4">`;
-  h += `  <button class="ctrl-btn" onclick="changeNodeId()">Reassign</button>`;
-  h += '</div>';
-  h += '<div class="nid-hint">Saves to NVS and restarts. Must be unique on the bus (0x01–0xFE). Use raw frame: <code>400 &lt;cur&gt; 01 00 00 &lt;new&gt; 00 00 01</code></div>';
-  h += '</div>';
-
   document.getElementById('control-panel').innerHTML = h;
   updateRelayTiles();
   updateSwitchDisplay();
@@ -434,6 +453,7 @@ async function initControl() {
     const r = await fetch('/api/config');
     cfg = await r.json();
     buildControlPanel();
+    buildSettingsPanel();
     if (!cfg.has_rules) document.getElementById('tab-rules').style.display = 'none';
   } catch(e) {}
 }
@@ -470,15 +490,31 @@ function simSwitch(idx) {
   updateSwitchDisplay();
 }
 
-function simButton(idx) {
+function btnDown(idx) {
+  if (switchState[idx]) return;
   switchState[idx] = true;
   updateSwitchDisplay();
   sendFrame(0x200, [idx, 1]);
-  setTimeout(() => {
-    switchState[idx] = false;
-    updateSwitchDisplay();
-    sendFrame(0x200, [idx, 0]);
-  }, 150);
+}
+function btnUp(idx) {
+  if (!switchState[idx]) return;
+  switchState[idx] = false;
+  updateSwitchDisplay();
+  sendFrame(0x200, [idx, 0]);
+}
+
+function buildSettingsPanel() {
+  let h = '<div class="ctrl-section">';
+  h += '<div class="ctrl-head">Node Settings</div>';
+  h += '<div class="nid-row">';
+  h += '  <span style="color:#8a9aaa;font-size:12px">Node ID</span>';
+  h += `  <span class="nid-current" id="nid-display">0x${nodeId.toString(16).padStart(2,'0')}</span>`;
+  h += '  <input type="text" id="nid-input" class="nid-input" placeholder="0x02" maxlength="4">';
+  h += '  <button class="ctrl-btn" onclick="changeNodeId()">Reassign</button>';
+  h += '</div>';
+  h += '<div class="nid-hint">Saves to NVS and restarts. Must be unique on the bus (0x01–0xFE).</div>';
+  h += '</div>';
+  document.getElementById('settings-panel').innerHTML = h;
 }
 
 function toggleLed(idx) {

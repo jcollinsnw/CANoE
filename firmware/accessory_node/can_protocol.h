@@ -48,6 +48,10 @@
 // The web UI uses data[0] to identify the sender so all nodes share one CAN ID.
 #define CAN_ID_NODE_ANNOUNCE     0x0F0
 
+// Boot event — emitted once at the end of setup(), self-echoed back into rx.
+// data[0]=node_id. Use TRIG_BOOT() in RULES_DEFAULT_INIT to fire rules on startup.
+#define CAN_ID_BOOT_EVENT        0x0F1
+
 // Config-over-CAN — change behavior at runtime without reflashing.
 #define CAN_ID_CONFIG_WRITE      0x400
 #define CAN_ID_CONFIG_READ_REQ   0x401
@@ -162,6 +166,10 @@ struct CanRule {
 
 // Match any frame with a given ID (no byte conditions)
 #define TRIG_ANY(id)          (id), 0, 0, 0x00, 0, 0, 0x00
+
+// Boot event — fires once at startup on the node that emitted it (self-echo).
+// data[0] = node_id; matches only this node's own boot event.
+#define TRIG_BOOT()           CAN_ID_BOOT_EVENT, 0, NODE_ID, 0xFF, 0, 0, 0x00
 
 // --------------------------------------------------------------
 // Action macros — expand to the CanRule action fields:
