@@ -49,12 +49,35 @@
 #include "mod_rpm.h"
 #include "mod_gps.h"
 #include "mod_serial_shell.h"
+#include "mod_mqtt.h"
 
 // --------------------------------------------------------------
 // Shared state definitions (declared extern in node_state.h)
 // --------------------------------------------------------------
 uint8_t g_relay_mirror = 0;
 bool    g_menu_active  = false;
+
+// --------------------------------------------------------------
+// Node capability advertisement
+// --------------------------------------------------------------
+static uint8_t node_caps_byte() {
+  uint8_t c = 0;
+#ifdef ENABLE_RELAY    c |= NODE_CAP_RELAY;    #endif
+#ifdef ENABLE_SWITCHES c |= NODE_CAP_SWITCHES; #endif
+#ifdef ENABLE_VIPER    c |= NODE_CAP_VIPER;    #endif
+#ifdef ENABLE_LEDS     c |= NODE_CAP_LEDS;     #endif
+#ifdef ENABLE_RULES    c |= NODE_CAP_RULES;    #endif
+  return c;
+}
+
+static void send_node_cap() {
+  uint8_t sw = 0, btn = 0, leds = 0, relays = 0;
+#ifdef ENABLE_SWITCHES sw = NUM_SWITCHES; btn = NUM_BUTTONS; #endif
+#ifdef ENABLE_LEDS     leds = NUM_LEDS;                      #endif
+#ifdef ENABLE_RELAY    relays = NUM_RELAYS;                  #endif
+  uint8_t d[6] = { bus_node_id(), node_caps_byte(), sw, btn, leds, relays };
+  bus_tx(CAN_ID_NODE_CAP, d, 6);
+}
 
 // --------------------------------------------------------------
 // CAN / TWAI setup (same wiring on all nodes: TX=GPIO5, RX=GPIO4)
@@ -119,6 +142,12 @@ void setup() {
   if (eff_id != NODE_ID) wlog("[boot] node_id overridden: 0x%02X -> 0x%02X\n", NODE_ID, eff_id);
 
 #if USE_WIFI
+#ifdef BRIDGE_MODE
+  // Bridge: AP + web UI always on; no ESP-NOW (avoids channel conflict with STA).
+  webui_init(NODE_NAME, eff_id);
+  bus_init_no_wifi(eff_id);
+  wlogln("[boot] bridge mode: AP up, ESP-NOW disabled");
+#else
   {
     Preferences p; p.begin(NVS_NAMESPACE, true);
     bool ap_en, espnow_en;
@@ -150,6 +179,7 @@ void setup() {
       bus_init_no_wifi(eff_id);
     }
   }
+#endif // BRIDGE_MODE
 #else
   bus_init_no_wifi(eff_id);
 #endif
@@ -209,8 +239,16 @@ void setup() {
   lcd_set_event(NODE_NAME);
 #endif
 
+#ifdef MQTT_BROKER
+  mqtt_setup();
+#endif
   serial_shell_setup();
   { uint8_t b = bus_node_id(); bus_tx(CAN_ID_BOOT_EVENT, &b, 1); }
+  send_node_cap();
+#ifdef BRIDGE_MODE
+  // Ask all nodes to announce their capabilities so bridge web UI populates immediately.
+  { uint8_t b = 0xFF; bus_tx(CAN_ID_NODE_CAP_REQ, &b, 1); }
+#endif
   wlogln("[boot] ready");
 
 #ifdef ENABLE_BUZZER
@@ -225,6 +263,9 @@ void loop() {
 #endif
   bus_tick();
   serial_shell_tick();
+#ifdef MQTT_BROKER
+  mqtt_tick();
+#endif
 
   // Per-module periodic work
 #ifdef ENABLE_SWITCHES
@@ -269,6 +310,16 @@ void loop() {
   BusFrame f;
   while (bus_rx(f)) {
     serial_shell_print(f);
+    // Node capability exchange
+    if (f.id == CAN_ID_NODE_CAP_REQ && f.dlc >= 1) {
+      if (f.data[0] == 0xFF || f.data[0] == bus_node_id()) send_node_cap();
+    }
+#if USE_WIFI
+    if (f.id == CAN_ID_NODE_CAP) webui_handle_node_cap(f);
+#endif
+#ifdef MQTT_BROKER
+    mqtt_handle_frame(f);
+#endif
     // Maintain the shared relay mirror for any node that observes relay state
     if (f.id == CAN_ID_RELAY_STATUS && f.dlc >= 1) {
       g_relay_mirror = f.data[0];
@@ -426,10 +477,12 @@ void loop() {
   // All nodes broadcast on the same CAN ID; data[0] carries the node_id so
   // the web UI can identify the sender without per-node CAN IDs.
   static uint32_t last_announce = 0;
+  static uint8_t  cap_div = 0;
   if (now - last_announce >= 5000) {
     last_announce = now;
     uint8_t ann[3] = { bus_node_id(), bus_peer_count(), (uint8_t)(bus_can_healthy() ? 1 : 0) };
     bus_tx(CAN_ID_NODE_ANNOUNCE, ann, 3);
+    if (++cap_div >= 6) { cap_div = 0; send_node_cap(); }  // caps every 30 s
   }
 
   // Brief yield for switch panel input polling responsiveness

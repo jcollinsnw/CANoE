@@ -29,7 +29,7 @@ MINIFY  := $(SKETCH)/minify_index_html.sh
 HTMLDST := $(SKETCH)/index_html.h
 
 # ---- select node config ----
-.PHONY: relay switch viper ecu
+.PHONY: relay switch viper ecu bridge
 
 relay:
 	@bash $(MINIFY) $(HTMLDST) || true
@@ -51,12 +51,17 @@ ecu:
 	cp $(CONFIGS)/ecu_node.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
 
-# ---- compile all four ----
+bridge:
+	@bash $(MINIFY) $(HTMLDST) || true
+	cp $(CONFIGS)/bridge.h $(SKETCH)/node_config.h
+	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
+
+# ---- compile all ----
 .PHONY: all
-all: relay switch viper ecu
+all: relay switch viper ecu bridge
 
 # ---- upload ----
-.PHONY: upload-relay upload-switch upload-viper upload-ecu
+.PHONY: upload-relay upload-switch upload-viper upload-ecu upload-bridge
 
 upload-relay: relay
 	@pids=$$(lsof -t $(PORT) 2>/dev/null); [ -n "$$pids" ] && kill -9 $$pids 2>/dev/null || true
@@ -74,6 +79,11 @@ upload-viper: viper
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
 upload-ecu: ecu
+	@pids=$$(lsof -t $(PORT) 2>/dev/null); [ -n "$$pids" ] && kill -9 $$pids 2>/dev/null || true
+	arduino-cli upload -p $(PORT) --fqbn $(FQBN) --upload-field upload.speed=$(UPLOAD_SPEED) $(SKETCH)
+	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
+
+upload-bridge: bridge
 	@pids=$$(lsof -t $(PORT) 2>/dev/null); [ -n "$$pids" ] && kill -9 $$pids 2>/dev/null || true
 	arduino-cli upload -p $(PORT) --fqbn $(FQBN) --upload-field upload.speed=$(UPLOAD_SPEED) $(SKETCH)
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)

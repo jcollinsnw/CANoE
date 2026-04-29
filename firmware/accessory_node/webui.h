@@ -17,6 +17,10 @@ void webui_tick();
 // Invoked by bus.cpp for every frame we send or receive.
 void webui_observe(const BusFrame& f, bool outbound);
 
+// Called from the frame dispatch loop for incoming NODE_CAP (0x0F2) frames.
+// Updates the internal node capability cache served by /api/nodecaps.
+void webui_handle_node_cap(const BusFrame& f);
+
 // Call once in setup() BEFORE any Serial.print calls to capture
 // serial output into the web UI.  Replaces Serial with a tee
 // that writes to both the UART and an in-memory ring buffer.

@@ -296,6 +296,7 @@ function switchTab(tab) {
   document.getElementById('input-row').style.display       = tab==='can'      ? '' : 'none';
   if (tab === 'rules') loadRules();
   if (tab === 'net') renderNetwork();
+  if (tab === 'control' && cfg && cfg.is_bridge) buildBridgePanel();
 }
 function toggleMoreMenu() {
   document.getElementById('tab-dropdown').classList.toggle('open');
@@ -452,10 +453,102 @@ async function initControl() {
   try {
     const r = await fetch('/api/config');
     cfg = await r.json();
-    buildControlPanel();
+    if (cfg.is_bridge) {
+      document.getElementById('tab-rules').style.display = 'none';
+      await buildBridgePanel();
+    } else {
+      buildControlPanel();
+      if (!cfg.has_rules) document.getElementById('tab-rules').style.display = 'none';
+    }
     buildSettingsPanel();
-    if (!cfg.has_rules) document.getElementById('tab-rules').style.display = 'none';
   } catch(e) {}
+}
+
+const BRIDGE_NODE_NAMES = {1:'switch-panel',2:'relay-ctrl',3:'viper-iface',4:'ecu-node'};
+
+async function buildBridgePanel() {
+  let nodes = [];
+  try {
+    const r = await fetch('/api/nodecaps');
+    nodes = await r.json();
+  } catch(e) {}
+  nodes.sort((a, b) => a.id - b.id);
+
+  let h = '<div class="ctrl-section" style="border-bottom:none;padding-bottom:4px">';
+  h += '<div style="display:flex;align-items:center;gap:8px">';
+  h += '<div class="ctrl-head" style="margin:0">Discovered Nodes</div>';
+  h += `<button class="ctrl-btn" style="font-size:10px;padding:2px 8px" onclick="buildBridgePanel()">Refresh</button>`;
+  h += `<span style="font-size:10px;color:#4a5a6a">${nodes.length} node${nodes.length===1?'':'s'}</span>`;
+  h += '</div></div>';
+
+  if (!nodes.length) {
+    h += '<div class="ctrl-section"><div style="color:#808a95;line-height:1.8">No capability frames received yet.<br>';
+    h += 'Nodes broadcast caps at boot and every 30 s.<br>';
+    h += '<button class="ctrl-btn" style="font-size:10px;padding:2px 8px;margin-top:6px" onclick="sendFrame(0x0F3,[0xFF])">Request All Caps</button></div></div>';
+  }
+
+  for (const n of nodes) {
+    if (n.id === nodeId) continue;
+    const name = BRIDGE_NODE_NAMES[n.id] || ('node-' + n.id.toString(16).padStart(2,'0'));
+    h += '<div class="ctrl-section">';
+    h += `<div class="ctrl-head">${name} <span style="color:#4a6a8a;font-size:9px;font-weight:normal">0x${n.id.toString(16).padStart(2,'0')}</span></div>`;
+
+    if (n.caps & 0x01) {
+      h += '<div class="relay-grid">';
+      for (let i = 0; i < n.relay_count; i++) {
+        h += `<div class="relay-tile" id="rt-${i}"><div class="rt-led"></div>`;
+        h +=   `<div class="rt-name">Relay ${i+1}</div>`;
+        h +=   `<div class="rt-state" id="rs-${i}">OFF</div>`;
+        h +=   `<button class="rt-btn" onclick="toggleRelay(${i})">Toggle</button></div>`;
+      }
+      h += '</div>';
+      h += '<div class="ctrl-btns"><button class="ctrl-btn danger" onclick="sendAllOff()">All OFF</button></div>';
+    }
+
+    if ((n.caps & 0x02) && n.switch_count > 0) {
+      h += '<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Switches</div>';
+      h += '<div class="sw-input-grid">';
+      for (let i = 0; i < n.switch_count; i++) {
+        h += `<div class="sw-input" id="swi-${i}" onclick="simSwitch(${i})">`;
+        h +=   `<div class="swi-label">SW${i+1}</div><div class="swi-state" id="sws-${i}">OFF</div></div>`;
+      }
+      h += '</div></div>';
+    }
+
+    if ((n.caps & 0x02) && n.button_count > 0) {
+      h += '<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Buttons</div>';
+      h += '<div class="btn-input-grid">';
+      for (let i = 0; i < n.button_count; i++) {
+        const idx = n.switch_count + i;
+        h += `<div class="btn-input" id="bti-${idx}" onmousedown="btnDown(${idx})" onmouseup="btnUp(${idx})" onmouseleave="btnUp(${idx})" ontouchstart="btnDown(${idx});event.preventDefault()" ontouchend="btnUp(${idx})" ontouchcancel="btnUp(${idx})">BTN${i+1}</div>`;
+      }
+      h += '</div></div>';
+    }
+
+    if (n.caps & 0x04) {
+      h += '<div style="margin-top:10px"><div class="viper-btns">';
+      h += '<button class="viper-btn lock"   onclick="viperCmd(1)">Lock / Arm</button>';
+      h += '<button class="viper-btn unlock" onclick="viperCmd(2)">Unlock / Disarm</button>';
+      h += '<button class="viper-btn start"  onclick="viperCmd(3)">Remote Start</button></div>';
+      h += '<div class="viper-last" id="viper-last">No response yet</div></div>';
+    }
+
+    if ((n.caps & 0x08) && n.led_count > 0) {
+      h += '<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Status LEDs</div>';
+      h += '<div class="led-grid">';
+      for (let i = 0; i < n.led_count; i++) {
+        h += '<div class="led-indicator">';
+        h +=   `<div class="led-dot" id="led-${n.id}-${i}" onclick="toggleLed(${i},${n.id})"></div>`;
+        h +=   `<div class="led-label">LED${i+1}</div></div>`;
+      }
+      h += '</div></div>';
+    }
+    h += '</div>';
+  }
+
+  document.getElementById('control-panel').innerHTML = h;
+  updateRelayTiles();
+  updateSwitchDisplay();
 }
 
 // ---------- control actions ----------
@@ -517,10 +610,11 @@ function buildSettingsPanel() {
   document.getElementById('settings-panel').innerHTML = h;
 }
 
-function toggleLed(idx) {
+function toggleLed(idx, targetNode) {
   const on = (ledState >> idx) & 1;
   const mask = 1 << idx;
-  sendFrame(0x102, [nodeId, mask, on ? 0 : mask]);
+  const target = (targetNode !== undefined) ? targetNode : nodeId;
+  sendFrame(0x102, [target, mask, on ? 0 : mask]);
 }
 function viperCmd(c) { sendFrame(0x510, [c]); }
 
@@ -545,9 +639,18 @@ async function pollFrames() {
         switchState[sw] = (ev === 1 || ev === 2);
         updateSwitchDisplay();
       }
-      if (f.id === 0x103 && f.dlc >= 2 && f.data[0] === nodeId) {
-        ledState = f.data[1];
-        updateLedDisplay();
+      if (f.id === 0x103 && f.dlc >= 2) {
+        if (cfg && cfg.is_bridge) {
+          // Bridge: update per-node LED dots directly
+          const nid = f.data[0], bm = f.data[1];
+          for (let i = 0; i < 8; i++) {
+            const el = document.getElementById(`led-${nid}-${i}`);
+            if (el) el.className = 'led-dot' + ((bm >> i) & 1 ? ' on' : '');
+          }
+        } else if (f.data[0] === nodeId) {
+          ledState = f.data[1];
+          updateLedDisplay();
+        }
       }
       if (f.id === 0x511) {
         const hex = f.data.slice(0, f.dlc).map(b => b.toString(16).padStart(2,'0')).join(' ');

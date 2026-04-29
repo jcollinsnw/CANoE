@@ -52,6 +52,21 @@
 // data[0]=node_id. Use TRIG_BOOT() in RULES_DEFAULT_INIT to fire rules on startup.
 #define CAN_ID_BOOT_EVENT        0x0F1
 
+// Node capability advertisement — every node broadcasts at boot and on NODE_CAP_REQ.
+// data[0]=node_id, data[1]=caps_bitmask, data[2]=switch_count, data[3]=button_count,
+// data[4]=led_count, data[5]=relay_count
+#define CAN_ID_NODE_CAP          0x0F2
+// Node capability request — any node replies with CAN_ID_NODE_CAP.
+// data[0]=target_node_id (0xFF = all nodes)
+#define CAN_ID_NODE_CAP_REQ      0x0F3
+
+// Capability bits for CAN_ID_NODE_CAP data[1]
+#define NODE_CAP_RELAY    0x01   // has relay outputs
+#define NODE_CAP_SWITCHES 0x02   // has switch/button inputs
+#define NODE_CAP_VIPER    0x04   // has Viper alarm interface
+#define NODE_CAP_LEDS     0x08   // has CAN-controllable LEDs
+#define NODE_CAP_RULES    0x10   // has rules engine
+
 // Config-over-CAN — change behavior at runtime without reflashing.
 #define CAN_ID_CONFIG_WRITE      0x400
 #define CAN_ID_CONFIG_READ_REQ   0x401

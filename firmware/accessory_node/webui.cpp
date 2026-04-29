@@ -81,6 +81,21 @@ static uint8_t     g_node_id = 0;
 static uint32_t    g_boot_ms = 0;
 
 // --------------------------------------------------------------
+// Node capability cache — populated from CAN_ID_NODE_CAP (0x0F2) frames.
+// --------------------------------------------------------------
+struct NodeCapEntry {
+  uint8_t  node_id;
+  uint8_t  caps;
+  uint8_t  switch_count;
+  uint8_t  button_count;
+  uint8_t  led_count;
+  uint8_t  relay_count;
+  uint32_t last_ms;
+  bool     valid;
+};
+static NodeCapEntry g_ncaps[8];
+
+// --------------------------------------------------------------
 // JSON helpers (tiny — we emit by hand to avoid pulling in a lib)
 // --------------------------------------------------------------
 static void append_hex_byte(String& s, uint8_t v) {
@@ -266,6 +281,11 @@ static void handle_config() {
   };
 
   String s = "{";
+#ifdef BRIDGE_MODE
+  s += "\"is_bridge\":true,";
+#else
+  s += "\"is_bridge\":false,";
+#endif
 #ifdef ENABLE_RELAY
   s += "\"has_relay\":true,";
 #else
@@ -398,6 +418,27 @@ static void handle_rules_reset() {
 }
 #endif // ENABLE_RULES
 
+static void handle_nodecaps() {
+  String s = "[";
+  bool first = true;
+  for (int i = 0; i < 8; i++) {
+    if (!g_ncaps[i].valid) continue;
+    if (!first) s += ",";
+    first = false;
+    s += "{\"id\":";           s += g_ncaps[i].node_id;
+    s += ",\"caps\":";         s += g_ncaps[i].caps;
+    s += ",\"switch_count\":"; s += g_ncaps[i].switch_count;
+    s += ",\"button_count\":"; s += g_ncaps[i].button_count;
+    s += ",\"led_count\":";    s += g_ncaps[i].led_count;
+    s += ",\"relay_count\":";  s += g_ncaps[i].relay_count;
+    s += ",\"age_ms\":";       s += (millis() - g_ncaps[i].last_ms);
+    s += "}";
+  }
+  s += "]";
+  g_http.sendHeader("Cache-Control", "no-store");
+  g_http.send(200, "application/json", s);
+}
+
 static void handle_not_found() {
   // Captive portal: any unknown host → redirect to our root
   g_http.sendHeader("Location", String("http://") + AP_IP.toString() + "/", true);
@@ -422,6 +463,11 @@ void webui_init(const char* node_name, uint8_t node_id) {
                 AP_HIDDEN ? "<hidden>" : AP_SSID,
                 strlen(AP_PASSWORD) ? " (WPA2)" : " (open)",
                 WiFi.softAPIP().toString().c_str(), AP_CHANNEL);
+#ifdef BRIDGE_MODE
+  // Connect to existing router so bridge is reachable from home network.
+  WiFi.begin(STA_SSID, STA_PASSWORD);
+  Serial.printf("[wifi] STA connecting to \"%s\"...\n", STA_SSID);
+#endif
 
   // Captive DNS: wildcard resolve → our AP IP
   g_dns.setErrorReplyCode(DNSReplyCode::NoError);
@@ -434,7 +480,8 @@ void webui_init(const char* node_name, uint8_t node_id) {
   g_http.on("/api/send",    HTTP_POST, handle_send);
   g_http.on("/api/tx_mode",  HTTP_POST, handle_tx_mode);
   g_http.on("/api/serial",  HTTP_GET,  handle_serial);
-  g_http.on("/api/config",  HTTP_GET,  handle_config);
+  g_http.on("/api/config",   HTTP_GET,  handle_config);
+  g_http.on("/api/nodecaps", HTTP_GET,  handle_nodecaps);
 #ifdef ENABLE_RULES
   g_http.on("/api/rules",       HTTP_GET,    handle_rules_get);
   g_http.on("/api/rules",       HTTP_POST,   handle_rules_post);
@@ -464,6 +511,19 @@ void webui_init(const char* node_name, uint8_t node_id) {
 void webui_tick() {
   g_dns.processNextRequest();
   g_http.handleClient();
+#ifdef BRIDGE_MODE
+  static uint8_t sta_state = 0;
+  if (sta_state == 0) {
+    wl_status_t ws = WiFi.status();
+    if (ws == WL_CONNECTED) {
+      sta_state = 1;
+      Serial.printf("[wifi] STA connected, IP=%s\n", WiFi.localIP().toString().c_str());
+    } else if (ws == WL_CONNECT_FAILED || ws == WL_NO_SSID_AVAIL) {
+      sta_state = 2;
+      Serial.printf("[wifi] STA connect failed (status=%d)\n", (int)ws);
+    }
+  }
+#endif
 }
 
 void webui_observe(const BusFrame& f, bool outbound) {
@@ -499,4 +559,14 @@ void wlogln(const char* msg) {
   Serial.println(msg);
   slog_append(msg, strlen(msg));
   slog_append("\n", 1);
+}
+
+void webui_handle_node_cap(const BusFrame& f) {
+  if (f.dlc < 6) return;
+  uint8_t nid = f.data[0];
+  for (int i = 0; i < 8; i++) {
+    if (g_ncaps[i].valid && g_ncaps[i].node_id != nid) continue;
+    g_ncaps[i] = { nid, f.data[1], f.data[2], f.data[3], f.data[4], f.data[5], millis(), true };
+    return;
+  }
 }
