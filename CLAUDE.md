@@ -47,7 +47,8 @@ A parallel 12V accessory wiring system for an antique car, built around four ESP
         ├── mod_rpm.h / mod_rpm.cpp             # engine RPM via PC817C optocoupler + interrupt counting
         ├── mod_wbo2.h / mod_wbo2.cpp           # wideband O2 sensor analog read + WBO2_DATA broadcast
         ├── mod_ecu.h / mod_ecu.cpp             # dual-mode fuel controller (carb PI + TBI injection)
-        └── mod_gps.h / mod_gps.cpp             # GPS speed/heading via NMEA UART (u-blox Neo-6M/8M)
+        ├── mod_gps.h / mod_gps.cpp             # GPS speed/heading via NMEA UART (u-blox Neo-6M/8M)
+        └── mod_mqtt.h / mod_mqtt.cpp           # MQTT bridge: publishes CAN frames, subscribes for injection (bridge only)
 ```
 
 **How it works:** `firmware/configs/<node>.h` defines which feature flags (`ENABLE_RELAY`, `ENABLE_LCD`, etc.) and pin assignments apply to that physical ESP32. The Makefile copies the right config to `node_config.h` before compiling, so the single sketch folder produces the correct firmware for each node. Every module's `.cpp` wraps its entire body in `#ifdef ENABLE_*` so unneeded modules compile to nothing.
@@ -70,9 +71,10 @@ Four ESP32 nodes, each runs up to four things concurrently:
 | Node             | NODE_ID | Config file                      | Features                                                                    |
 |------------------|---------|----------------------------------|-----------------------------------------------------------------------------|
 | switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_RULES, ENABLE_LCD, ENABLE_MENU, ENABLE_BUZZER, ENABLE_LEDS |
-| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RPM                                                    |
+| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RULES, ENABLE_RPM                                      |
 | viper_interface  | 0x03    | configs/viper_interface.h        | ENABLE_VIPER, ENABLE_LCD, ENABLE_MPU6050                                    |
 | ecu_node         | 0x04    | configs/ecu_node.h               | ENABLE_RPM, ENABLE_WBO2, ENABLE_ECU (MAP, TPS, CLT, IAT, carb solenoid, dual injectors) |
+| bridge           | 0x05    | configs/bridge.h                 | BRIDGE_MODE — wired CAN + SoftAP + STA to home router; no ESP-NOW. Aggregated node discovery web UI. Optional MQTT publishing via mod_mqtt. |
 
 ## Feature flags (defined in configs/*.h)
 
@@ -92,6 +94,8 @@ Four ESP32 nodes, each runs up to four things concurrently:
 | `ENABLE_GPS`      | mod_gps             | GPS speed/heading via NMEA UART; `GPS_SERIAL_NUM`, `GPS_RX_PIN`, `GPS_TX_PIN`, `GPS_BAUD` |
 | `ENABLE_WBO2`     | mod_wbo2            | Wideband O2 analog read (0–5V controller output); `WBO2_PIN`, `WBO2_SAMPLE_MS`, `WBO2_MIN/MAX_V`, `WBO2_MIN/MAX_AFR` |
 | `ENABLE_ECU`      | mod_ecu             | Dual-mode fuel controller: Mode 0 = carb air-bleed solenoid (LEDC PWM PI loop); Mode 1 = TBI dual injectors (esp_timer pulse). Reads MAP, TPS, CLT, IAT. VE table + STFT closed-loop from WBO2_DATA. |
+| `BRIDGE_MODE`     | (webui + mod_mqtt)  | Bridge node: SoftAP + wired CAN + WiFi STA to home router. No ESP-NOW. Web UI shows aggregated control panel built from NODE_CAP discovery. Enables `/api/nodecaps` endpoint. Requires `STA_SSID`/`STA_PASSWORD`. |
+| `MQTT_BROKER`     | mod_mqtt            | Enable MQTT publishing on the bridge. Set to broker IP/hostname. Requires PubSubClient library. Publishes all CAN frames to `{MQTT_TOPIC_PREFIX}/frames`; subscribes to `{MQTT_TOPIC_PREFIX}/send` for injection. |
 
 `ENABLE_MENU` subflags (defined alongside `ENABLE_MENU` in the node config):
 
@@ -188,6 +192,9 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | ID     | Name              | Payload                                                |
 |--------|-------------------|--------------------------------------------------------|
 | 0x0F0  | NODE_ANNOUNCE     | `[node_id, peer_count, can_ok]` — every node broadcasts every 5 s; node_id in data[0] identifies sender |
+| 0x0F1  | BOOT_EVENT        | `[node_id]` — emitted once at end of setup(), self-echoed; used by TRIG_BOOT() in rules |
+| 0x0F2  | NODE_CAP          | `[node_id, caps, switch_count, button_count, led_count, relay_count]` — capability advertisement; broadcast at boot and every 30 s; also sent in response to NODE_CAP_REQ. caps bits: 0x01=relay, 0x02=switches, 0x04=viper, 0x08=leds, 0x10=rules |
+| 0x0F3  | NODE_CAP_REQ      | `[target_node_id]` — request capability frame; 0xFF = all nodes respond |
 | 0x100  | RELAY_CMD         | `[mask, state]` — only bits set in mask are applied    |
 | 0x101  | RELAY_STATUS      | `[bitmap]` — broadcast at 5 Hz                         |
 | 0x102  | LED_CMD           | `[target_node_id, mask, state]` — any node → target; 0xFF target = broadcast |
@@ -211,7 +218,7 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x510  | VIPER_CMD         | `[cmd]` — any node → viper_interface; cmd: 0x01 lock, 0x02 unlock, 0x03 remote start |
 | 0x511  | VIPER_STATUS      | `[b0..b4]` — viper_interface → everyone; raw 5-byte Viper alarm packet |
 
-Config targets: `0x01 SWITCH_PANEL`, `0x02 RELAY_CTRL`, `0x03 VIPER`, `0x04 ECU`, `0xFF BROADCAST`.
+Config targets: `0x01 SWITCH_PANEL`, `0x02 RELAY_CTRL`, `0x03 VIPER`, `0x04 ECU`, `0x05 BRIDGE`, `0xFF BROADCAST`.
 
 Config keys:
 - `0x01 CFG_KEY_NODE_ID` — reassign node_id; arg (data[4]) = new ID (0x01–0xFE); saves to NVS and restarts. Broadcast target **not accepted**.
@@ -244,12 +251,13 @@ In production mode, connect TJA1051T/3 or SN65HVD230 transceivers with 120Ω ter
 
 ## Libraries and toolchain
 
-Everything is in the Arduino-ESP32 core; no external libraries required.
+Everything is in the Arduino-ESP32 core except the bridge node's MQTT module.
 
 - `driver/twai.h` — CAN controller
 - `WiFi.h` / `esp_now.h` — wireless
 - `WebServer.h` / `DNSServer.h` — HTTP + captive portal
 - `Preferences.h` — NVS persistence
+- `PubSubClient` — MQTT client (bridge only, when `MQTT_BROKER` is defined); install with `arduino-cli lib install "PubSubClient"`
 
 Tested against Arduino-ESP32 **v2.x and v3.x**. The ESP-NOW receive callback signature changed in v3.x (`esp_now_recv_info_t*` first arg instead of `const uint8_t* mac`); `bus.cpp` uses a version preprocessor guard to handle both. TWAI APIs also changed in v3.x — if bumping, verify compilation before committing.
 
@@ -258,16 +266,18 @@ Tested against Arduino-ESP32 **v2.x and v3.x**. The ESP-NOW receive callback sig
 Using arduino-cli:
 
 ```bash
-make relay_controller                              # compile for relay controller
-make switch_panel                                  # compile for switch panel
-make viper_interface                               # compile for viper interface
-make ecu_node                                      # compile for ECU node
-make all                                           # compile all four in sequence
-make upload-switch_panel PORT=/dev/cu.usbserial-XXXX
-make upload-relay_controller PORT=/dev/cu.usbserial-YYYY
-make upload-viper_interface PORT=/dev/cu.usbserial-ZZZZ
-make upload-ecu_node PORT=/dev/cu.usbserial-WWWW
-make monitor PORT=/dev/cu.usbserial-XXXX
+make relay                                         # compile for relay controller
+make switch                                        # compile for switch panel
+make viper                                         # compile for viper interface
+make ecu                                           # compile for ECU node
+make bridge                                        # compile for bridge node
+make all                                           # compile all five in sequence
+make upload-switch  PORT=/dev/cu.usbserial-XXXX
+make upload-relay   PORT=/dev/cu.usbserial-YYYY
+make upload-viper   PORT=/dev/cu.usbserial-ZZZZ
+make upload-ecu     PORT=/dev/cu.usbserial-WWWW
+make upload-bridge  PORT=/dev/cu.usbserial-VVVV
+make monitor        PORT=/dev/cu.usbserial-XXXX
 ```
 
 Each `make <node>` target copies `firmware/configs/<node>.h` → `firmware/accessory_node/node_config.h` then compiles. `node_config.h` is intentionally not committed with a real config — the placeholder will error if you try to compile without running make first.
@@ -291,8 +301,11 @@ Connect phone/laptop to SSID **AccessoryBus** (open by default — add a passwor
 The UI has four tabs:
 - **CAN Frames** — raw frame log + hex command line + quick-action buttons.
 - **Serial** — live tee of `wlog()`/`wlogln()` output (same as the UART monitor).
-- **Control** — node-adaptive panel. Switch panel shows: physical switch state (tracked from SWITCH_EVENT frames; clickable to simulate input), momentary buttons (clickable), LED status dots (clickable to toggle). Relay controller shows: 6 relay tiles + All OFF. Viper interface shows Lock/Unlock/Start and last alarm response. Relay state updates in real time from RELAY_STATUS and RELAY_CMD frames.
-- **Rules** — full rules editor; lists all rules, shows human-readable trigger/action descriptions, add/edit/delete rules inline, factory reset button.
+- **Control** — node-adaptive panel. Switch panel shows: physical switch state (tracked from SWITCH_EVENT frames; clickable to simulate input), momentary buttons (clickable), LED status dots (clickable to toggle). Relay controller shows: 6 relay tiles + All OFF. Viper interface shows Lock/Unlock/Start and last alarm response. Relay state updates in real time from RELAY_STATUS and RELAY_CMD frames. **Bridge node** shows an aggregated panel with one section per discovered node, built from NODE_CAP frames received over CAN; includes a Refresh button and a "Request All Caps" button for nodes that haven't announced yet.
+- **Rules** — full rules editor; lists all rules, shows human-readable trigger/action descriptions, add/edit/delete rules inline, factory reset button. Hidden on the bridge node (rules live on each node locally).
+- **Network** — live node presence map, transport health (CAN/WiFi), last-seen times.
+- **Settings** (hamburger menu) — node ID reassignment (saves to NVS, restarts).
+- **Serial** (hamburger menu) — live tee of `wlog()`/`wlogln()` UART output.
 
 ### Raw hex command line
 ```
@@ -342,7 +355,9 @@ Check "force wifi-only" in the header. `bus_tx()` stops using TWAI; everything s
 - **CGRAM slot 0 is forbidden.** HD44780 custom characters use CGRAM slots 0–7, but slot 0 maps to `\x00` (C null terminator) which silently truncates any `snprintf` output that contains it. Icon allocation in `lcd_setup()` starts at slot 1; max 7 custom icons total across all relays (2 of those slots are consumed by the shared CAN/WiFi status icons). Macros: `RELAY_n_LABEL`, `RELAY_n_ICON_ON`, `RELAY_n_ICON_OFF` in the node config define per-relay LCD labels and 5×8 CGRAM bitmaps.
 - **LCD widget system.** Modules call `lcd_register_widget()` during setup to claim a screen region (row, col, width, refresh_ms, render fn). `lcd_update_status()` renders all widgets after the status row. `lcd_tick()` (called from loop) re-renders widgets on their own schedule. `lcd_set_event()` automatically truncates event text to the first widget boundary on row 1 so both coexist. `LcdWidget` struct is defined in `mod_lcd.h` and available regardless of `ENABLE_LCD` (stubs compile cleanly).
 - **LCD status row format.** Row 0 idle display is `C[icon]W[icon] [relay chars]` where `C` = CAN, `W` = WiFi, icons are filled/hollow CGRAM glyphs (or `+`/`-` ASCII fallback). The shared on/off icon bitmaps are loaded at the end of `lcd_setup()` after relay icons.
-- **`/api/config` endpoint.** `webui.cpp` includes `node_config.h` and serves a JSON config object with `has_relay`, `has_switches`, `has_viper`, `has_rules`, `has_leds`, `switch_count`, `button_count`, `led_count`, and `relay_labels[6]`. The Control tab fetches this on load to decide which sections to render.
+- **`/api/config` endpoint.** `webui.cpp` includes `node_config.h` and serves a JSON config object with `has_relay`, `has_switches`, `has_viper`, `has_rules`, `has_leds`, `is_bridge`, `switch_count`, `button_count`, `led_count`, and `relay_labels[6]`. The Control tab fetches this on load to decide which sections to render.
+- **`/api/nodecaps` endpoint.** All WiFi nodes serve a JSON array of the NODE_CAP frames they've received, including `id`, `caps`, `switch_count`, `button_count`, `led_count`, `relay_count`, and `age_ms`. The bridge web UI fetches this to build its aggregated control panel.
+- **Node capability broadcast.** Every node calls `send_node_cap()` at boot and every 30 s (piggybacked on the 5 s announce, firing every 6th cycle). Any node can also request caps with a `NODE_CAP_REQ (0x0F3)` frame; all nodes (or a specific target) respond immediately. `BusFrame.source` is `"self"` for self-echoed frames, `"can"` for wired CAN, `"wifi"` for ESP-NOW — use this to distinguish sources since `BusFrame` has no `outbound` field.
 - **GPIO 36/39 have no internal pull-up.** These are RTC-domain input-only pins on the ESP32. `INPUT_PULLUP` is silently ignored; the pull-up request has no effect. Any input on these pins needs an external 10kΩ resistor to 3V3. BTN3 and BTN4 were moved here from GPIO 19/23 to free those pins for LED outputs — document the external resistor requirement clearly for anyone who assembles the hardware.
 - **Buzzer sequencer.** `mod_buzzer` uses Arduino `tone()`/`noTone()` to drive a passive piezo — no LEDC setup required. Sequences are arrays of `{freq, ms}` notes advanced by `buzzer_tick()` each loop; a new `play_seq()` call immediately interrupts any active sequence. Relay sounds fire on RELAY_CMD frames (including self-echoed ones from the web UI), so every relay state change produces feedback regardless of its source. `BUZZER_PIN` must not be an input-only GPIO (avoid 34/35).
 - **Rules NVS layout.** Namespace `"rules"`, keys `"r0"` through `"r<MAX_RULES-1>"`. Each key holds a 12-byte blob (`CanRule`). Empty/deleted rules have `trig_id == 0` and are skipped at evaluation time. Factory reset clears all keys and re-writes from `RULES_DEFAULT_INIT`.
@@ -357,7 +372,7 @@ Check "force wifi-only" in the header. `bus_tx()` stops using TWAI; everything s
 6. Persist the "force wifi-only" flag across reboots (currently RAM-only).
 7. Switch from polling to SSE or WebSocket for the frame log (lower latency, less traffic).
 8. ESP-NOW ack/retry for switch events specifically (they're the only edge-triggered frames).
-9. A third "display" node with a small OLED under the dash showing bus status, for when the car is parked and phone-free.
+9. ~~Bridge node joining home WiFi~~ — **done** (bridge.h, BRIDGE_MODE, STA_SSID/STA_PASSWORD, NODE_CAP discovery, MQTT via mod_mqtt).
 10. Auto-unify: firmware recognizes a "factory_wiring_trusted" flag in NVS and drops the isolation (longer term, once the owner trusts the factory harness).
 
 ## Preferences

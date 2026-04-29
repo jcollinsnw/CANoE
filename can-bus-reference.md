@@ -15,6 +15,60 @@ This document covers how to use the accessory bus at runtime — sending command
 | switch_panel | 0x01 |
 | relay_controller | 0x02 |
 | viper_interface | 0x03 |
+| ecu_node | 0x04 |
+| bridge | 0x05 |
+
+---
+
+## Node Management
+
+### Node heartbeat — `0x0F0 NODE_ANNOUNCE`
+
+Every node broadcasts this every 5 seconds. `data[0]` carries the sender's `node_id` so all nodes share the same CAN ID.
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | node_id | sender's ID (0x01–0x05) |
+| 1 | peer_count | number of active ESP-NOW peers seen |
+| 2 | can_ok | 1 = CAN bus healthy, 0 = down |
+
+### Boot event — `0x0F1 BOOT_EVENT`
+
+Emitted once at end of `setup()`, self-echoed back into the RX ring. Used by `TRIG_BOOT()` in the rules engine to fire actions on power-up.
+
+| Byte | Field |
+|------|-------|
+| 0 | node_id |
+
+```
+# Read boot event on the bus (just observe — nodes emit this automatically)
+# Use TRIG_BOOT() in RULES_DEFAULT_INIT to react to it
+```
+
+### Node capability advertisement — `0x0F2 NODE_CAP`
+
+Every node broadcasts this at boot and every 30 seconds. Also sent in response to a `NODE_CAP_REQ`. The bridge uses these frames to build its aggregated control panel.
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | node_id | sender's ID |
+| 1 | caps | bitmask: 0x01=relay, 0x02=switches, 0x04=viper, 0x08=leds, 0x10=rules |
+| 2 | switch_count | number of latching switches |
+| 3 | button_count | number of momentary buttons |
+| 4 | led_count | number of CAN-controllable LEDs |
+| 5 | relay_count | number of relay outputs |
+
+### Request capabilities — `0x0F3 NODE_CAP_REQ`
+
+Ask one or all nodes to immediately send their `NODE_CAP` frame.
+
+```
+# Request caps from all nodes
+0F3 FF
+
+# Request caps from relay controller only
+0F3 02
+```
 
 ---
 

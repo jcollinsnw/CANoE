@@ -792,13 +792,15 @@ The Makefile copies the right config header, then compiles the single unified sk
 # Find your serial ports
 ls /dev/cu.usbserial-* /dev/cu.wchusbserial-* /dev/cu.SLAB_USBtoUART 2>/dev/null
 
-# Compile all three nodes in sequence
+# Compile all nodes in sequence
 make all
 
 # Upload (substitute your actual port paths)
-make upload-relay_controller  PORT=/dev/cu.usbserial-XXXX
-make upload-switch_panel      PORT=/dev/cu.usbserial-YYYY
-make upload-viper_interface   PORT=/dev/cu.usbserial-ZZZZ
+make upload-relay   PORT=/dev/cu.usbserial-XXXX
+make upload-switch  PORT=/dev/cu.usbserial-YYYY
+make upload-viper   PORT=/dev/cu.usbserial-ZZZZ
+make upload-ecu     PORT=/dev/cu.usbserial-WWWW
+make upload-bridge  PORT=/dev/cu.usbserial-VVVV
 ```
 
 **Arduino IDE:**
@@ -1074,6 +1076,9 @@ Changes without `!` are RAM-only and lost on reboot. Save with:
 | ID | Name | Direction | Payload |
 |----|------|-----------|---------|
 | 0x0F0 | NODE_ANNOUNCE | every node → all | `[node_id, peer_count, can_ok]` — broadcast every 5 s; `node_id` identifies the sender since all nodes share this ID |
+| 0x0F1 | BOOT_EVENT | every node → all | `[node_id]` — emitted once at end of `setup()`, self-echoed; triggers `TRIG_BOOT()` rules |
+| 0x0F2 | NODE_CAP | every node → all | `[node_id, caps, switch_count, button_count, led_count, relay_count]` — capability advertisement; broadcast at boot and every 30 s; caps bits: 0x01=relay, 0x02=switches, 0x04=viper, 0x08=leds, 0x10=rules |
+| 0x0F3 | NODE_CAP_REQ | any → target/all | `[target_node_id]` — 0xFF = all nodes respond with NODE_CAP immediately |
 | 0x100 | RELAY_CMD | any → relay_controller | `[mask, state]` — bit N = relay N+1; only bits set in mask are changed |
 | 0x101 | RELAY_STATUS | relay_controller → all | `[bitmap]` — bit N = relay N+1 on/off; 5 Hz |
 | 0x102 | LED_CMD | any → target node | `[target_node_id, mask, state]` — `0xFF` target = broadcast to all nodes with `ENABLE_LEDS` |
@@ -1120,6 +1125,7 @@ Changes without `!` are RAM-only and lost on reboot. Save with:
 | `0x02` | relay_controller |
 | `0x03` | viper_interface |
 | `0x04` | ecu_node |
+| `0x05` | bridge |
 | `0xFF` | broadcast (all nodes) — **not accepted** by `CFG_KEY_NODE_ID` |
 
 **Config keys:**
