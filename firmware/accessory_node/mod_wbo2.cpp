@@ -1,21 +1,33 @@
 // mod_wbo2.cpp — wideband O2 sensor reader and CAN broadcaster.
 //
-// This module reads a 0–5V analog signal from a wideband O2 sensor controller (e.g., LSU 4.9 + controller)
-// and broadcasts the lambda or AFR value over CAN. Optionally registers an LCD widget for display.
+// Reads the 0–5V analog output of an LSU 4.9 wideband O2 controller (any brand),
+// converts to AFR via a configurable linear map, and broadcasts WBO2_DATA over CAN.
+// Optionally registers an LCD widget for display.
+//
+// The controller's 0–5V output must be divided to 0–2.5V before the ADC pin.
+// Use equal-value resistors (e.g. 100 kΩ + 100 kΩ) as a 2:1 divider.
+// WBO2_MIN_V / WBO2_MAX_V are the post-divider voltages at the ADC pin.
 //
 // Config macros (define in node_config.h):
-//   WBO2_PIN         — GPIO connected to sensor analog output (must be ADC-capable)
-//   WBO2_SAMPLE_MS   — broadcast interval in ms (default 500)
-//   WBO2_WIDGET_ROW  — LCD row for the widget (optional)
-//   WBO2_WIDGET_COL  — LCD column for the widget (optional)
-//   WBO2_WIDGET_WIDTH— number of chars wide (default 8)
-//   WBO2_MIN_V       — voltage at minimum reading (default 0.0)
-//   WBO2_MAX_V       — voltage at maximum reading (default 5.0)
-//   WBO2_MIN_AFR     — AFR at min voltage (default 10.0)
-//   WBO2_MAX_AFR     — AFR at max voltage (default 20.0)
+//   WBO2_PIN          — ADC1 GPIO (GPIOs 32–39). ADC2 is unavailable while WiFi is active.
+//   WBO2_SAMPLE_MS    — broadcast interval in ms (default 500)
+//   WBO2_OVERSAMPLE   — ADC samples averaged per reading (default 16; higher = less noise)
+//   WBO2_ADC_VREF     — ADC full-scale voltage in V (default 3.3f; use 3.9f with ADC_11db)
+//   WBO2_EMA_ALPHA    — exponential moving average factor (0.0–1.0); omit to disable.
+//                       0.2 = heavy smoothing (~400 ms TC at 10 Hz), 0.5 = light smoothing.
+//   WBO2_WIDGET_ROW   — LCD row for the widget (optional)
+//   WBO2_WIDGET_COL   — LCD column for the widget (optional)
+//   WBO2_WIDGET_WIDTH — number of chars wide (default 8)
+//   WBO2_MIN_V        — post-divider voltage at WBO2_MIN_AFR (default 0.0)
+//   WBO2_MAX_V        — post-divider voltage at WBO2_MAX_AFR (default 2.5)
+//   WBO2_MIN_AFR      — AFR at WBO2_MIN_V (default 10.0)
+//   WBO2_MAX_AFR      — AFR at WBO2_MAX_V (default 20.0)
 //
 // CAN protocol:
 //   CAN_ID_WBO2_DATA — [afr_lo, afr_hi] (uint16, AFR × 100)
+//
+// Calibration varies by controller brand. Set WBO2_MIN/MAX_AFR to match your
+// controller's output spec. Verify at stoich (14.7 AFR) against a known reference.
 //
 // To use: #define ENABLE_WBO2 in your node config and set WBO2_PIN, etc.
 
@@ -32,6 +44,12 @@
 #ifndef WBO2_SAMPLE_MS
 #define WBO2_SAMPLE_MS 500
 #endif
+#ifndef WBO2_OVERSAMPLE
+#define WBO2_OVERSAMPLE 16
+#endif
+#ifndef WBO2_ADC_VREF
+#define WBO2_ADC_VREF 3.3f
+#endif
 #ifndef WBO2_WIDGET_WIDTH
 #define WBO2_WIDGET_WIDTH 8
 #endif
@@ -39,7 +57,7 @@
 #define WBO2_MIN_V 0.0f
 #endif
 #ifndef WBO2_MAX_V
-#define WBO2_MAX_V 5.0f
+#define WBO2_MAX_V 2.5f
 #endif
 #ifndef WBO2_MIN_AFR
 #define WBO2_MIN_AFR 10.0f
@@ -51,6 +69,10 @@
 // Latest AFR value (×100)
 static uint16_t g_afr = 0;
 
+#ifdef WBO2_EMA_ALPHA
+static float g_afr_ema = 0.0f;
+#endif
+
 // --------------------------------------------------------------
 // Sensor — analog read and broadcast
 // --------------------------------------------------------------
@@ -59,12 +81,13 @@ static uint16_t g_afr = 0;
 static uint32_t g_last_sample_ms = 0;
 
 static float read_voltage() {
-  int raw = analogRead(WBO2_PIN);
-  return (float)raw * 3.3f / 4095.0f; // ESP32 ADC: 0–4095 = 0–3.3V (adjust if using 5V ref)
+  uint32_t sum = 0;
+  for (uint8_t i = 0; i < WBO2_OVERSAMPLE; i++)
+    sum += analogRead(WBO2_PIN);
+  return (float)(sum / WBO2_OVERSAMPLE) * WBO2_ADC_VREF / 4095.0f;
 }
 
 static float voltage_to_afr(float v) {
-  // Linear map from voltage to AFR
   float afr = WBO2_MIN_AFR + (v - WBO2_MIN_V) * (WBO2_MAX_AFR - WBO2_MIN_AFR) / (WBO2_MAX_V - WBO2_MIN_V);
   if (afr < WBO2_MIN_AFR) afr = WBO2_MIN_AFR;
   if (afr > WBO2_MAX_AFR) afr = WBO2_MAX_AFR;
@@ -73,6 +96,12 @@ static float voltage_to_afr(float v) {
 
 static void sensor_setup() {
   pinMode(WBO2_PIN, INPUT);
+  // 11 dB attenuation extends ADC range to ~3.9 V, needed for post-divider voltages above ~1.1 V.
+#if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+  analogSetAttenuation(WBO2_PIN, ADC_11db);
+#else
+  analogSetPinAttenuation(WBO2_PIN, ADC_11db);
+#endif
   g_last_sample_ms = millis();
 }
 
@@ -83,6 +112,11 @@ static void sensor_loop() {
 
   float v = read_voltage();
   float afr = voltage_to_afr(v);
+#ifdef WBO2_EMA_ALPHA
+  if (g_afr_ema == 0.0f) g_afr_ema = afr;
+  g_afr_ema = WBO2_EMA_ALPHA * afr + (1.0f - WBO2_EMA_ALPHA) * g_afr_ema;
+  afr = g_afr_ema;
+#endif
   g_afr = (uint16_t)(afr * 100.0f + 0.5f);
 
   uint8_t d[2];

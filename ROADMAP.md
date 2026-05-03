@@ -23,7 +23,7 @@ Future features, integrations, and platform evolution ideas. Items are grouped b
 
 Standard CAN-output sensors eliminate analog wiring, ADC calibration drift, and noise from the engine bay. Each becomes a new `mod_` that subscribes to the sensor's documented frame(s) and re-publishes as internal CANoE frames — the rest of the system (LCD, rules, web UI) sees no difference.
 
-- **AEM X-Series Wideband via CAN** — replaces the analog `mod_wbo2` ADC path. The AEM unit broadcasts lambda and AFR on a configurable 11-bit ID at 500 kbit/s. No calibration resistors, no 0–5V noise. `WBO2_DATA (0x306)` frame content stays identical.
+- **LSU 4.9 wideband hardware** — off-brand LSU 4.9 sensor + standalone controller. `mod_wbo2` already handles the 0–5V analog output via a 100 kΩ+100 kΩ divider; oversampling and automatic 11 dB ADC attenuation added. Wire up and calibrate `WBO2_MIN/MAX_AFR` against stoich once installed.
 - **CAN pressure / temperature sensors** — oil pressure, fuel pressure, coolant temp, oil temp as bus participants instead of analog inputs. AEM, Bosch Motorsport, and Continental all make CAN-output variants of common sensors.
 - **Transmission controller CAN interface** — TCI, Turbo Action, and similar aftermarket transmisison controllers expose CAN ports for gear position, TCC lockup status, line pressure. Feed into rules engine: e.g. disable launch control relay above 2nd gear.
 - **CAN-output GPS** — higher-accuracy alternative to `mod_gps` NMEA UART parsing; many u-blox and SkyTraq modules support CAN output directly.
