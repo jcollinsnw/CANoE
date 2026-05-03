@@ -18,6 +18,7 @@
 #   make monitor        PORT=/dev/cu.usbserial-XXXX
 
 FQBN    := esp32:esp32:esp32
+JOBS    := 8
 BAUD    := 115200
 UPLOAD_SPEED ?= 115200 # 921600
 PORT    ?= /dev/cu.SLAB_USBtoUART   # switch panel
@@ -34,27 +35,27 @@ HTMLDST := $(SKETCH)/index_html.h
 relay:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/relay_controller.h $(SKETCH)/node_config.h
-	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) $(SKETCH)
 
 switch:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/switch_panel.h $(SKETCH)/node_config.h
-	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) $(SKETCH)
 
 viper:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/viper_interface.h $(SKETCH)/node_config.h
-	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) $(SKETCH)
 
 ecu:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/ecu_node.h $(SKETCH)/node_config.h
-	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) $(SKETCH)
 
 bridge:
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/bridge.h $(SKETCH)/node_config.h
-	arduino-cli compile --clean --fqbn $(FQBN) $(SKETCH)
+	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) $(SKETCH)
 
 # ---- compile all ----
 .PHONY: all

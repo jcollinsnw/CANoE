@@ -97,6 +97,10 @@ A full off-device tuning platform built as a Quasar/Vue app that talks to the ex
 - ~~CAN reliability monitoring~~ — `CAN_ID_BUS_ERROR`, error-passive detection, alert rules
 - ~~LCD startup animation + jingle~~ — CANoE reveal, mutable via menu
 - ~~BLE GATT CAN mirror~~ — `mod_bluetooth` on ESP32 + Tuner iOS app; auto-pair, background GPS injection, live frame log
+- ~~Reboot menu item~~ — `MENU_HAS_REBOOT`; sends `REBOOT_CMD (0x0F5)` to any node by ID; LCD shows "Rebooting..." on local reboot
+- ~~SoftAP client notifications~~ — `webui_set_ap_client_cb()`; plays buzzer chime + shows LCD event on connect/disconnect
+- ~~Runtime WiFi credential management~~ — `mod_wifi_creds` + `mod_blob`; credentials stored in NVS, seeded from `secrets.h` on first boot; generic chunked blob transfer protocol (`BLOB_WRITE 0x410` / `BLOB_COMMIT 0x411`); broadcast to all nodes via blob + `REBOOT_CMD 0xFF`; WiFi Credentials panel in Settings tab
+- ~~ESP-NOW key rotation~~ — `bus_set_espnow_keys()` allows NVS-loaded PMK/LMK to override compile-time `secrets.h` at runtime
 
 
 ## Quick TODOs (TO ORGANIZE)

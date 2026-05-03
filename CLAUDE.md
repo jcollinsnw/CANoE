@@ -49,6 +49,8 @@ A parallel 12V accessory wiring system for an antique car, built around four ESP
         ├── mod_ecu.h / mod_ecu.cpp             # dual-mode fuel controller (carb PI + TBI injection)
         ├── mod_gps.h / mod_gps.cpp             # GPS speed/heading via NMEA UART (u-blox Neo-6M/8M)
         ├── mod_mqtt.h / mod_mqtt.cpp           # MQTT bridge: publishes CAN frames, subscribes for injection (bridge only)
+        ├── mod_blob.h / mod_blob.cpp           # generic chunked blob write protocol (BLOB_WRITE 0x410 + BLOB_COMMIT 0x411); 4-slot RX, up to 256 B per key
+        ├── mod_wifi_creds.h / mod_wifi_creds.cpp # runtime WiFi + ESP-NOW credential storage (NVS "wifi_creds"); seeds from secrets.h on first boot
         ├── secrets.h                           # ← gitignored; AP_SSID, AP_PASSWORD, ESPNOW_PMK, ESPNOW_LMK
         └── secrets.h.example                  # committed placeholder with zero ESP-NOW keys
 ```
@@ -228,6 +230,8 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x402  | CONFIG_READ_RESP  | same layout as CONFIG_WRITE (flags byte unused)        |
 | 0x403  | CONFIG_SAVE       | `[target, action]` — 0x01 commit, 0x02 reload, 0x03 factory reset |
 | 0x500  | LCD_CMD           | `[row, col, char…]` or `[0xFF]` clear — any node → switch_panel |
+| 0x410  | BLOB_WRITE        | `[target, ns, key, chunk_idx, d0, d1, d2, d3]` — 4-byte chunk of a multi-byte value. chunk_idx × 4 = byte offset. target 0xFF = broadcast. |
+| 0x411  | BLOB_COMMIT       | `[target, ns, key, len_lo, len_hi, flags]` — finalizes a blob transfer; fires commit callback on receiver. flags: `BLOB_FLAG_PERSIST=0x01` (save to NVS), `BLOB_FLAG_REBOOT=0x02` (restart after saving). Self-echoed frames are ignored by the blob handler; the sender saves its own copy directly. |
 | 0x510  | VIPER_CMD         | `[cmd]` — any node → viper_interface; cmd: 0x01 lock, 0x02 unlock, 0x03 remote start |
 | 0x511  | VIPER_STATUS      | `[b0..b4]` — viper_interface → everyone; raw 5-byte Viper alarm packet |
 
@@ -243,6 +247,9 @@ Config keys:
 - `0x51 CFG_KEY_ECU_MODE` — 0=carb, 1=inject; arg[4]=value; persisted to NVS
 - `0x52 CFG_KEY_ECU_TARGET_AFR` — target AFR × 100 (uint16 LE in arg2_lo/hi)
 - `0x53 CFG_KEY_ECU_BASE_PW` — injection base pulse width μs at 100% VE, 100 kPa (uint16 LE)
+
+Blob namespaces (`BLOB_NS_*`):
+- `0x01 BLOB_NS_WIFI` — WiFi / ESP-NOW credential transfer. Keys: `0x01 BLOB_KEY_SSID` (string), `0x02 BLOB_KEY_PASS` (string), `0x03 BLOB_KEY_PMK` (16 bytes), `0x04 BLOB_KEY_LMK` (16 bytes). Handled by `mod_wifi_creds`; persisted to NVS namespace `"wifi_creds"`. First boot seeds from `secrets.h`; runtime updates arrive via blob transfer or via `/api/wifi_creds` POST. Broadcasting with `BLOB_FLAG_PERSIST` (no `BLOB_FLAG_REBOOT`) then sending `REBOOT_CMD 0xFF` ensures all nodes save before simultaneously restarting with new credentials.
 
 Switch events (0x200 data[1]): `0 RELEASE`, `1 PRESS`, `2 LONG_PRESS`, `3 DOUBLE_PRESS`.
 
@@ -317,7 +324,7 @@ The UI has four tabs:
 - **Control** — node-adaptive panel. Switch panel shows: physical switch state (tracked from SWITCH_EVENT frames; clickable to simulate input), momentary buttons (clickable), LED status dots (clickable to toggle). Relay controller shows: 6 relay tiles + All OFF. Viper interface shows Lock/Unlock/Start and last alarm response. Relay state updates in real time from RELAY_STATUS and RELAY_CMD frames. **Bridge node** shows an aggregated panel with one section per discovered node, built from NODE_CAP frames received over CAN; includes a Refresh button and a "Request All Caps" button for nodes that haven't announced yet.
 - **Rules** — full rules editor; lists all rules, shows human-readable trigger/action descriptions, add/edit/delete rules inline, factory reset button. Hidden on the bridge node (rules live on each node locally).
 - **Network** — live node presence map, transport health (CAN/WiFi), last-seen times.
-- **Settings** (hamburger menu) — node ID reassignment (saves to NVS, restarts).
+- **Settings** (hamburger menu) — node ID reassignment (saves to NVS, restarts) + **WiFi Credentials** panel (SSID, password, PMK hex, LMK hex; Load Current / Save to This Node / Broadcast to All Nodes / Reboot All buttons). Broadcast uses blob transfer with `BLOB_FLAG_PERSIST`; Reboot All sends `REBOOT_CMD 0xFF`. Changing SSID/password will disconnect your current browser session.
 - **Serial** (hamburger menu) — live tee of `wlog()`/`wlogln()` UART output.
 
 ### Raw hex command line
@@ -358,8 +365,10 @@ Use the transport-mode selector in the web UI header: **CAN+WiFi** (normal), **W
 - **Self-echo.** `bus_tx()` feeds every outbound frame back into the RX ring (tagged `source="self"`). This means state mirrors, LCD updates, buzzer, and rules all react to web-UI-injected frames exactly the same as frames from other nodes. Don't be surprised when you see your own TX come back through `bus_rx()`.
 - **Dedup.** ESP-NOW frames carry their own `(node_id, seq)` header; a 2-second window filters repeats. CAN frames are canonical and always passed through. This is safe because our application messages are idempotent (RELAY_CMD, STATUS, TELEMETRY) or edge-triggered with short windows (SWITCH_EVENT).
 - **Captive-portal probes.** iOS and Android each hit different URLs to detect captive portals — we catch the common ones in `webui.cpp` and bounce them to `/`.
-- **Credentials live in `secrets.h`.** `firmware/accessory_node/secrets.h` is gitignored and holds `AP_SSID`, `AP_PASSWORD`, `ESPNOW_PMK` (16 bytes), and `ESPNOW_LMK` (16 bytes). Copy `secrets.h.example` to `secrets.h` and fill in real values before building. Every WiFi node includes this file; the bridge node does not use PMK/LMK (no ESP-NOW). Must be identical on all ESP-NOW nodes or they won't decrypt each other's frames.
-- **ESP-NOW encryption.** `bus_init()` calls `esp_now_set_pmk()` with `ESPNOW_PMK`. The broadcast peer (FF:FF:FF:FF:FF:FF) cannot be encrypted by hardware, so initial peer discovery still uses broadcast. On first receipt of a frame from any MAC, `enc_peer_add()` registers that MAC as an encrypted unicast peer with `ESPNOW_LMK`. Subsequent `bus_tx()` calls send to all encrypted peers *and* broadcast; `(node_id, seq)` dedup handles the overlap.
+- **Credentials live in `secrets.h` (compile-time) and NVS (runtime).** `firmware/accessory_node/secrets.h` is gitignored and holds `AP_SSID`, `AP_PASSWORD`, `ESPNOW_PMK` (16 bytes), `ESPNOW_LMK` (16 bytes). Copy `secrets.h.example` and fill in real values before building. At first boot (or after `wifi_creds_reset()`), `mod_wifi_creds` seeds NVS `"wifi_creds"` from `secrets.h`. Subsequent boots load from NVS. The Settings panel's WiFi Credentials section or a blob transfer can update credentials at runtime without reflashing.
+- **ESP-NOW encryption.** `bus_init()` calls `esp_now_set_pmk()` with the key from `mod_wifi_creds` (falling back to `secrets.h` if NVS is unpopulated). The broadcast peer (FF:FF:FF:FF:FF:FF) cannot be encrypted by hardware, so initial peer discovery still uses broadcast. On first receipt of a frame from any MAC, `enc_peer_add()` registers that MAC as an encrypted unicast peer using the LMK from `mod_wifi_creds`. Subsequent `bus_tx()` calls send to all encrypted peers *and* broadcast; `(node_id, seq)` dedup handles the overlap.
+- **Dynamic ESP-NOW keys.** Call `bus_set_espnow_keys(pmk, lmk)` before `bus_init()` to inject runtime keys. Both `esp_now_set_pmk()` and `enc_peer_add()` check an internal `g_espnow_keys_set` flag and fall back to the compile-time `secrets.h` values if not set. `accessory_node.ino` calls this from `wifi_creds_get_pmk/lmk()` in setup before any bus init path.
+- **SoftAP client notifications.** `webui_set_ap_client_cb()` registers a callback fired when `WiFi.softAPgetStationNum()` changes (polled every 500 ms in `webui_tick()`). `accessory_node.ino` uses this to call `lcd_set_event()` and `buzzer_wifi_connect/disconnect()` when a device joins or leaves the AP.
 - **Open AP.** Fine in a garage, risky in public. `AP_PASSWORD` in `secrets.h` must be ≥ 8 chars for WPA2 and identical on every WiFi node. `AP_SSID` and `AP_HIDDEN` are configurable there too.
 - **Horn safety.** `RELAY_MAX_ON_INIT` in `configs/relay_controller.h` caps relay 5 (horn) at 30s. HOLD-style rules (SW_PRESS→relay ON, SW_RELEASE→relay OFF) still rely on the relay controller's watchdog as a backstop.
 - **ADC calibration.** GPIO 34 on the relay controller is read with default attenuation; `VBAT_DIVIDER_RATIO` in `configs/relay_controller.h` assumes 10k + 2.2k divider. Re-tune to your resistors before trusting the telemetry.
@@ -375,6 +384,8 @@ Use the transport-mode selector in the web UI header: **CAN+WiFi** (normal), **W
 - **Node capability broadcast.** Every node calls `send_node_cap()` at boot and every 30 s (piggybacked on the 5 s announce, firing every 6th cycle). Any node can also request caps with a `NODE_CAP_REQ (0x0F3)` frame; all nodes (or a specific target) respond immediately. `BusFrame.source` is `"self"` for self-echoed frames, `"can"` for wired CAN, `"wifi"` for ESP-NOW — use this to distinguish sources since `BusFrame` has no `outbound` field.
 - **GPIO 36/39 have no internal pull-up.** These are RTC-domain input-only pins on the ESP32. `INPUT_PULLUP` is silently ignored; the pull-up request has no effect. Any input on these pins needs an external 10kΩ resistor to 3V3. BTN3 and BTN4 were moved here from GPIO 19/23 to free those pins for LED outputs — document the external resistor requirement clearly for anyone who assembles the hardware.
 - **Buzzer sequencer.** `mod_buzzer` uses Arduino `tone()`/`noTone()` to drive a passive piezo — no LEDC setup required. Sequences are arrays of `{freq, ms}` notes advanced by `buzzer_tick()` each loop; a new `play_seq()` call immediately interrupts any active sequence. Relay sounds fire on RELAY_CMD frames (including self-echoed ones from the web UI), so every relay state change produces feedback regardless of its source. `BUZZER_PIN` must not be an input-only GPIO (avoid 34/35).
+- **`/api/wifi_creds` endpoint.** GET returns `{ssid, pass, pmk_hex, lmk_hex}`. POST body: JSON with any subset of those fields plus optional `broadcast: true` to send a blob transfer to all nodes. POST `/api/wifi_creds/reset` restores `secrets.h` defaults in RAM and NVS. Changes take effect on next reboot; use "Reboot All" button or `REBOOT_CMD 0xFF` to apply.
+- **`index_html.h` is auto-generated.** The Makefile runs `minify_index_html.sh` before each compile, which minifies `index_html.h.bak` and writes `index_html.h`. Always edit `index_html.h.bak`; never edit `index_html.h` directly.
 - **Rules NVS layout.** Namespace `"rules"`, keys `"r0"` through `"r<MAX_RULES-1>"`. Each key holds a 12-byte blob (`CanRule`). Empty/deleted rules have `trig_id == 0` and are skipped at evaluation time. Factory reset clears all keys and re-writes from `RULES_DEFAULT_INIT`.
 
 ## Known TODO list (in rough priority order)
