@@ -6,8 +6,6 @@ Future features, integrations, and platform evolution ideas. Items are grouped b
 
 ## Security & Reliability
 
-- ~~**Encrypt ESP-NOW**~~ — done: PMK set at init; dynamic encrypted unicast peers added on first contact; broadcast retained for discovery with dedup handling overlap.
-- ~~**ESP-NOW ack/retry for switch events**~~ — done: `CAN_ID_SWITCH_ACK (0x202)`, 3 retries at 80 ms, `buzzer_alert()` + LED flash on exhaustion.
 - **Low-voltage cutoff** — `mod_relay.cpp`: when `vbat_cv` from `TELEMETRY (0x300)` drops below a configurable threshold (stored in NVS, editable over CAN), force non-essential relays off and broadcast an alert. Protects the battery from being drained to failure.
 - **Battery voltage graph** — Control tab in the web UI already receives `TELEMETRY (0x300)` frames; add a small rolling graph of `vbat_cv` over time.
 
@@ -87,24 +85,7 @@ A full off-device tuning platform built as a Quasar/Vue app that talks to the ex
 
 ---
 
-## Done
+## Unorganized
 
-- ~~SoftAP password~~ — set on all nodes (REDACTED / REDACTED)
-- ~~Dashboard Control tab~~ — switch state, relay tiles, LED dots, Viper controls
-- ~~Bridge node WiFi STA + MQTT~~ — `bridge.h`, `BRIDGE_MODE`, `mod_mqtt`
-- ~~Horn timeout → rules engine~~ — `ACT_RELAY_TIMED_OFF` rule, editable at runtime
-- ~~LED flash mode via CAN~~ — 4-byte `LED_CMD` extension, `ACT_LED_FLASH` rule action
-- ~~CAN reliability monitoring~~ — `CAN_ID_BUS_ERROR`, error-passive detection, alert rules
-- ~~LCD startup animation + jingle~~ — CANoE reveal, mutable via menu
-- ~~BLE GATT CAN mirror~~ — `mod_bluetooth` on ESP32 + Tuner iOS app; auto-pair, background GPS injection, live frame log
-- ~~Reboot menu item~~ — `MENU_HAS_REBOOT`; sends `REBOOT_CMD (0x0F5)` to any node by ID; LCD shows "Rebooting..." on local reboot
-- ~~SoftAP client notifications~~ — `webui_set_ap_client_cb()`; plays buzzer chime + shows LCD event on connect/disconnect
-- ~~Runtime WiFi credential management~~ — `mod_wifi_creds` + `mod_blob`; credentials stored in NVS, seeded from `secrets.h` on first boot; generic chunked blob transfer protocol (`BLOB_WRITE 0x410` / `BLOB_COMMIT 0x411`); broadcast to all nodes via blob + `REBOOT_CMD 0xFF`; WiFi Credentials panel in Settings tab
-- ~~ESP-NOW key rotation~~ — `bus_set_espnow_keys()` allows NVS-loaded PMK/LMK to override compile-time `secrets.h` at runtime
-
-
-## Quick TODOs (TO ORGANIZE)
-- ~~Buzzer CAN?~~ — done: `CAN_ID_BUZZER_CMD (0x104)` with `BUZZER_SEQ_*` / `BUZZER_CMD_MUTE`; `RULE_ACT_BUZZER_PLAY` sends frame through CAN; `buzzer_handle_frame()` responds to target or broadcast.
-- ~~Web UI communication audit~~ — done: rules POST/DELETE/reset now emit `BLOB_NS_RULES (0x02)` frames visible in CAN log; all writes go through the bus.
 - LCD Menu for Bluetooth discoverability/power
 - Switch wiring to regular rotary encoder
