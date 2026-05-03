@@ -1,7 +1,7 @@
 # CANoE — CAN over ESP
 
 <p align="center">
-  <img src="logo.svg" alt="CANoE logo" width="420"/>
+  <img src="assets/canoe.png" alt="CANoE logo" width="420"/>
 </p>
 
 **Paddle your own canoe** — a maker-friendly, off-the-shelf microcontroller platform for wiring up anything with a 12V battery and opinions about fuel. Five ESP32 nodes ride a shared CAN bus, with ESP-NOW as extra sensory perception when the wire gives up. Out of the box it handles a switch panel, a 6-relay fuse box, a Viper 5305V alarm bridge, a dual-mode fuel controller, and a CAN-to-WiFi bridge that ties the whole bus into your home network.
