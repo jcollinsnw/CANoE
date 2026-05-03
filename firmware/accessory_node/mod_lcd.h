@@ -44,6 +44,10 @@ void lcd_register_widget(const LcdWidget& w);  // register a display widget; cal
 // Writes pattern into the next free CGRAM slot (1–7). Returns the slot or 0xFF if full.
 uint8_t lcd_alloc_cgram(const uint8_t pattern[8]);
 
+// Startup animation sound — call BEFORE lcd_setup() with the computed effective value
+// (startup_snd_pref && !beep_muted). When false the animation runs visually but silently.
+void lcd_set_startup_sound(bool will_play);
+
 // Status icon helper — returns the filled/hollow CGRAM glyph (or '+'/'-' ASCII fallback).
 // Used by bus.cpp CAN/WiFi widget renderers which live outside mod_lcd.
 char lcd_status_char(bool ok);
@@ -65,6 +69,7 @@ static inline bool lcd_get_backlight()                 { return false; }
 static inline void lcd_tick()                              {}
 static inline void lcd_register_widget(const LcdWidget&)   {}
 static inline uint8_t lcd_alloc_cgram(const uint8_t*)      { return 0xFF; }
+static inline void lcd_set_startup_sound(bool)             {}
 static inline char lcd_status_char(bool)                   { return '-'; }
 static inline char lcd_relay_char(uint8_t, bool on)       { return on ? (char)0xFF : '-'; }
 static inline const char* lcd_relay_label(uint8_t)        { return "Relay ?"; }

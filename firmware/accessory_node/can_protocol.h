@@ -143,8 +143,9 @@ enum RuleActionKind : uint8_t {
   RULE_ACT_WIFI_ENABLE  = 8,   // arg0 = target node_id
   RULE_ACT_WIFI_DISABLE = 9,   // arg0 = target node_id
   RULE_ACT_VIPER_CMD    = 10,  // arg0 = VIPER_CMD_*
-  RULE_ACT_MENU_SELECT  = 11,  // short-press menu select (no-op when menu closed)
-  RULE_ACT_MENU_ENTER   = 12,  // long-press: enter menu or confirm action
+  RULE_ACT_MENU_SELECT      = 11,  // short-press menu select (no-op when menu closed)
+  RULE_ACT_MENU_ENTER       = 12,  // long-press: enter menu or confirm action
+  RULE_ACT_RELAY_TIMED_OFF  = 13,  // arg0 = relay idx (0-5), arg1 = seconds (1-255)
 };
 
 struct CanRule {
@@ -200,8 +201,9 @@ struct CanRule {
 #define ACT_WIFI_ENABLE(node)  RULE_ACT_WIFI_ENABLE,  (node), 0,      0
 #define ACT_WIFI_DISABLE(node) RULE_ACT_WIFI_DISABLE, (node), 0,      0
 #define ACT_VIPER(cmd)         RULE_ACT_VIPER_CMD,    (cmd),  0,      0
-#define ACT_MENU_SELECT()      RULE_ACT_MENU_SELECT,  0,      0,      0
-#define ACT_MENU_ENTER()       RULE_ACT_MENU_ENTER,   0,      0,      0
+#define ACT_MENU_SELECT()             RULE_ACT_MENU_SELECT,     0,     0, 0
+#define ACT_MENU_ENTER()              RULE_ACT_MENU_ENTER,      0,     0, 0
+#define ACT_RELAY_TIMED_OFF(r, sec)   RULE_ACT_RELAY_TIMED_OFF, (r), (sec), 0
 
 // Convenience: wrap a trigger + action pair into a CanRule initialiser.
 // Usage: RULE(TRIG_SW_PRESS(0), ACT_RELAY_TOGGLE(0))

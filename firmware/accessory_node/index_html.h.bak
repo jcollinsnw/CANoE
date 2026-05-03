@@ -821,7 +821,7 @@ const CAN_NAMES = {
 const SW_EVENTS = ['Release','Press','Long Press','Double Press'];
 const ACT_NAMES = ['--','Relay Toggle','Relay On','Relay Off','All Off','Relay Scene',
                    'LED On','LED Off','WiFi Enable','WiFi Disable','Viper Cmd',
-                   'Menu Select','Menu Enter'];
+                   'Menu Select','Menu Enter','Relay Timed Off'];
 const NODE_NAMES = {1:'switch-panel', 2:'relay-ctrl', 3:'viper-iface', 255:'broadcast'};
 
 function describeTrigger(r) {
@@ -858,6 +858,7 @@ function describeAction(r) {
   }
   if ([8,9].includes(r.action)) return name + ' on ' + (NODE_NAMES[r.arg0] || ('node '+r.arg0));
   if (r.action === 10) return 'Viper ' + ({1:'Lock',2:'Unlock',3:'Start'}[r.arg0] || r.arg0);
+  if (r.action === 13) return 'Relay Off R' + (r.arg0+1) + ' after ' + r.arg1 + 's';
   return name;
 }
 

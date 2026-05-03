@@ -6,6 +6,7 @@
 #include "can_protocol.h"
 
 void rules_setup();
+void rules_tick();                           // call from loop(); fires expired timed-off timers
 void rules_handle_frame(const BusFrame& f);
 
 // Web UI / HTTP API accessors

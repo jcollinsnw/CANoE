@@ -8,8 +8,8 @@
 #define USE_CAN_TRANSCEIVER 1
 #define CAN_BUS_SPEED       125   // kbps — change all nodes together: 125, 250, or 500
 #define USE_WIFI            1
-#define AP_SSID     "AccessoryBus"
-#define AP_PASSWORD ""        // change to WPA2 passphrase before field use
+#define AP_SSID     "REDACTED"
+#define AP_PASSWORD "REDACTED"
 #define AP_HIDDEN   0
 
 #define NVS_NAMESPACE       "relayctl"
@@ -22,8 +22,8 @@
 // ---- Relay module ----
 #define NUM_RELAYS          6
 #define RELAY_ACTIVE_HIGH   true
-#define RELAY_PINS_INIT     {16, 17, 18, 19, 21, 22}
-#define RELAY_MAX_ON_INIT   {0, 0, 0, 0, 30000, 0}  // relay 5 (horn) = 30 s max
+#define RELAY_PINS_INIT     {16, 19, 17, 22, 18, 21}  // fuse order 1-6: R1=FuelPump R2=Choke R3=Headlights R4-R5=spare R6=Horn
+#define RELAY_MAX_ON_INIT   {0, 0, 0, 0, 0, 0}       // hardware watchdog off — horn timeout handled by rules engine
 
 // ---- RPM sensor ----
 // PC817C collector → RPM_PIN (with 10kΩ pull-up to 3.3V on that pin).
@@ -40,8 +40,10 @@
 // ---- Rules engine ----
 #define MAX_RULES 8
 
-#define RULES_DEFAULT_INIT {                                      \
-  /* On boot: turn on fuel pump (R2) and choke (R3) */           \
-  RULE(TRIG_BOOT(), ACT_RELAY_ON(1)),  /* boot → R2 (fuel pump) ON */ \
-  RULE(TRIG_BOOT(), ACT_RELAY_ON(2)),  /* boot → R3 (choke) ON  */    \
+#define RULES_DEFAULT_INIT {                                                       \
+  /* On boot: turn on fuel pump (R1) and choke (R2) */                             \
+  RULE(TRIG_BOOT(),         ACT_RELAY_ON(0)),       /* boot → R1 (fuel pump) ON */ \
+  RULE(TRIG_BOOT(),         ACT_RELAY_ON(1)),       /* boot → R2 (choke) ON  */    \
+  /* Horn safety: R6 on → auto-off after 30 s (edit via web UI Rules tab) */       \
+  RULE(TRIG_RELAY_CMD_ON(5), ACT_RELAY_TIMED_OFF(5, 30)),                          \
 }

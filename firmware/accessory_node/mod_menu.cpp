@@ -54,6 +54,9 @@ static const uint8_t     VIPER_CMDS[]   = { VIPER_CMD_LOCK, VIPER_CMD_UNLOCK, VI
 // Node WiFi state mirror: index 0 = self (switch panel), 1 = relay ctrl, 2 = viper
 static bool g_node_wifi[3] = { true, false, true };
 #endif
+#ifdef MENU_HAS_BEEP
+static bool g_startup_snd = true;  // NVS pref; loaded in menu_setup()
+#endif
 
 static MenuItem g_items[9];  // max 8 sections + spare
 static uint8_t  g_item_count = 0;
@@ -192,8 +195,10 @@ static void menu_draw() {
         snprintf(r0, sizeof(r0), "Beep");
         if (is_back)
           snprintf(r1, sizeof(r1), "\x7F Back");
-        else
+        else if (g_sub_sel == 0)
           snprintf(r1, sizeof(r1), "\x7E Beep %s", buzzer_is_muted() ? "OFF" : "ON ");
+        else
+          snprintf(r1, sizeof(r1), "\x7E Strt Sound %s", g_startup_snd ? "ON " : "OFF");
         break;
 #endif
 
@@ -234,7 +239,13 @@ void menu_setup() {
   p.end();
 #endif
 #ifdef MENU_HAS_BEEP
-  g_items[g_item_count++] = { MENU_ID_BEEP,    "Beep",       2 };  // toggle + Back
+  g_items[g_item_count++] = { MENU_ID_BEEP,    "Beep",       3 };  // 2 toggles + Back
+  {
+    Preferences p; p.begin(NVS_NAMESPACE, true);
+    buzzer_set_muted(p.getBool("beep_muted", false));
+    g_startup_snd = p.getBool("startup_snd", true);
+    p.end();
+  }
 #endif
   g_items[g_item_count++] = { MENU_ID_EXIT,    "\x7F Exit",  0 };  // always last
 }
@@ -369,11 +380,25 @@ void menu_action() {
 #endif
 
 #ifdef MENU_HAS_BEEP
-    case MENU_ID_BEEP:
-      buzzer_set_muted(!buzzer_is_muted());
-      wlog("[menu] beep muted=%u\n", buzzer_is_muted());
+    case MENU_ID_BEEP: {
+      Preferences p; p.begin(NVS_NAMESPACE, false);
+      if (idx == 0) {
+        bool muted = !buzzer_is_muted();
+        buzzer_set_muted(muted);
+        p.putBool("beep_muted", muted);
+        // startup sound effective flag = pref && !muted
+        lcd_set_startup_sound(g_startup_snd && !muted);
+        wlog("[menu] beep muted=%u\n", muted);
+      } else {
+        g_startup_snd = !g_startup_snd;
+        p.putBool("startup_snd", g_startup_snd);
+        lcd_set_startup_sound(g_startup_snd && !buzzer_is_muted());
+        wlog("[menu] startup_snd=%u\n", g_startup_snd);
+      }
+      p.end();
       menu_draw();
       break;
+    }
 #endif
 
     default: break;

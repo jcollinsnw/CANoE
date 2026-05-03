@@ -22,7 +22,10 @@
 #define LCD_EN 0x04   // enable strobe
 #define LCD_RS 0x01   // register select: 0 = command, 1 = data
 
-static bool    g_lcd_backlight = true;
+static bool    g_lcd_backlight  = true;
+static bool    g_startup_sound  = true;  // effective flag; set before lcd_setup() via lcd_set_startup_sound()
+
+void lcd_set_startup_sound(bool will_play) { g_startup_sound = will_play; }
 static char    g_event_buf[LCD_COLS + 1] = {};  // current event row text (padded, no null needed)
 static uint8_t g_cgram_next = 1;               // next free CGRAM slot (1–7; slot 0 is reserved)
 static uint8_t g_cgram_patterns[8][8] = {};    // stored for re-init after LCD power glitch
@@ -182,6 +185,101 @@ static bool lcd_hard_reinit(const char* reason) {
   return ok;
 }
 
+// Startup animation — runs once inside lcd_setup() while all CGRAM slots are free.
+// Uses write_cgram() directly (not lcd_alloc_cgram) so g_cgram_next stays at 1
+// and the normal icon allocation that follows is unaffected.
+static void lcd_startup_animation() {
+  // Temporary partial-height bar chars; slot 0 safe to use via lcd_data_raw (not in strings).
+  static const uint8_t BAR_HALF[8] = {0x00,0x00,0x00,0x00,0x1F,0x1F,0x1F,0x1F}; // ▄ bottom 4 px
+  static const uint8_t BAR_TALL[8] = {0x00,0x00,0x1F,0x1F,0x1F,0x1F,0x1F,0x1F}; // 6 px tall
+  write_cgram(0, BAR_HALF);
+  write_cgram(1, BAR_TALL);
+  lcd_cmd_raw(0x80);  // return to DDRAM address 0
+
+#ifdef BUZZER_PIN
+  if (g_startup_sound) pinMode(BUZZER_PIN, OUTPUT);  // safe to call before buzzer_setup()
+#endif
+
+  // Phase 1a — row 1 sweeps in (bars at 1-row height).
+  // Jingle: engine cranking — pulsed tones in pairs, rising pitch.
+  //   cols 0–1: 160 Hz  ·  cols 2–3: silence  ·  cols 4–5: 210 Hz
+  //   cols 6–7: silence  ·  cols 8–9: 270 Hz   ·  cols 10–11: silence
+  //   cols 12–13: 340 Hz  ·  cols 14–15: 380 Hz (continuous — engine caught!)
+// Helper macros so g_startup_sound is only checked once per site.
+#if defined(BUZZER_PIN)
+#define ANIM_TONE(f)  do { if (g_startup_sound) tone(BUZZER_PIN,(f)); } while(0)
+#define ANIM_NOTONE() do { if (g_startup_sound) noTone(BUZZER_PIN);   } while(0)
+#else
+#define ANIM_TONE(f)  (void)0
+#define ANIM_NOTONE() (void)0
+#endif
+
+  for (uint8_t col = 0; col < LCD_COLS; col++) {
+    if      (col ==  0) ANIM_TONE(160);
+    else if (col ==  2) ANIM_NOTONE();
+    else if (col ==  4) ANIM_TONE(210);
+    else if (col ==  6) ANIM_NOTONE();
+    else if (col ==  8) ANIM_TONE(270);
+    else if (col == 10) ANIM_NOTONE();
+    else if (col == 12) ANIM_TONE(340);
+    else if (col == 14) ANIM_TONE(380);
+    lcd_set_cursor(1, col); lcd_data_raw(0xFF);
+    delay(18);
+  }
+
+  // Phase 1b — row 0 sweeps in (bars reach full height).
+  // Jingle: engine revving up — continuous tone climbing 440 → 600 → 800 Hz.
+  for (uint8_t col = 0; col < LCD_COLS; col++) {
+    if      (col ==  0) ANIM_TONE(440);
+    else if (col ==  5) ANIM_TONE(600);
+    else if (col == 10) ANIM_TONE(800);
+    lcd_set_cursor(0, col); lcd_data_raw(0xFF);
+    delay(18);
+  }
+
+  ANIM_NOTONE();  // engine cuts — dramatic pause before the reveal
+  delay(80);
+
+  // Phase 2 — spotlight open: clear row 0 from both edges toward center.
+  // Jingle: 3-note ascending sting (G4 → C5 → E5) as the curtain parts.
+  for (uint8_t i = 0; i < LCD_COLS / 2; i++) {
+    if (i == 0) ANIM_TONE(392);  // G4
+    if (i == 3) ANIM_TONE(523);  // C5
+    if (i == 6) ANIM_TONE(659);  // E5 — sustains into the title reveal
+    lcd_set_cursor(0, i);            lcd_data_raw(' ');
+    lcd_set_cursor(0, LCD_COLS-1-i); lcd_data_raw(' ');
+    delay(15);
+  }
+
+  // Phase 3 — title types in center-outward: o → N → E → A → C → surrounding spaces.
+  // "     CANoE      " = 5 spaces + 5 chars + 6 spaces = 16
+  // E5 rings; bump to G5 the moment 'C' lands completing the word, then silence.
+  static const char    title[] = "     CANoE      ";
+  static const uint8_t out[]   = {8,7,9,6,10,5,11,4,12,3,13,2,14,1,15,0};
+  for (uint8_t i = 0; i < LCD_COLS; i++) {
+    if (i == 5) ANIM_TONE(784);  // G5 — word complete, resolve up
+    if (i == 9) ANIM_NOTONE();   // silence as spaces fill in
+    lcd_set_cursor(0, out[i]);
+    lcd_data_raw((uint8_t)title[out[i]]);
+    delay(28);
+  }
+
+  // Phase 4 — row 1 reshapes into a peaked bar chart framing the title.
+  // Title at cols 5–9; peak spans cols 4–10, flanks taper to half-height.
+  static const uint8_t row1[LCD_COLS] = {
+    0x00, 0x00, 0x01, 0x01, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0x01, 0x01, 0x00, 0x00, 0x00
+  };
+  for (uint8_t col = 0; col < LCD_COLS; col++) {
+    lcd_set_cursor(1, col);
+    lcd_data_raw(row1[col]);
+    delay(12);
+  }
+
+  delay(1800);
+  lcd_clear();
+}
+
 void lcd_setup() {
   delay(50);
   // HD44780 4-bit power-on init sequence (per datasheet)
@@ -194,6 +292,8 @@ void lcd_setup() {
   lcd_clear();
   lcd_cmd_raw(0x06);         // entry mode: increment, no shift
   lcd_cmd_raw(0x0C);         // display on, cursor off
+
+  lcd_startup_animation();
 
   // Status indicator icons are LCD's own concern — always allocated first so they
   // are guaranteed slots 1 and 2 regardless of how many relay icons follow.

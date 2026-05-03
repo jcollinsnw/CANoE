@@ -12,8 +12,8 @@
 
 // ---- WiFi AP settings ----
 // Must match the other WiFi nodes so ESP-NOW peers and phones roam correctly.
-#define AP_SSID     "AccessoryBus"
-#define AP_PASSWORD ""        // change to WPA2 passphrase before field use
+#define AP_SSID     "REDACTED"
+#define AP_PASSWORD "REDACTED"
 #define AP_HIDDEN   0
 
 // ---- Features enabled on this node ----

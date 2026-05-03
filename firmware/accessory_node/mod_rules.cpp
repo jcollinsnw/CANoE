@@ -43,6 +43,11 @@ static const char NVS_NS[] = "rules";
 static CanRule  g_rules[MAX_RULES];
 static Preferences g_prefs;
 
+// Pending relay timed-off timers — one slot per relay (6 max).
+// fire_at_ms == 0 means inactive.
+struct RelayTimer { uint8_t relay_mask; uint32_t fire_at_ms; };
+static RelayTimer g_timers[6];
+
 static const CanRule DEFAULT_RULES[MAX_RULES] = RULES_DEFAULT_INIT;
 
 // --------------------------------------------------------------
@@ -159,6 +164,19 @@ static void rule_execute(const CanRule& r) {
       if (menu_is_active()) menu_action(); else menu_enter();
       break;
 #endif
+    case RULE_ACT_RELAY_TIMED_OFF: {
+      if (r.arg0 >= 6 || r.arg1 == 0) break;
+      uint8_t mask = 1 << r.arg0;
+      uint32_t fire_at = millis() + (uint32_t)r.arg1 * 1000UL;
+      // Reuse existing slot for this relay or take the first free one.
+      int8_t slot = -1;
+      for (uint8_t i = 0; i < 6; i++) {
+        if (g_timers[i].relay_mask == mask)              { slot = i; break; }
+        if (g_timers[i].relay_mask == 0 && slot < 0)    slot = (int8_t)i;
+      }
+      if (slot >= 0) { g_timers[slot] = { mask, fire_at }; }
+      break;
+    }
     default: break;
   }
 }
@@ -172,6 +190,18 @@ void rules_setup() {
   for (uint8_t i = 0; i < MAX_RULES; i++)
     if (g_rules[i].trig_id != 0) active++;
   wlog("[rules] %u/%u slots active\n", active, MAX_RULES);
+}
+
+void rules_tick() {
+  uint32_t now = millis();
+  for (uint8_t i = 0; i < 6; i++) {
+    if (!g_timers[i].relay_mask) continue;
+    if (now >= g_timers[i].fire_at_ms) {
+      uint8_t d[2] = { g_timers[i].relay_mask, 0 };
+      bus_tx(CAN_ID_RELAY_CMD, d, 2);
+      g_timers[i].relay_mask = 0;
+    }
+  }
 }
 
 void rules_handle_frame(const BusFrame& f) {

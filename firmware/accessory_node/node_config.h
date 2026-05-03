@@ -14,8 +14,8 @@
 // AP_SSID must be the same on every node so the phone roams between them.
 // AP_PASSWORD must be "" (empty string) for an open network, or >= 8 chars for WPA2.
 // AP_HIDDEN 1 suppresses SSID broadcast; clients must know the name to connect.
-#define AP_SSID     "AccessoryBus"
-#define AP_PASSWORD ""        // change to WPA2 passphrase before field use
+#define AP_SSID     "REDACTED"
+#define AP_PASSWORD "REDACTED"
 #define AP_HIDDEN   0
 
 // ---- Features enabled on this node ----
@@ -41,11 +41,11 @@
 // GPIO 13 is a strapping pin; if it misbehaves at boot move it to a spare GPIO.
 //
 // Index → GPIO → role
-//   0  GPIO 25  SW1  Fuel Pump     (latching switch → relay 2 follows)
-//   1  GPIO 26  SW2  Carb Choke    (latching switch → relay 3 follows)
+//   0  GPIO 25  SW1  Fuel Pump     (latching switch → relay 1 follows)
+//   1  GPIO 26  SW2  Carb Choke    (latching switch → relay 2 follows)
 //   2  GPIO 27  SW3  spare switch
-//   3  GPIO 32  BTN1 Horn          (hold = relay 5 on, release = off)
-//   4  GPIO 33  BTN2 Headlights    (press = toggle relay 1)
+//   3  GPIO 32  BTN1 Horn          (hold = relay 6 on, release = off)
+//   4  GPIO 33  BTN2 Headlights    (press = toggle relay 3)
 //   5  GPIO 13  BTN3 All Off       (press = all relays off)
 //   6  GPIO 14  BTN4 Menu          (short = select, long = enter/back)
 //   7  GPIO 18  BTN5 spare button
@@ -66,14 +66,14 @@
 #define LCD_SDA_PIN       21
 #define LCD_SCL_PIN       22
 
-// ---- LCD widget positions (row 0: C[x]N[x]A[x]  RRRRRR) ----
-// C=CAN wired health, N=ESP-NOW peer seen, A=WiFi AP active; 2-char gap; 6 relay chars right side
+// ---- LCD widget positions (row 0: C[x]A[x]N[x]  RRRRRR) ----
+// C=CAN wired health, A=WiFi AP active, N=ESP-NOW peer seen; 2-char gap; 6 relay chars right side
 #define BUS_CAN_WIDGET_ROW    0   // "C[icon]" at col 0-1
 #define BUS_CAN_WIDGET_COL    0
-#define BUS_ESPNOW_WIDGET_ROW 0   // "N[icon]" at col 2-3
-#define BUS_ESPNOW_WIDGET_COL 2
-#define BUS_AP_WIDGET_ROW     0   // "A[icon]" at col 4-5
-#define BUS_AP_WIDGET_COL     4
+#define BUS_AP_WIDGET_ROW     0   // "A[icon]" at col 2-3
+#define BUS_AP_WIDGET_COL     2
+#define BUS_ESPNOW_WIDGET_ROW 0   // "N[icon]" at col 4-5
+#define BUS_ESPNOW_WIDGET_COL 4
 #define RELAY_WIDGET_ROW      0   // "RRRRRR" at col 10-15 (no brackets)
 #define RELAY_WIDGET_COL      10
 #define RELAY_WIDGET_WIDTH    6
@@ -98,10 +98,10 @@
 // Omit any of these defines to use the default label ("Relay N") and
 // default characters (\xFF block = ON, '-' = OFF).
 
-#define RELAY_1_LABEL    "Headlights"
-#define RELAY_2_LABEL    "Fuel Pump"
-#define RELAY_3_LABEL    "Choke"
-#define RELAY_5_LABEL    "Horn"
+#define RELAY_1_LABEL    "Fuel Pump"
+#define RELAY_2_LABEL    "Choke"
+#define RELAY_3_LABEL    "Headlights"
+#define RELAY_6_LABEL    "Horn"
 
 // ---- RPM ----
 // Frame handler + redline config enabled; LCD bar widget is disabled until hardware is ready.
@@ -126,24 +126,24 @@
 
 #define RULES_DEFAULT_INIT {                                                              \
   /* SW1 (idx 0) — Fuel Pump: relay follows switch position */                           \
-  RULE(TRIG_SW_PRESS(0),      ACT_RELAY_ON(1)),      /* SW1 on  → R2 on  */            \
-  RULE(TRIG_SW_RELEASE(0),    ACT_RELAY_OFF(1)),     /* SW1 off → R2 off */            \
+  RULE(TRIG_SW_PRESS(0),      ACT_RELAY_ON(0)),      /* SW1 on  → R1 on  */            \
+  RULE(TRIG_SW_RELEASE(0),    ACT_RELAY_OFF(0)),     /* SW1 off → R1 off */            \
   /* SW2 (idx 1) — Carb Choke: relay follows switch position */                          \
-  RULE(TRIG_SW_PRESS(1),      ACT_RELAY_ON(2)),      /* SW2 on  → R3 on  */            \
-  RULE(TRIG_SW_RELEASE(1),    ACT_RELAY_OFF(2)),     /* SW2 off → R3 off */            \
+  RULE(TRIG_SW_PRESS(1),      ACT_RELAY_ON(1)),      /* SW2 on  → R2 on  */            \
+  RULE(TRIG_SW_RELEASE(1),    ACT_RELAY_OFF(1)),     /* SW2 off → R2 off */            \
   /* SW3 (idx 2) — spare; add rules here */                                              \
   /* BTN1 (idx 3) — Horn: hold-style (relay on while held, off on release) */           \
-  RULE(TRIG_SW_PRESS(3),      ACT_RELAY_ON(4)),      /* BTN1 press   → R5 on  */       \
-  RULE(TRIG_SW_RELEASE(3),    ACT_RELAY_OFF(4)),     /* BTN1 release → R5 off */       \
+  RULE(TRIG_SW_PRESS(3),      ACT_RELAY_ON(5)),      /* BTN1 press   → R6 on  */       \
+  RULE(TRIG_SW_RELEASE(3),    ACT_RELAY_OFF(5)),     /* BTN1 release → R6 off */       \
   /* BTN2 (idx 4) — Headlights: momentary press toggles relay */                        \
-  RULE(TRIG_SW_PRESS(4),      ACT_RELAY_TOGGLE(0)), /* BTN2 → toggle R1 */            \
+  RULE(TRIG_SW_PRESS(4),      ACT_RELAY_TOGGLE(2)), /* BTN2 → toggle R3 */            \
   /* BTN3 (idx 5) — All Off */                                                           \
   RULE(TRIG_SW_PRESS(5),      ACT_ALL_OFF()),        /* BTN3 → all relays off */       \
   /* BTN4 (idx 6) — Menu navigation (same GPIO as old BTN1) */                          \
   RULE(TRIG_SW_PRESS(6),      ACT_MENU_SELECT()),    /* BTN4 short → menu select */    \
   RULE(TRIG_SW_LONG(6),       ACT_MENU_ENTER()),     /* BTN4 long  → menu enter/back */\
-  /* Status LED 1 mirrors headlights (relay 1) */                                        \
-  RULE(TRIG_RELAY_BIT_ON(0),  ACT_LED_ON(NODE_ID, 0)),  /* R1 on  → LED1 on  */       \
-  RULE(TRIG_RELAY_BIT_OFF(0), ACT_LED_OFF(NODE_ID, 0)), /* R1 off → LED1 off */       \
+  /* Status LED 1 mirrors headlights (relay 3) */                                        \
+  RULE(TRIG_RELAY_BIT_ON(2),  ACT_LED_ON(NODE_ID, 0)),  /* R3 on  → LED1 on  */       \
+  RULE(TRIG_RELAY_BIT_OFF(2), ACT_LED_OFF(NODE_ID, 0)), /* R3 off → LED1 off */       \
   /* BTN5–BTN7 (idx 7–9) — spare; add rules here */                                     \
 }

@@ -62,19 +62,35 @@ bool    g_menu_active  = false;
 // --------------------------------------------------------------
 static uint8_t node_caps_byte() {
   uint8_t c = 0;
-#ifdef ENABLE_RELAY    c |= NODE_CAP_RELAY;    #endif
-#ifdef ENABLE_SWITCHES c |= NODE_CAP_SWITCHES; #endif
-#ifdef ENABLE_VIPER    c |= NODE_CAP_VIPER;    #endif
-#ifdef ENABLE_LEDS     c |= NODE_CAP_LEDS;     #endif
-#ifdef ENABLE_RULES    c |= NODE_CAP_RULES;    #endif
+#ifdef ENABLE_RELAY
+  c |= NODE_CAP_RELAY;
+#endif
+#ifdef ENABLE_SWITCHES
+  c |= NODE_CAP_SWITCHES;
+#endif
+#ifdef ENABLE_VIPER
+  c |= NODE_CAP_VIPER;
+#endif
+#ifdef ENABLE_LEDS
+  c |= NODE_CAP_LEDS;
+#endif
+#ifdef ENABLE_RULES
+  c |= NODE_CAP_RULES;
+#endif
   return c;
 }
 
 static void send_node_cap() {
   uint8_t sw = 0, btn = 0, leds = 0, relays = 0;
-#ifdef ENABLE_SWITCHES sw = NUM_SWITCHES; btn = NUM_BUTTONS; #endif
-#ifdef ENABLE_LEDS     leds = NUM_LEDS;                      #endif
-#ifdef ENABLE_RELAY    relays = NUM_RELAYS;                  #endif
+#ifdef ENABLE_SWITCHES
+  sw = NUM_SWITCHES; btn = NUM_BUTTONS;
+#endif
+#ifdef ENABLE_LEDS
+  leds = NUM_LEDS;
+#endif
+#ifdef ENABLE_RELAY
+  relays = NUM_RELAYS;
+#endif
   uint8_t d[6] = { bus_node_id(), node_caps_byte(), sw, btn, leds, relays };
   bus_tx(CAN_ID_NODE_CAP, d, 6);
 }
@@ -133,10 +149,13 @@ void setup() {
   setup_can();
 
   // NVS may override the compile-time NODE_ID (via CFG_KEY_NODE_ID).
+  // Also read audio prefs here — both are needed before lcd_setup() triggers the animation.
   uint8_t eff_id;
   {
     Preferences p; p.begin(NVS_NAMESPACE, true);
     eff_id = p.getUChar("node_id", NODE_ID);
+    // startup sound plays only when startup_snd is true AND beep is not muted.
+    lcd_set_startup_sound(p.getBool("startup_snd", true) && !p.getBool("beep_muted", false));
     p.end();
   }
   if (eff_id != NODE_ID) wlog("[boot] node_id overridden: 0x%02X -> 0x%02X\n", NODE_ID, eff_id);
@@ -274,6 +293,9 @@ void loop() {
 #ifdef ENABLE_MENU
   menu_tick();
 #endif
+#ifdef ENABLE_RULES
+  rules_tick();
+#endif
 #ifdef ENABLE_VIPER
   viper_loop();
 #endif
@@ -297,6 +319,9 @@ void loop() {
 #endif
 #ifdef ENABLE_BUZZER
   buzzer_tick();
+#endif
+#ifdef ENABLE_LEDS
+  led_tick();
 #endif
 
 #ifdef ENABLE_WBO2
