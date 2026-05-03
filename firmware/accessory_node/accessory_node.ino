@@ -227,7 +227,17 @@ void setup() {
 #if USE_WIFI
     if (ns == BLOB_NS_WIFI) { wifi_creds_on_blob(key, data, len, flags); return; }
 #endif
-    // Future namespaces handled here
+#ifdef ENABLE_RULES
+    if (ns == BLOB_NS_RULES) {
+      if (key == 0xFE) { rules_reset_factory(); return; }
+      if (key < MAX_RULES && len == sizeof(CanRule)) {
+        CanRule r; memcpy(&r, data, sizeof(r));
+        if (r.trig_id == 0 && r.action == 0) rules_clear(key);
+        else                                 rules_set(key, r);
+      }
+      return;
+    }
+#endif
     wlog("[blob] unhandled ns=0x%02X key=0x%02X len=%u\n", ns, key, len);
   });
 

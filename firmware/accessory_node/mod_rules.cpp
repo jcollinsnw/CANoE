@@ -174,6 +174,11 @@ static void rule_execute(const CanRule& r) {
     case RULE_ACT_BUZZER_ALERT:
       buzzer_alert();
       break;
+    case RULE_ACT_BUZZER_PLAY: {
+      uint8_t d[3] = { r.arg0, r.arg1, r.arg2 };
+      bus_tx(CAN_ID_BUZZER_CMD, d, 3);
+      break;
+    }
     case RULE_ACT_RELAY_TIMED_OFF: {
       if (r.arg0 >= 6 || r.arg1 == 0) break;
       uint8_t mask = 1 << r.arg0;

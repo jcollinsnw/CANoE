@@ -210,6 +210,49 @@ Sent automatically by the target node whenever its LED state changes.
 
 ---
 
+## Buzzer Control
+
+### Send a buzzer command — `0x104 BUZZER_CMD`
+
+Payload: `[target_node_id, cmd, arg0]`
+
+- **target** — node ID to address. `0xFF` = broadcast to all nodes with `ENABLE_BUZZER`.
+- **cmd** — sequence or control command (see table below).
+- **arg0** — optional argument (peer count for `BUZZER_SEQ_PEER`, mute flag for `BUZZER_CMD_MUTE`).
+
+| cmd | Constant | Sound | arg0 |
+|-----|----------|-------|------|
+| `0x01` | `BUZZER_SEQ_ALERT` | 3 urgent 1047 Hz pulses (interrupts active sequence) | — |
+| `0x02` | `BUZZER_SEQ_CAN_UP` | Rising three-note confirmation | — |
+| `0x03` | `BUZZER_SEQ_CAN_DOWN` | Two falling warning pulses | — |
+| `0x04` | `BUZZER_SEQ_STARTUP` | Boot jingle (C-major arpeggio) | — |
+| `0x05` | `BUZZER_SEQ_PEER` | Pitch-ladder tone by peer count | peer count (0–5) |
+| `0x06` | `BUZZER_SEQ_WIFI_CONNECT` | Ascending A5→C6 chime (queued) | — |
+| `0x07` | `BUZZER_SEQ_WIFI_DISCONNECT` | Descending C6→A5 chime (queued) | — |
+| `0x10` | `BUZZER_SEQ_RELAY_ON` | Rising relay-on chirp | — |
+| `0x11` | `BUZZER_SEQ_RELAY_OFF` | Falling relay-off chirp | — |
+| `0x12` | `BUZZER_SEQ_ALL_OFF` | Descending three-note sweep | — |
+| `0x20` | `BUZZER_CMD_MUTE` | Mute / unmute | `1` = mute, `0` = unmute |
+
+```
+# Alert on switch_panel (node 0x01)
+104 01 01 00
+
+# Alert broadcast to all nodes
+104 FF 01 00
+
+# Play startup jingle on switch_panel
+104 01 04 00
+
+# Mute switch_panel buzzer
+104 01 20 01
+
+# Unmute switch_panel buzzer
+104 01 20 00
+```
+
+---
+
 ## Viper Alarm
 
 ### Send a command — `0x510 VIPER_CMD`
@@ -482,8 +525,11 @@ Self-echoed `BLOB_COMMIT` frames are ignored by the blob handler; the sender wri
 | Namespace | Value | Keys |
 |-----------|-------|------|
 | `BLOB_NS_WIFI` | `0x01` | `0x01` SSID (string), `0x02` password (string), `0x03` PMK (16 bytes), `0x04` LMK (16 bytes) |
+| `BLOB_NS_RULES` | `0x02` | rule slot index (0–MAX_RULES-1) = 12-byte `CanRule` blob; key `0xFE` = factory reset sentinel |
 
-Handled by `mod_wifi_creds`. Broadcast with `BLOB_FLAG_PERSIST` then send `REBOOT_CMD 0xFF` to update credentials and restart all nodes simultaneously.
+`BLOB_NS_WIFI` is handled by `mod_wifi_creds`. Broadcast with `BLOB_FLAG_PERSIST` then send `REBOOT_CMD 0xFF` to update credentials and restart all nodes simultaneously.
+
+`BLOB_NS_RULES` is emitted automatically by the `/api/rules` HTTP endpoints (POST/DELETE/reset) so that every rule change appears in the CAN frame log. The commit callback on the local node applies the change directly (self-echoed commits are ignored by the blob handler). `BLOB_FLAG_PERSIST` is always set.
 
 ---
 
@@ -687,6 +733,9 @@ Match: (frame.data[c_byte] & c_mask) == (c_val & c_mask)
 | `TRIG_RELAY_BIT_OFF(n)` | 0x101 | data[0] bit n clear | — |
 | `TRIG_RELAY_CMD_ON(n)` | 0x100 | mask includes bit n | state bit n = 1 |
 | `TRIG_RELAY_CMD_OFF(n)` | 0x100 | mask includes bit n | state bit n = 0 |
+| `TRIG_BOOT()` | 0x0F1 | — | — |
+| `TRIG_BUS_ERROR()` | 0x0F4 | any error_code | — |
+| `TRIG_CAN_OK()` | 0x0F4 | error_code == 0 (recovery) | — |
 | `TRIG_ANY(id)` | id | — | — |
 
 ### Action reference
@@ -705,6 +754,11 @@ Match: (frame.data[c_byte] & c_mask) == (c_val & c_mask)
 | `ACT_VIPER(cmd)` | Viper command | cmd = 0x01 lock, 0x02 unlock, 0x03 start |
 | `ACT_MENU_SELECT()` | Menu navigate / confirm | — |
 | `ACT_MENU_ENTER()` | Menu enter / execute | — |
+| `ACT_BUZZER_ALERT()` | 3 urgent pulses on local node | — |
+| `ACT_BUZZER_PLAY(node, seq)` | Send `BUZZER_CMD` to target node | node = target node ID or 0xFF; seq = `BUZZER_SEQ_*` (see [Buzzer Control](#buzzer-control)) |
+| `ACT_BUZZER_PLAY_ARG(node, seq, arg)` | Same with extra arg | arg = e.g. peer count for `BUZZER_SEQ_PEER` |
+| `ACT_RELAY_TIMED_OFF(r, secs)` | Relay on then auto-off after timeout | r = relay index 0–5; secs = delay in seconds (1–255) |
+| `ACT_LED_FLASH(node, led, period_ds)` | Flash an LED | node = target node ID; led = LED index; period_ds = period in 100 ms units |
 
 ### Example rules (in RULES_DEFAULT_INIT syntax)
 

@@ -149,6 +149,10 @@ ACT_LED_FLASH(node,led,period_ds)              // flash LED; period_ds in 100 ms
 ACT_WIFI_ENABLE(node)    ACT_WIFI_DISABLE(node)
 ACT_VIPER(cmd)           ACT_MENU_SELECT()     ACT_MENU_ENTER()
 ACT_BUZZER_ALERT()       // 3 urgent 1047 Hz pulses; interrupts any active sequence
+ACT_BUZZER_PLAY(target, seq)          // send BUZZER_CMD to target node; seq = BUZZER_SEQ_*
+ACT_BUZZER_PLAY_ARG(target, seq, arg) // same with extra arg (e.g. peer count for BUZZER_SEQ_PEER)
+ACT_RELAY_TIMED_OFF(r, secs)         // turn relay r on, then off after secs seconds
+ACT_LED_FLASH(node, led, period_ds)  // flash LED; period_ds in 100 ms units
 ```
 
 **Rule DSL:**
@@ -165,7 +169,7 @@ HOLD-style behavior (relay on while switch pressed, off on release) is expressed
 
 **Self-echo:** `bus_tx()` feeds outbound frames back into the RX ring. Rules see their own emitted frames, and the buzzer, LCD, and relay mirror react to them exactly as they would to frames from other nodes.
 
-**Runtime editing:** `/api/rules` REST endpoints (GET / POST / DELETE) and a **Rules** tab in the web UI allow viewing, creating, editing, and deleting rules at runtime. Changes are persisted to NVS via `rules_set()`. A factory reset endpoint (`POST /api/rules/reset`) restores `RULES_DEFAULT_INIT`.
+**Runtime editing:** `/api/rules` REST endpoints (GET / POST / DELETE) and a **Rules** tab in the web UI allow viewing, creating, editing, and deleting rules at runtime. Changes are persisted to NVS via `rules_set()`. A factory reset endpoint (`POST /api/rules/reset`) restores `RULES_DEFAULT_INIT`. Each write/delete/reset also emits a `BLOB_WRITE` + `BLOB_COMMIT` frame pair (`BLOB_NS_RULES 0x02`) so the change is visible in the frame log; the commit callback on the same node applies the change locally (self-echoed commits are ignored by the blob handler, so the local apply is direct).
 
 ## Switch module
 
@@ -213,6 +217,7 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x101  | RELAY_STATUS      | `[bitmap]` — broadcast at 5 Hz                         |
 | 0x102  | LED_CMD           | 3-byte form: `[target_node_id, mask, state]`; 4-byte form: `[target_node_id, mask, state, flash_period_ds]` — flash_period_ds in 100 ms units (0 = solid). Any node → target; 0xFF target = broadcast. |
 | 0x103  | LED_STATUS        | `[node_id, bitmap]` — sent by target on change         |
+| 0x104  | BUZZER_CMD        | `[target_node_id, cmd, arg0]` — target 0xFF = broadcast. cmd = `BUZZER_SEQ_*` (0x01–0x12) or `BUZZER_CMD_MUTE (0x20)`. arg0 is optional (peer count for `BUZZER_SEQ_PEER`, mute flag for `BUZZER_CMD_MUTE`). |
 | 0x200  | SWITCH_EVENT      | `[switch_id, SwitchEvent]`                             |
 | 0x201  | ENCODER_EVENT     | `[EncoderEvent, count]`                                |
 | 0x202  | SWITCH_ACK        | `[switch_id, event]` — any non-originating node ACKs a SWITCH_EVENT; clears the switch panel's retry timer for that event |
@@ -250,6 +255,7 @@ Config keys:
 
 Blob namespaces (`BLOB_NS_*`):
 - `0x01 BLOB_NS_WIFI` — WiFi / ESP-NOW credential transfer. Keys: `0x01 BLOB_KEY_SSID` (string), `0x02 BLOB_KEY_PASS` (string), `0x03 BLOB_KEY_PMK` (16 bytes), `0x04 BLOB_KEY_LMK` (16 bytes). Handled by `mod_wifi_creds`; persisted to NVS namespace `"wifi_creds"`. First boot seeds from `secrets.h`; runtime updates arrive via blob transfer or via `/api/wifi_creds` POST. Broadcasting with `BLOB_FLAG_PERSIST` (no `BLOB_FLAG_REBOOT`) then sending `REBOOT_CMD 0xFF` ensures all nodes save before simultaneously restarting with new credentials.
+- `0x02 BLOB_NS_RULES` — Rules engine NVS update. Key = rule slot index (0–MAX_RULES-1); value = 12-byte `CanRule` blob. Sentinel key `0xFE` triggers factory reset. Emitted by `/api/rules` POST/DELETE/reset so rule changes appear in the CAN frame log and the commit callback applies them locally. `BLOB_FLAG_PERSIST` is always set.
 
 Switch events (0x200 data[1]): `0 RELEASE`, `1 PRESS`, `2 LONG_PRESS`, `3 DOUBLE_PRESS`.
 

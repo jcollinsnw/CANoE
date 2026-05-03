@@ -173,11 +173,33 @@ void buzzer_set_muted(bool muted) { g_muted = muted; if (muted) noTone(BUZZER_PI
 bool buzzer_is_muted()            { return g_muted; }
 
 void buzzer_handle_frame(const BusFrame& f) {
-  if (f.id != CAN_ID_RELAY_CMD || f.dlc < 2) return;
-  uint8_t mask = f.data[0], state = f.data[1];
-  if (mask == 0x3F && state == 0)   buzzer_all_off();
-  else if (state & mask)            buzzer_relay_on();
-  else                              buzzer_relay_off();
+  if (f.id == CAN_ID_RELAY_CMD && f.dlc >= 2) {
+    uint8_t mask = f.data[0], state = f.data[1];
+    if (mask == 0x3F && state == 0)   buzzer_all_off();
+    else if (state & mask)            buzzer_relay_on();
+    else                              buzzer_relay_off();
+    return;
+  }
+
+  if (f.id != CAN_ID_BUZZER_CMD || f.dlc < 2) return;
+  uint8_t target = f.data[0];
+  uint8_t cmd    = f.data[1];
+  uint8_t arg0   = (f.dlc >= 3) ? f.data[2] : 0;
+  if (target != 0xFF && target != bus_node_id()) return;
+
+  switch (cmd) {
+    case BUZZER_SEQ_ALERT:            buzzer_alert();           break;
+    case BUZZER_SEQ_CAN_UP:           buzzer_can_up();          break;
+    case BUZZER_SEQ_CAN_DOWN:         buzzer_can_down();        break;
+    case BUZZER_SEQ_STARTUP:          buzzer_startup();         break;
+    case BUZZER_SEQ_PEER:             buzzer_peer_count(arg0);  break;
+    case BUZZER_SEQ_WIFI_CONNECT:     buzzer_wifi_connect();    break;
+    case BUZZER_SEQ_WIFI_DISCONNECT:  buzzer_wifi_disconnect(); break;
+    case BUZZER_SEQ_RELAY_ON:         buzzer_relay_on();        break;
+    case BUZZER_SEQ_RELAY_OFF:        buzzer_relay_off();       break;
+    case BUZZER_SEQ_ALL_OFF:          buzzer_all_off();         break;
+    case BUZZER_CMD_MUTE:             buzzer_set_muted(arg0 != 0); break;
+  }
 }
 
 #endif // ENABLE_BUZZER

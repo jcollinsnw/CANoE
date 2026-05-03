@@ -403,6 +403,13 @@ static void handle_rules_post() {
   if (json_int(body, "arg1",    v)) r.arg1     = (uint8_t)v;
   if (json_int(body, "arg2",    v)) r.arg2     = (uint8_t)v;
 
+  // Emit as blob so the change appears in the frame log and cross-node tools can observe it.
+  // Self-echo is ignored by blob_handle_frame(), so we also apply locally below.
+  {
+    uint8_t buf[sizeof(CanRule)];
+    memcpy(buf, &r, sizeof(CanRule));
+    blob_send(g_node_id, BLOB_NS_RULES, (uint8_t)idx, buf, sizeof(CanRule), BLOB_FLAG_PERSIST);
+  }
   rules_set((uint8_t)idx, r);
   g_http.send(200, "application/json", "{\"ok\":true}");
 }
@@ -412,12 +419,20 @@ static void handle_rules_delete() {
   if (!g_http.hasArg("i")) { g_http.send(400, "text/plain", "missing i"); return; }
   long idx = g_http.arg("i").toInt();
   if (idx < 0 || idx >= rules_max()) { g_http.send(400, "text/plain", "bad index"); return; }
+  // Zeroed CanRule signals "clear this slot" to the blob callback on remote nodes.
+  {
+    static const uint8_t empty[sizeof(CanRule)] = {};
+    blob_send(g_node_id, BLOB_NS_RULES, (uint8_t)idx, empty, sizeof(CanRule), BLOB_FLAG_PERSIST);
+  }
   rules_clear((uint8_t)idx);
   g_http.send(200, "application/json", "{\"ok\":true}");
 }
 
 // POST /api/rules/reset — restore compiled defaults.
 static void handle_rules_reset() {
+  // key 0xFE is the factory-reset sentinel for BLOB_NS_RULES.
+  static const uint8_t sentinel[1] = { 0xFF };
+  blob_send(g_node_id, BLOB_NS_RULES, 0xFE, sentinel, 1, BLOB_FLAG_PERSIST);
   rules_reset_factory();
   g_http.send(200, "application/json", "{\"ok\":true}");
 }

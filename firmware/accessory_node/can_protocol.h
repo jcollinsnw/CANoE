@@ -16,6 +16,11 @@
 #define CAN_ID_RELAY_STATUS      0x101  // Relay ctrl    -> everyone, periodic
 #define CAN_ID_LED_CMD           0x102  // Any node -> target node: [target, mask, state]
 #define CAN_ID_LED_STATUS        0x103  // Target node  -> everyone, on change: [node_id, bitmap]
+#define CAN_ID_BUZZER_CMD        0x104  // Any node -> target node: [target, cmd, arg0]
+                                        //   target: node_id or 0xFF (broadcast)
+                                        //   cmd: BUZZER_SEQ_* or BUZZER_CMD_MUTE
+                                        //   arg0: seq argument (peer count for BUZZER_SEQ_PEER;
+                                        //         1/0 for BUZZER_CMD_MUTE)
 #define CAN_ID_SWITCH_EVENT      0x200  // Switch panel  -> everyone, on change
 #define CAN_ID_SWITCH_ACK        0x202  // Any non-originating node -> switch panel: [switch_id, event]
 #define CAN_ID_ENCODER_EVENT     0x201  // Switch panel  -> everyone: rotary encoder
@@ -95,6 +100,9 @@
 
 // Blob namespaces
 #define BLOB_NS_WIFI         0x01   // WiFi + ESP-NOW credentials
+#define BLOB_NS_RULES        0x02   // Rules engine: key = slot index (0..MAX_RULES-1),
+                                    //   payload = 12-byte CanRule (zeroed = clear slot).
+                                    //   key 0xFE = factory reset (any 1-byte payload).
 
 // Keys within BLOB_NS_WIFI
 #define BLOB_KEY_SSID        0x01   // AP SSID string, max 32 bytes
@@ -123,6 +131,19 @@
 #define VIPER_CMD_LOCK           0x01   // Arm / lock doors
 #define VIPER_CMD_UNLOCK         0x02   // Disarm / unlock doors
 #define VIPER_CMD_REMOTE_START   0x03   // Remote start engine
+
+// Buzzer sequence/command codes for CAN_ID_BUZZER_CMD data[1]
+#define BUZZER_SEQ_ALERT          0x01  // 3-beep urgent warning
+#define BUZZER_SEQ_CAN_UP         0x02  // rising 3-tone: link restored
+#define BUZZER_SEQ_CAN_DOWN       0x03  // 2 low pulses: link lost
+#define BUZZER_SEQ_STARTUP        0x04  // boot jingle
+#define BUZZER_SEQ_PEER           0x05  // peer-count tone; arg0 = count
+#define BUZZER_SEQ_WIFI_CONNECT   0x06  // ascending 2-note chime
+#define BUZZER_SEQ_WIFI_DISCONNECT 0x07 // descending 2-note chime
+#define BUZZER_SEQ_RELAY_ON       0x10  // relay-on sound
+#define BUZZER_SEQ_RELAY_OFF      0x11  // relay-off sound
+#define BUZZER_SEQ_ALL_OFF        0x12  // all-relays-off sound
+#define BUZZER_CMD_MUTE           0x20  // arg0: 1 = mute, 0 = unmute
 
 #define CFG_TARGET_VIPER         0x03
 #define CFG_TARGET_ECU           0x04
@@ -187,6 +208,7 @@ enum RuleActionKind : uint8_t {
   RULE_ACT_RELAY_TIMED_OFF  = 13,  // arg0 = relay idx (0-5), arg1 = seconds (1-255)
   RULE_ACT_LED_FLASH        = 14,  // arg0 = target node_id, arg1 = led idx, arg2 = period (×50ms half-period)
   RULE_ACT_BUZZER_ALERT     = 15,  // play a 3-beep warning on the local buzzer (no-op without ENABLE_BUZZER)
+  RULE_ACT_BUZZER_PLAY      = 16,  // send BUZZER_CMD: arg0=target, arg1=BUZZER_SEQ_*, arg2=seq_arg
 };
 
 struct CanRule {
@@ -253,7 +275,9 @@ struct CanRule {
 #define ACT_MENU_ENTER()              RULE_ACT_MENU_ENTER,      0,     0, 0
 #define ACT_RELAY_TIMED_OFF(r, sec)   RULE_ACT_RELAY_TIMED_OFF, (r), (sec), 0
 #define ACT_LED_FLASH(node, led, per) RULE_ACT_LED_FLASH,        (node), (led), (per)
-#define ACT_BUZZER_ALERT()            RULE_ACT_BUZZER_ALERT,     0, 0, 0
+#define ACT_BUZZER_ALERT()                    RULE_ACT_BUZZER_ALERT, 0, 0, 0
+#define ACT_BUZZER_PLAY(target, seq)          RULE_ACT_BUZZER_PLAY, (target), (seq), 0
+#define ACT_BUZZER_PLAY_ARG(target, seq, arg) RULE_ACT_BUZZER_PLAY, (target), (seq), (arg)
 
 // Convenience: wrap a trigger + action pair into a CanRule initialiser.
 // Usage: RULE(TRIG_SW_PRESS(0), ACT_RELAY_TOGGLE(0))

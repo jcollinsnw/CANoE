@@ -104,7 +104,7 @@ A full off-device tuning platform built as a Quasar/Vue app that talks to the ex
 
 
 ## Quick TODOs (TO ORGANIZE)
-- Buzzer CAN?
+- ~~Buzzer CAN?~~ — done: `CAN_ID_BUZZER_CMD (0x104)` with `BUZZER_SEQ_*` / `BUZZER_CMD_MUTE`; `RULE_ACT_BUZZER_PLAY` sends frame through CAN; `buzzer_handle_frame()` responds to target or broadcast.
+- ~~Web UI communication audit~~ — done: rules POST/DELETE/reset now emit `BLOB_NS_RULES (0x02)` frames visible in CAN log; all writes go through the bus.
 - LCD Menu for Bluetooth discoverability/power
-- Switch wiring to regular rotory encoder
-- Take a look at the web ui communication. For example, setting CAN ID, changing wifi credentials, etc. I am hoping these are all essentially CAN "scripts". I don't want custom HTTP communication for every feature added through the web UI. I want everything to go over CAN.
+- Switch wiring to regular rotary encoder

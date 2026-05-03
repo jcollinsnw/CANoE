@@ -25,8 +25,39 @@ Non-blocking passive piezo tone sequencer. Plays distinct sounds for relay chang
 | ID | Name | Behaviour |
 |----|------|-----------|
 | `0x100` | `RELAY_CMD` | Plays relay ON or relay OFF chirp based on state change. Fires on self-echoed frames too — relay sounds trigger regardless of whether the command came from a physical switch, the web UI, or the LCD menu. |
+| `0x104` | `BUZZER_CMD` | Targeted buzzer command. Payload: `[target_node_id, cmd, arg0]`. target `0xFF` = broadcast. See sequence table below. |
 
 `buzzer_handle_frame()` must be called for incoming frames.
+
+### BUZZER_CMD sequence codes (`data[1]`)
+
+| Constant | Value | Sound | arg0 |
+|----------|-------|-------|------|
+| `BUZZER_SEQ_ALERT` | `0x01` | 3 urgent 1047 Hz pulses (interrupts any sequence) | — |
+| `BUZZER_SEQ_CAN_UP` | `0x02` | Rising three-note confirmation (link restored) | — |
+| `BUZZER_SEQ_CAN_DOWN` | `0x03` | Two falling warning pulses (link lost) | — |
+| `BUZZER_SEQ_STARTUP` | `0x04` | Boot jingle (C-major arpeggio) | — |
+| `BUZZER_SEQ_PEER` | `0x05` | Pitch-ladder tone, one note per peer count | peer count (0–5) |
+| `BUZZER_SEQ_WIFI_CONNECT` | `0x06` | Ascending A5→C6 chime (queued) | — |
+| `BUZZER_SEQ_WIFI_DISCONNECT` | `0x07` | Descending C6→A5 chime (queued) | — |
+| `BUZZER_SEQ_RELAY_ON` | `0x10` | Rising relay-on chirp | — |
+| `BUZZER_SEQ_RELAY_OFF` | `0x11` | Falling relay-off chirp | — |
+| `BUZZER_SEQ_ALL_OFF` | `0x12` | Descending three-note sweep | — |
+| `BUZZER_CMD_MUTE` | `0x20` | Mute control | `1` = mute, `0` = unmute |
+
+```
+# Send alert to switch_panel (node 0x01)
+104 01 01 00
+
+# Play startup jingle on all nodes
+104 FF 04 00
+
+# Mute switch_panel buzzer
+104 01 20 01
+
+# Unmute
+104 01 20 00
+```
 
 ---
 

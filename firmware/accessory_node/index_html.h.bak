@@ -896,6 +896,7 @@ async function submit() {
 // ---------- rules tab ----------
 const CAN_NAMES = {
   0x100:'RELAY_CMD', 0x101:'RELAY_STATUS', 0x102:'LED_CMD', 0x103:'LED_STATUS',
+  0x104:'BUZZER_CMD',
   0x200:'SWITCH_EVENT', 0x201:'ENCODER_EVENT',
   0x300:'TELEMETRY', 0x301:'ENV_DATA', 0x302:'IMU_DATA', 0x303:'SHAKE_EVENT',
   0x304:'ENGINE_DATA', 0x305:'GPS_DATA', 0x306:'WBO2_DATA', 0x307:'ECU_DATA',
@@ -905,7 +906,13 @@ const CAN_NAMES = {
 const SW_EVENTS = ['Release','Press','Long Press','Double Press'];
 const ACT_NAMES = ['--','Relay Toggle','Relay On','Relay Off','All Off','Relay Scene',
                    'LED On','LED Off','WiFi Enable','WiFi Disable','Viper Cmd',
-                   'Menu Select','Menu Enter','Relay Timed Off','LED Flash','Buzzer Alert'];
+                   'Menu Select','Menu Enter','Relay Timed Off','LED Flash','Buzzer Alert',
+                   'Buzzer Play'];
+const BUZZER_SEQ_NAMES = {
+  0x01:'Alert', 0x02:'CAN Up', 0x03:'CAN Down', 0x04:'Startup', 0x05:'Peer Count',
+  0x06:'WiFi Connect', 0x07:'WiFi Disconnect',
+  0x10:'Relay On', 0x11:'Relay Off', 0x12:'All Off', 0x20:'Mute'
+};
 const NODE_NAMES = {1:'switch-panel', 2:'relay-ctrl', 3:'viper-iface', 255:'broadcast'};
 
 function describeTrigger(r) {
@@ -951,6 +958,11 @@ function describeAction(r) {
     return 'Flash LED'+(r.arg1+1)+' on '+node+' ('+((r.arg2||1)*50)+'ms half-period)';
   }
   if (r.action === 15) return 'Buzzer Alert (3 beeps)';
+  if (r.action === 16) {
+    const node = NODE_NAMES[r.arg0] || ('node 0x'+r.arg0.toString(16));
+    const seq  = BUZZER_SEQ_NAMES[r.arg1] || ('seq 0x'+r.arg1.toString(16));
+    return 'Buzzer '+seq+' on '+node+(r.arg2 ? ' (arg='+r.arg2+')' : '');
+  }
   return name;
 }
 

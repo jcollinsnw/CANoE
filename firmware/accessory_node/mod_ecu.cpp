@@ -22,6 +22,13 @@
 #include "can_protocol.h"
 #include "bus.h"
 
+// v3.x changed ledcWrite to take a pin instead of a channel
+#if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+#  define CARB_PWM_WRITE(duty)  ledcWrite(ECU_CARB_SOLENOID_PIN, (duty))
+#else
+#  define CARB_PWM_WRITE(duty)  ledcWrite(ECU_CARB_LEDC_CH, (duty))
+#endif
+
 // ---------------------------------------------------------------
 // Shared sensor state (updated by sensor_sample(), read by both loops)
 // ---------------------------------------------------------------
@@ -48,6 +55,9 @@ static uint32_t g_pw_us = 0;         // current computed inject pulse width
 
 // esp_timer handle for injector pulse-off
 static esp_timer_handle_t g_inj_off_timer = nullptr;
+
+// Last injector fire timestamp (microseconds) — tracks revolution timing in inject mode
+static uint32_t g_last_inj_us = 0;
 
 // ---------------------------------------------------------------
 // 351 Windsor VE table — 8 RPM × 6 MAP bins, values in %
@@ -255,7 +265,7 @@ static void carb_pi_tick() {
   if (g_carb_duty > ECU_CARB_DUTY_MAX) g_carb_duty = ECU_CARB_DUTY_MAX;
 
   uint32_t duty_raw = (uint32_t)(g_carb_duty * 1023.0f / 100.0f + 0.5f);
-  ledcWrite(ECU_CARB_LEDC_CH, duty_raw);
+  CARB_PWM_WRITE(duty_raw);
 }
 
 // ---------------------------------------------------------------
@@ -407,9 +417,14 @@ void ecu_setup() {
   }
 
   // Carb solenoid (LEDC) — always set up; neutral 50%
+#if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+  ledcAttach(ECU_CARB_SOLENOID_PIN, ECU_CARB_PWM_FREQ_HZ, 10);
+  ledcWrite(ECU_CARB_SOLENOID_PIN, 512);
+#else
   ledcSetup(ECU_CARB_LEDC_CH, ECU_CARB_PWM_FREQ_HZ, 10);
   ledcAttachPin(ECU_CARB_SOLENOID_PIN, ECU_CARB_LEDC_CH);
-  ledcWrite(ECU_CARB_LEDC_CH, 512);
+  CARB_PWM_WRITE(512);
+#endif
 
   // Injector pins — always set up low; only fire in mode 1
   pinMode(ECU_INJ1_PIN, OUTPUT);
@@ -452,7 +467,7 @@ void ecu_handle_frame(const BusFrame& f) {
       g_mode = f.data[1] & 0x01;
       if (g_mode == 1) {
         // Entering inject: neutralize carb solenoid
-        ledcWrite(ECU_CARB_LEDC_CH, 512);
+        CARB_PWM_WRITE(512);
         g_integral = 0.0f;
       } else {
         // Entering carb: close injectors

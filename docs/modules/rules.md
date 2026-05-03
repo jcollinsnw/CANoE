@@ -49,6 +49,8 @@ The rules engine does not own any CAN IDs. It evaluates all frames and dispatche
 | `TRIG_RELAY_CMD_ON(n)` | 0x100 | mask includes bit n | state bit n == 1 |
 | `TRIG_RELAY_CMD_OFF(n)` | 0x100 | mask includes bit n | state bit n == 0 |
 | `TRIG_BOOT()` | 0x0F1 | — | — |
+| `TRIG_BUS_ERROR()` | 0x0F4 | — | — |
+| `TRIG_CAN_OK()` | 0x0F4 | error_code == 0 | — |
 | `TRIG_ANY(id)` | id | — | — |
 
 Custom triggers: set `trig_id` directly and write `c0_byte / c0_val / c0_mask` by hand. A condition is skipped when its mask is `0x00`.
@@ -71,6 +73,11 @@ Match logic: `(frame.data[c_byte] & c_mask) == (c_val & c_mask)`
 | `ACT_VIPER(cmd)` | Viper command | cmd: 0x01 lock, 0x02 unlock, 0x03 start |
 | `ACT_MENU_SELECT()` | Menu navigate / confirm | — |
 | `ACT_MENU_ENTER()` | Menu enter / execute | — |
+| `ACT_BUZZER_ALERT()` | 3 urgent pulses on local node | — |
+| `ACT_BUZZER_PLAY(node, seq)` | Send `BUZZER_CMD` to target node | node = target node ID or 0xFF; seq = `BUZZER_SEQ_*` constant |
+| `ACT_BUZZER_PLAY_ARG(node, seq, arg)` | Same with extra arg | arg = e.g. peer count for `BUZZER_SEQ_PEER` |
+| `ACT_RELAY_TIMED_OFF(r, secs)` | Relay on then off after timeout | r = relay index 0–5; secs = delay in seconds (1–255) |
+| `ACT_LED_FLASH(node, led, period_ds)` | Flash an LED | node = target; led = LED index; period_ds = period in 100 ms units |
 
 ---
 
@@ -85,7 +92,7 @@ Rules are managed via the **Rules tab** in the web console or the REST API (used
 | DELETE | `/api/rules?idx=N` | Delete rule at index N |
 | POST | `/api/rules/reset` | Factory reset to `RULES_DEFAULT_INIT` |
 
-Changes persist to NVS immediately. The factory reset button in the Rules tab restores the compiled defaults.
+Changes persist to NVS immediately. The factory reset button in the Rules tab restores the compiled defaults. Each write/delete/reset also emits `BLOB_WRITE` + `BLOB_COMMIT` frames (`BLOB_NS_RULES 0x02`) so rule changes are visible in the CAN frame log.
 
 ---
 
