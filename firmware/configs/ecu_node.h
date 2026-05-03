@@ -36,8 +36,7 @@
 #define USE_CAN_TRANSCEIVER 1
 #define CAN_BUS_SPEED       125   // kbps — change all nodes together: 125, 250, or 500
 #define USE_WIFI            1
-#define AP_SSID             "REDACTED"
-#define AP_PASSWORD         "REDACTED"
+#include "secrets.h"
 #define AP_HIDDEN           0
 #define NVS_NAMESPACE       "ecu"
 

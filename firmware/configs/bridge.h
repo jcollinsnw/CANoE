@@ -15,8 +15,7 @@
 #define USE_CAN_TRANSCEIVER 1
 #define CAN_BUS_SPEED       125   // kbps — must match all other nodes
 #define USE_WIFI            1
-#define AP_SSID     "REDACTED"
-#define AP_PASSWORD "REDACTED"
+#include "secrets.h"
 #define AP_HIDDEN   0
 
 // ---- Home router connection (STA mode) ----

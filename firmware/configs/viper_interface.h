@@ -11,9 +11,8 @@
 #define NVS_NAMESPACE       "viperiface"
 
 // ---- WiFi AP settings ----
-// Must match the other WiFi nodes so ESP-NOW peers and phones roam correctly.
-#define AP_SSID     "REDACTED"
-#define AP_PASSWORD "REDACTED"
+// Credentials live in secrets.h (gitignored). Copy secrets.h.example to create it.
+#include "secrets.h"
 #define AP_HIDDEN   0
 
 // ---- Features enabled on this node ----

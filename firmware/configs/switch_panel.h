@@ -11,11 +11,9 @@
 #define NVS_NAMESPACE       "swpanel"
 
 // ---- WiFi AP settings ----
-// AP_SSID must be the same on every node so the phone roams between them.
-// AP_PASSWORD must be "" (empty string) for an open network, or >= 8 chars for WPA2.
+// Credentials live in secrets.h (gitignored). Copy secrets.h.example to create it.
 // AP_HIDDEN 1 suppresses SSID broadcast; clients must know the name to connect.
-#define AP_SSID     "REDACTED"
-#define AP_PASSWORD "REDACTED"
+#include "secrets.h"
 #define AP_HIDDEN   0
 
 // ---- Features enabled on this node ----
