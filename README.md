@@ -8,41 +8,6 @@
 
 Each node hosts its own browser-based web console for tuning AFR targets, editing rules, or watching raw CAN frames scroll by. The whole thing builds from one unified Arduino sketch — just pick a config header and flash.
 
----
-
-## System Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          ACCESSORY BATTERY / FUSE BOX                      │
-└──────────────────────────────┬──────────────────────────────────────────────┘
-                               │ 12 V
-          ┌────────────────────┼──────────────────────┬────────────────────┐
-          │                    │                      │                    │
- ┌────────┴────────┐  ┌────────┴────────┐  ┌─────────┴──────┐  ┌─────────┴──────┐
- │  SWITCH PANEL   │  │ RELAY CTRL      │  │ VIPER IFACE    │  │  ECU NODE      │
- │  ESP32 · 0x01   │  │ ESP32 · 0x02    │  │ ESP32 · 0x03   │  │  ESP32 · 0x04  │
- │                 │  │                 │  │                │  │                │
- │  6 latching sw  │  │  6 relays       │  │  Viper 5305V   │  │  MAP/TPS/CLT   │
- │  4 buttons      │  │  (ULN2803)      │  │  serial bridge │  │  WBO2 sensor   │
- │  Rotary encoder │  │  Battery ADC    │  │  MPU-6050      │  │  Fuel control  │
- │  16×2 LCD       │  │  RPM sensor     │  │                │  │  RPM sensor    │
- └────────┬────────┘  └────────┬────────┘  └────────┬───────┘  └────────┬───────┘
-          │                    │                     │                   │
-          └────────────────────┼─────────────────────┴───────────────────┘
-                         CAN BUS  ·  125 kbit/s  ·  11-bit IDs
-                      (+ ESP-NOW on WiFi channel 6 as fallback)
-                               │
-                      ┌────────┴────────┐
-                      │  BRIDGE NODE    │
-                      │  ESP32 · 0x05   │
-                      │                 │
-                      │  CAN ↔ WiFi/STA │
-                      │  MQTT publish   │
-                      │  Node disco UI  │
-                      └─────────────────┘
-```
-
 All nodes compile from the same unified sketch (`firmware/accessory_node/`). Features are controlled entirely by a per-node config header in `firmware/configs/`.
 
 ---
