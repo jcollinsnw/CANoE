@@ -150,6 +150,13 @@ void buzzer_peer_count(uint8_t n) {
   enqueue_seq(PEER_TONES[idx], 2);
 }
 
+void buzzer_alert() {
+  // Three urgent high-pitched pulses — CAN error or system warning.
+  // Higher pitch than buzzer_can_down() so it's clearly distinct.
+  static const Note s[] = { {1047,60},{0,30},{1047,60},{0,30},{1047,150} };
+  play_seq(s, 5);
+}
+
 void buzzer_set_muted(bool muted) { g_muted = muted; if (muted) noTone(BUZZER_PIN); }
 bool buzzer_is_muted()            { return g_muted; }
 

@@ -26,6 +26,8 @@ void buzzer_can_down();             // CAN bus link lost
 void buzzer_peer_count(uint8_t n);  // play pitch for n active peers; queued so simultaneous
                                     // connects stack up rather than cutting each other off
 
+void buzzer_alert();                // urgent 3-beep warning (CAN error, etc.)
+
 void buzzer_set_muted(bool muted);  // silence all output without stopping sequences
 bool buzzer_is_muted();
 
@@ -46,6 +48,7 @@ inline void buzzer_startup()                        {}
 inline void buzzer_can_up()                         {}
 inline void buzzer_can_down()                       {}
 inline void buzzer_peer_count(uint8_t)              {}
+inline void buzzer_alert()                          {}
 inline void buzzer_set_muted(bool)                  {}
 inline bool buzzer_is_muted()                       { return false; }
 

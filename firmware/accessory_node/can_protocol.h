@@ -60,6 +60,17 @@
 // data[0]=target_node_id (0xFF = all nodes)
 #define CAN_ID_NODE_CAP_REQ      0x0F3
 
+// Bus error event — emitted by any node that detects a CAN error condition.
+// Sent on both transports (ESP-NOW carries it even if wired CAN is failing).
+// data[0]=node_id, data[1]=error_code (BUS_ERR_*), data[2]=tx_err_cnt, data[3]=rx_err_cnt
+#define CAN_ID_BUS_ERROR         0x0F4
+
+// Bus error codes for CAN_ID_BUS_ERROR data[1]
+#define BUS_ERR_BUS_OFF          0x01  // TWAI entered bus-off state; recovery initiated
+#define BUS_ERR_ERROR_PASSIVE    0x02  // TEC or REC >= 96 (error passive threshold)
+#define BUS_ERR_TX_FAIL          0x03  // 5+ consecutive TX failures (no ACK)
+#define BUS_ERR_RX_OVERFLOW      0x04  // RX buffer overrun — frames were silently dropped
+
 // Capability bits for CAN_ID_NODE_CAP data[1]
 #define NODE_CAP_RELAY    0x01   // has relay outputs
 #define NODE_CAP_SWITCHES 0x02   // has switch/button inputs
@@ -146,6 +157,8 @@ enum RuleActionKind : uint8_t {
   RULE_ACT_MENU_SELECT      = 11,  // short-press menu select (no-op when menu closed)
   RULE_ACT_MENU_ENTER       = 12,  // long-press: enter menu or confirm action
   RULE_ACT_RELAY_TIMED_OFF  = 13,  // arg0 = relay idx (0-5), arg1 = seconds (1-255)
+  RULE_ACT_LED_FLASH        = 14,  // arg0 = target node_id, arg1 = led idx, arg2 = period (×50ms half-period)
+  RULE_ACT_BUZZER_ALERT     = 15,  // play a 3-beep warning on the local buzzer (no-op without ENABLE_BUZZER)
 };
 
 struct CanRule {
@@ -187,6 +200,13 @@ struct CanRule {
 // data[0] = node_id; matches only this node's own boot event.
 #define TRIG_BOOT()           CAN_ID_BOOT_EVENT, 0, NODE_ID, 0xFF, 0, 0, 0x00
 
+// Bus error — fires when any node broadcasts CAN_ID_BUS_ERROR (any error code).
+#define TRIG_BUS_ERROR()      CAN_ID_BUS_ERROR, 0, 0, 0x00, 0, 0, 0x00
+
+// CAN OK — fires when a NODE_ANNOUNCE with can_ok=1 arrives; use to auto-clear error indicators.
+// data[2] = can_ok (1 = bus healthy); matches any node announcing itself as healthy.
+#define TRIG_CAN_OK()         CAN_ID_NODE_ANNOUNCE, 2, 0x01, 0xFF, 0, 0, 0x00
+
 // --------------------------------------------------------------
 // Action macros — expand to the CanRule action fields:
 //   action, arg0, arg1, arg2
@@ -204,6 +224,8 @@ struct CanRule {
 #define ACT_MENU_SELECT()             RULE_ACT_MENU_SELECT,     0,     0, 0
 #define ACT_MENU_ENTER()              RULE_ACT_MENU_ENTER,      0,     0, 0
 #define ACT_RELAY_TIMED_OFF(r, sec)   RULE_ACT_RELAY_TIMED_OFF, (r), (sec), 0
+#define ACT_LED_FLASH(node, led, per) RULE_ACT_LED_FLASH,        (node), (led), (per)
+#define ACT_BUZZER_ALERT()            RULE_ACT_BUZZER_ALERT,     0, 0, 0
 
 // Convenience: wrap a trigger + action pair into a CanRule initialiser.
 // Usage: RULE(TRIG_SW_PRESS(0), ACT_RELAY_TOGGLE(0))

@@ -7,6 +7,7 @@
 #include "driver/twai.h"
 #include "node_config.h"
 #include "bus.h"
+#include "can_protocol.h"
 
 #ifdef ENABLE_LCD
 #include "mod_lcd.h"
@@ -39,6 +40,9 @@ static uint32_t g_last_can_rx     = 0;
 static uint32_t g_last_wifi_rx    = 0;
 static uint16_t g_tx_fail_streak  = 0;
 static bool     g_twai_was_ok     = false;
+static uint8_t  g_last_error_code = 0;    // last BUS_ERR_* emitted; 0 = healthy
+static uint32_t g_last_tx_failed  = 0;    // cumulative tx_failed_count at last check
+static uint32_t g_last_rx_missed  = 0;    // cumulative rx_missed_count at last check
 
 static bus_observer_t g_observer = nullptr;
 
@@ -256,18 +260,51 @@ void bus_tick() {
 
 uint8_t bus_node_id()       { return g_node_id; }
 bool bus_can_healthy()      { uint32_t n=millis(); return (n-g_last_can_rx)<5000 || (n-g_last_can_tx_ok)<2000; }
+uint8_t bus_last_error_code() { return g_last_error_code; }
 
 bool bus_twai_check() {
   twai_status_info_t info;
   if (twai_get_status_info(&info) != ESP_OK) return false;
-  bool ok = (info.state == TWAI_STATE_RUNNING);
+
+  bool is_running  = (info.state == TWAI_STATE_RUNNING);
+  bool is_bus_off  = (info.state == TWAI_STATE_BUS_OFF);
+  bool is_err_pass = is_running &&
+      (info.tx_error_counter >= 96 || info.rx_error_counter >= 96);
+
   Serial.printf("[twai] state=%d tx_err=%u rx_err=%u tx_failed=%u rx_missed=%u\n",
                 info.state, info.tx_error_counter, info.rx_error_counter,
                 info.tx_failed_count, info.rx_missed_count);
-  if (info.state == TWAI_STATE_BUS_OFF) {
+
+  // Determine the highest-priority current error.
+  uint8_t new_err = 0;
+  if (is_bus_off) {
+    new_err = BUS_ERR_BUS_OFF;
     Serial.println("[bus] TWAI BUS_OFF — recovering");
     twai_initiate_recovery();
+  } else if (is_err_pass) {
+    new_err = BUS_ERR_ERROR_PASSIVE;
+  } else {
+    // Check cumulative counters for TX fail spike or RX overflow.
+    if (info.tx_failed_count > g_last_tx_failed + 4)
+      new_err = BUS_ERR_TX_FAIL;
+    else if (info.rx_missed_count > g_last_rx_missed + 4)
+      new_err = BUS_ERR_RX_OVERFLOW;
   }
+  g_last_tx_failed = info.tx_failed_count;
+  g_last_rx_missed = info.rx_missed_count;
+
+  // Emit CAN_ID_BUS_ERROR only on transitions to avoid spamming every 2 s.
+  if (new_err != 0 && new_err != g_last_error_code) {
+    uint8_t d[4] = { g_node_id, new_err,
+                     (uint8_t)info.tx_error_counter,
+                     (uint8_t)info.rx_error_counter };
+    bus_tx(CAN_ID_BUS_ERROR, d, 4);
+    Serial.printf("[bus] BUS_ERROR emitted: code=%u tx_err=%u rx_err=%u\n",
+                  new_err, info.tx_error_counter, info.rx_error_counter);
+  }
+  g_last_error_code = new_err;
+
+  bool ok = (is_running && !is_err_pass);
   bool changed = (ok != g_twai_was_ok);
   g_twai_was_ok = ok;
   return changed;

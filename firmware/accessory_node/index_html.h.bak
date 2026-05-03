@@ -816,12 +816,13 @@ const CAN_NAMES = {
   0x200:'SWITCH_EVENT', 0x201:'ENCODER_EVENT',
   0x300:'TELEMETRY', 0x301:'ENV_DATA', 0x302:'IMU_DATA', 0x303:'SHAKE_EVENT',
   0x304:'ENGINE_DATA', 0x305:'GPS_DATA', 0x306:'WBO2_DATA', 0x307:'ECU_DATA',
-  0x510:'VIPER_CMD', 0x511:'VIPER_STATUS'
+  0x510:'VIPER_CMD', 0x511:'VIPER_STATUS',
+  0x0F0:'NODE_ANNOUNCE', 0x0F1:'BOOT_EVENT', 0x0F4:'BUS_ERROR'
 };
 const SW_EVENTS = ['Release','Press','Long Press','Double Press'];
 const ACT_NAMES = ['--','Relay Toggle','Relay On','Relay Off','All Off','Relay Scene',
                    'LED On','LED Off','WiFi Enable','WiFi Disable','Viper Cmd',
-                   'Menu Select','Menu Enter','Relay Timed Off'];
+                   'Menu Select','Menu Enter','Relay Timed Off','LED Flash','Buzzer Alert'];
 const NODE_NAMES = {1:'switch-panel', 2:'relay-ctrl', 3:'viper-iface', 255:'broadcast'};
 
 function describeTrigger(r) {
@@ -841,6 +842,9 @@ function describeTrigger(r) {
     if (Number.isInteger(bit))
       return 'Relay '+(bit+1)+' Cmd '+(r.c1_val ? 'On' : 'Off');
   }
+  if (id === 0x0F4) return 'Bus Error (any node)';
+  if (id === 0x0F0 && r.c0_mask === 0 && r.c1_mask === 0xFF && r.c1_val === 1)
+    return 'Any Node Announces CAN OK';
   const name = CAN_NAMES[id] || ('0x'+id.toString(16).toUpperCase());
   let s = name;
   if (r.c0_mask) s += ', b'+r.c0_byte+'='+r.c0_val+'&'+r.c0_mask;
@@ -859,6 +863,11 @@ function describeAction(r) {
   if ([8,9].includes(r.action)) return name + ' on ' + (NODE_NAMES[r.arg0] || ('node '+r.arg0));
   if (r.action === 10) return 'Viper ' + ({1:'Lock',2:'Unlock',3:'Start'}[r.arg0] || r.arg0);
   if (r.action === 13) return 'Relay Off R' + (r.arg0+1) + ' after ' + r.arg1 + 's';
+  if (r.action === 14) {
+    const node = NODE_NAMES[r.arg0] || ('node '+r.arg0);
+    return 'Flash LED'+(r.arg1+1)+' on '+node+' ('+((r.arg2||1)*50)+'ms half-period)';
+  }
+  if (r.action === 15) return 'Buzzer Alert (3 beeps)';
   return name;
 }
 

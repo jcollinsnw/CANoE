@@ -26,6 +26,7 @@
 #ifdef ENABLE_MENU
 #include "mod_menu.h"
 #endif
+#include "mod_buzzer.h"
 
 #if USE_WIFI
 #include "webui.h"
@@ -164,6 +165,15 @@ static void rule_execute(const CanRule& r) {
       if (menu_is_active()) menu_action(); else menu_enter();
       break;
 #endif
+    case RULE_ACT_LED_FLASH: {
+      uint8_t mask = 1u << r.arg1;
+      uint8_t d[4] = { r.arg0, mask, mask, r.arg2 };
+      bus_tx(CAN_ID_LED_CMD, d, 4);
+      break;
+    }
+    case RULE_ACT_BUZZER_ALERT:
+      buzzer_alert();
+      break;
     case RULE_ACT_RELAY_TIMED_OFF: {
       if (r.arg0 >= 6 || r.arg1 == 0) break;
       uint8_t mask = 1 << r.arg0;

@@ -33,6 +33,7 @@ void bus_tick();
 
 uint8_t bus_node_id();
 bool    bus_can_healthy();
+uint8_t bus_last_error_code(); // last BUS_ERR_* emitted; 0 = healthy
 bool    bus_wifi_seen_peer();
 uint8_t bus_peer_count();          // number of distinct ESP-NOW peers seen within the last ~6 s
 uint8_t bus_peer_node_bitmap();    // bitmask: bit N set if node 0xN is an active ESP-NOW peer

@@ -122,7 +122,7 @@
 //                 ACT_LED_ON(node,led)  ACT_LED_OFF(node,led)
 //                 ACT_WIFI_ENABLE(node)  ACT_WIFI_DISABLE(node)
 //                 ACT_VIPER(cmd)  ACT_MENU_SELECT()  ACT_MENU_ENTER()
-#define MAX_RULES 16
+#define MAX_RULES 20
 
 #define RULES_DEFAULT_INIT {                                                              \
   /* SW1 (idx 0) — Fuel Pump: relay follows switch position */                           \
@@ -146,4 +146,8 @@
   RULE(TRIG_RELAY_BIT_ON(2),  ACT_LED_ON(NODE_ID, 0)),  /* R3 on  → LED1 on  */       \
   RULE(TRIG_RELAY_BIT_OFF(2), ACT_LED_OFF(NODE_ID, 0)), /* R3 off → LED1 off */       \
   /* BTN5–BTN7 (idx 7–9) — spare; add rules here */                                     \
+  /* CAN bus error: flash LED 3 and play alert tone */                                   \
+  RULE(TRIG_BUS_ERROR(), ACT_LED_FLASH(NODE_ID, 2, 4)),  /* any CAN error → LED3 blinks ~2.5 Hz */ \
+  RULE(TRIG_BUS_ERROR(), ACT_BUZZER_ALERT()),             /* any CAN error → 3-beep alert */        \
+  RULE(TRIG_CAN_OK(),    ACT_LED_OFF(NODE_ID, 2)),        /* healthy announce → clear LED3 */       \
 }
