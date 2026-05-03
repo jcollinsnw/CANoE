@@ -90,6 +90,11 @@ upload-bridge: bridge
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
 # ---- serial monitor ----
-.PHONY: monitor
+.PHONY: monitor screen
 monitor:
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
+
+# screen gives character-at-a-time input so the shell prompt, echo, and
+# backspace all work correctly. Exit with Ctrl-A then Ctrl-\ (or Ctrl-A k).
+screen:
+	screen $(PORT) $(BAUD)
