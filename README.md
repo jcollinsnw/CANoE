@@ -63,6 +63,8 @@ Each module lives in `firmware/accessory_node/mod_*.cpp` and is compiled in only
 | [bluetooth](docs/modules/bluetooth.md) | `ENABLE_BLUETOOTH` | BLE GATT CAN mirror — native iOS app + auto GPS injection |
 | [mqtt](docs/modules/mqtt.md) | `MQTT_BROKER` | MQTT bridge: publish all frames, inject via subscribe |
 | [serial_shell](docs/modules/serial_shell.md) | *(always)* | Serial debug shell |
+| blob | *(always)* | Generic chunked blob write protocol (BLOB_WRITE 0x410 / BLOB_COMMIT 0x411) |
+| wifi_creds | *(always)* | Runtime WiFi + ESP-NOW credential storage (NVS `"wifi_creds"`) |
 
 ---
 

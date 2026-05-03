@@ -131,6 +131,12 @@ Also accessible from the hamburger menu on any tab.
 ## 6. Settings (Hamburger Menu)
 
 - **Node ID reassignment** — enter a new ID (0x01–0xFE), sends CONFIG_WRITE (0x400 key 0x01), saves to NVS, and restarts the node.
+- **WiFi Credentials** — SSID, password, PMK (hex), LMK (hex) fields with four actions:
+  - **Load Current** — fetches `GET /api/wifi_creds` and populates the fields.
+  - **Save to This Node** — POSTs the fields to the connected node and saves to NVS.
+  - **Broadcast to All Nodes** — sends blob transfers (BLOB_NS_WIFI) to all nodes with `BLOB_FLAG_PERSIST`. Nodes save but do not restart yet.
+  - **Reboot All** — sends `REBOOT_CMD 0xFF` to restart all nodes simultaneously with new credentials.
+  - **Note:** changing the SSID or password will disconnect your browser session.
 - **Serial** — opens the Serial tab.
 
 ---

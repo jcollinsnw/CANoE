@@ -45,8 +45,10 @@ Non-blocking passive piezo tone sequencer. Plays distinct sounds for relay chang
 | Startup | Boot jingle |
 | CAN bus up | Rising confirmation tone |
 | CAN bus down | Falling alert tone |
+| WiFi client connected | Ascending two-note A5→C6 chime (queued, does not interrupt active sequence) |
+| WiFi client disconnected | Descending two-note C6→A5 chime (queued, does not interrupt active sequence) |
 
-Menu sounds are triggered by calls from `mod_menu` (`buzzer_menu_enter()`, `buzzer_menu_scroll()`, etc.) rather than CAN frames.
+Menu sounds are triggered by calls from `mod_menu` (`buzzer_menu_enter()`, `buzzer_menu_scroll()`, etc.) rather than CAN frames. WiFi client sounds fire from the `webui_set_ap_client_cb()` callback in `accessory_node.ino` via `buzzer_wifi_connect()` / `buzzer_wifi_disconnect()`.
 
 ---
 

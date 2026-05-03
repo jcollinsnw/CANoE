@@ -45,6 +45,9 @@ All nodes broadcast on channel 6 (fixed). This ensures ESP-NOW peers find each o
 | `POST` | `/api/rules` | Upsert a rule slot (body: JSON with all CanRule fields + `"i"` index) |
 | `DELETE` | `/api/rules?i=N` | Clear rule slot N |
 | `POST` | `/api/rules/reset` | Restore compiled-in `RULES_DEFAULT_INIT` defaults |
+| `GET` | `/api/wifi_creds` | Current WiFi/ESP-NOW credentials: `{ssid, pass, pmk_hex, lmk_hex}` |
+| `POST` | `/api/wifi_creds` | Update credentials. Body: JSON subset of `ssid`, `pass`, `pmk_hex`, `lmk_hex`; optional `"broadcast": true` to blob-broadcast to all nodes. Changes take effect on next reboot. |
+| `POST` | `/api/wifi_creds/reset` | Restore `secrets.h` compile-time defaults in RAM and NVS |
 
 ### `/api/config` response
 
@@ -132,5 +135,6 @@ A DNS server on port 53 answers all queries with the node's AP IP (`192.168.4.1`
 - `webui_tick()` must be called every `loop()`. It processes DNS queries, HTTP requests, and (on bridge nodes) manages the STA reconnection state machine.
 - `webui_observe()` is installed automatically by `webui_init()` via `bus_set_observer()`. Do not call it directly.
 - `webui_handle_node_cap()` must be called explicitly in the frame dispatch loop for `NODE_CAP (0x0F2)` frames. See `accessory_node.ino` for the call site.
+- `webui_set_ap_client_cb(cb)` registers a callback that fires whenever `WiFi.softAPgetStationNum()` changes (polled every 500 ms in `webui_tick()`). `accessory_node.ino` uses this to call `lcd_set_event()` and `buzzer_wifi_connect()` / `buzzer_wifi_disconnect()` when a device joins or leaves the AP.
 - **Security:** The AP is open by default — acceptable in a private garage, risky in public. Set `AP_PASSWORD` in each node's config header before any field install. The password must match on all nodes and be ≥ 8 characters for WPA2. Also consider `AP_HIDDEN 1` for production.
 - **Bridge STA:** The bridge does not run ESP-NOW (`BRIDGE_MODE` disables it). Frames published via MQTT or the bridge's web UI reach the wired CAN bus via the TWAI transceiver only — they do not propagate to other nodes over ESP-NOW.

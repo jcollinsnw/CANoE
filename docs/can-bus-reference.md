@@ -70,6 +70,37 @@ Ask one or all nodes to immediately send their `NODE_CAP` frame.
 0F3 02
 ```
 
+### Bus error / recovery — `0x0F4 BUS_ERROR`
+
+Emitted on error transitions and on recovery. Sent over both transports so ESP-NOW carries it even when wired CAN has failed.
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | node_id | sender's ID |
+| 1 | error_code | 0=recovery, 1=BUS_OFF, 2=ERROR_PASSIVE, 3=TX_FAIL, 4=RX_OVERFLOW |
+| 2 | tx_err_cnt | TWAI TX error counter |
+| 3 | rx_err_cnt | TWAI RX error counter |
+
+Used by `TRIG_BUS_ERROR()` and `TRIG_CAN_OK()` in the rules engine.
+
+### Reboot a node — `0x0F5 REBOOT_CMD`
+
+Any node may send this to restart one or all nodes.
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | target_node_id | Node to restart. `0xFF` restarts all nodes. |
+
+The target calls `ESP.restart()` when its node_id matches or the target is `0xFF`. On the switch_panel the LCD briefly shows "Rebooting..." before restart.
+
+```
+# Reboot the relay controller
+0F5 02
+
+# Reboot all nodes simultaneously
+0F5 FF
+```
+
 ---
 
 ## Relay Control
@@ -244,6 +275,14 @@ Payload: `[event, count]`
 201  00 02
 ```
 
+### Switch ACK — `0x202 SWITCH_ACK`
+
+Any non-originating node that receives a `SWITCH_EVENT` replies with this frame to clear the switch panel's retry timer for that event.
+
+Payload: `[switch_id, event]` — mirrors the fields from the `SWITCH_EVENT` being acknowledged.
+
+The switch panel registers each `SWITCH_EVENT` in a pending-ACK slot. If no ACK arrives within 80 ms the frame is retransmitted up to 3 times. After exhausting retries, `buzzer_alert()` fires and a `LED_CMD` flashes LED index 2 (the error indicator). Any node with `ENABLE_RULES` serves as an implicit ACK responder.
+
 ---
 
 ## LCD Text
@@ -403,6 +442,48 @@ Payload: `[cmd, arg0, arg1, arg2]`
 ```
 
 Mode and target AFR are persisted to NVS. `BASE_PW` is changed via `CONFIG_WRITE` (target=0x04, key=0x53).
+
+---
+
+## Blob Transfer
+
+The blob protocol transfers multi-byte values (up to 256 bytes per key) over CAN in 4-byte chunks. It is used by `mod_blob` to handle credential updates and similar payloads that don't fit in a single CAN frame.
+
+### Write chunk — `0x410 BLOB_WRITE`
+
+Payload: `[target, ns, key, chunk_idx, d0, d1, d2, d3]`
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | target | Destination node ID. `0xFF` = all nodes. |
+| 1 | ns | Namespace byte (see below) |
+| 2 | key | Key within the namespace |
+| 3 | chunk_idx | Chunk index. Byte offset = chunk_idx × 4. |
+| 4–7 | d0–d3 | Up to 4 data bytes for this chunk |
+
+### Commit — `0x411 BLOB_COMMIT`
+
+Payload: `[target, ns, key, len_lo, len_hi, flags]`
+
+Finalizes a blob transfer. The receiver assembles all chunks received since the last commit and acts on the complete value.
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | target | Destination node ID. `0xFF` = all nodes. |
+| 1 | ns | Namespace byte |
+| 2 | key | Key within the namespace |
+| 3–4 | len (uint16 LE) | Total byte length of the assembled blob |
+| 5 | flags | `0x01` BLOB_FLAG_PERSIST — save to NVS; `0x02` BLOB_FLAG_REBOOT — restart after saving |
+
+Self-echoed `BLOB_COMMIT` frames are ignored by the blob handler; the sender writes its own copy directly.
+
+### Blob namespaces
+
+| Namespace | Value | Keys |
+|-----------|-------|------|
+| `BLOB_NS_WIFI` | `0x01` | `0x01` SSID (string), `0x02` password (string), `0x03` PMK (16 bytes), `0x04` LMK (16 bytes) |
+
+Handled by `mod_wifi_creds`. Broadcast with `BLOB_FLAG_PERSIST` then send `REBOOT_CMD 0xFF` to update credentials and restart all nodes simultaneously.
 
 ---
 
@@ -652,6 +733,26 @@ RULE(TRIG_RELAY_CMD_ON(1), ACT_VIPER(0x01))
 // Set a scene: relays 1, 3, 5 on when SW3 is long-pressed
 RULE(TRIG_SW_LONG(2), ACT_RELAY_SCENE(0x15))
 ```
+
+---
+
+## WiFi Credentials
+
+WiFi and ESP-NOW credentials (SSID, password, PMK, LMK) are stored in NVS by `mod_wifi_creds` (namespace `"wifi_creds"`). On first boot, or after a factory reset, they are seeded from compile-time `secrets.h` values. Credentials can be updated at runtime without reflashing.
+
+### REST API (web console only, not CAN)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/wifi_creds` | Return current credentials as `{ssid, pass, pmk_hex, lmk_hex}` |
+| POST | `/api/wifi_creds` | Update credentials. Body: JSON with any subset of `ssid`, `pass`, `pmk_hex`, `lmk_hex`. Include `"broadcast": true` to blob-broadcast the new values to all nodes. |
+| POST | `/api/wifi_creds/reset` | Restore `secrets.h` compile-time defaults in RAM and NVS |
+
+Changes take effect on the next reboot. After a credential broadcast, send `REBOOT_CMD 0xFF` (or use the "Reboot All" button in the Settings panel) to restart all nodes with the new credentials simultaneously.
+
+### Over CAN (blob transfer)
+
+Credentials are transferred node-to-node via `BLOB_WRITE (0x410)` + `BLOB_COMMIT (0x411)` with `BLOB_NS_WIFI (0x01)`. See [Blob Transfer](#blob-transfer) above.
 
 ---
 

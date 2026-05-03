@@ -21,6 +21,7 @@ Encoder-driven LCD menu system. Provides relay toggle, Viper alarm control, bus 
 | `MENU_HAS_BUS` | Compile in live TWAI health counter display |
 | `MENU_HAS_DISPLAY` | Compile in backlight toggle |
 | `MENU_HAS_WIFI` | Compile in per-node WiFi enable/disable |
+| `MENU_HAS_REBOOT` | Compile in reboot-node submenu (Self / Relay Ctrl / Viper Ifc / ECU Node / All Nodes) via `REBOOT_CMD (0x0F5)` |
 
 Omit any flag and that submenu is not included.
 
@@ -37,6 +38,7 @@ The menu itself sends no CAN frames. Actions dispatched from the menu (relay tog
 | `0x100` | `RELAY_CMD` | Relay toggle in Relays submenu |
 | `0x510` | `VIPER_CMD` | Lock/unlock/start in Viper submenu |
 | `0x400` | `CONFIG_WRITE` | WiFi enable/disable in WiFi submenu |
+| `0x0F5` | `REBOOT_CMD` | Reboot target node from Reboot submenu |
 
 ---
 
@@ -82,6 +84,13 @@ Encoder scroll events are handled directly in `accessory_node.ino`'s `bus_rx()` 
    │   └─ ← Back
    ├─ WiFi             (MENU_HAS_WIFI)
    │   ├─ <NodeName>   long-press → CONFIG_WRITE toggle (self: restarts)
+   │   └─ ← Back
+   ├─ Reboot           (MENU_HAS_REBOOT)
+   │   ├─ Self         long-press → REBOOT_CMD this node (LCD: "Rebooting...")
+   │   ├─ Relay Ctrl   long-press → REBOOT_CMD 0x02
+   │   ├─ Viper Ifc    long-press → REBOOT_CMD 0x03
+   │   ├─ ECU Node     long-press → REBOOT_CMD 0x04
+   │   ├─ All Nodes    long-press → REBOOT_CMD 0xFF
    │   └─ ← Back
    └─ ← Exit
 ```

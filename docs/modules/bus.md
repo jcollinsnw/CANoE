@@ -98,6 +98,11 @@ bool  bus_wifi_seen_peer();
 uint8_t bus_peer_count();
 
 void  bus_set_tx_mode(BusTxMode mode);
+void  bus_set_espnow_keys(const uint8_t* pmk, const uint8_t* lmk);
 ```
 
 `BusFrame` fields: `id`, `dlc`, `data[8]`, `source[]` (`"can"`, `"wifi"`, or `"self"`).
+
+### Dynamic ESP-NOW keys
+
+Call `bus_set_espnow_keys(pmk, lmk)` **before** `bus_init()` to supply runtime PMK/LMK (e.g. loaded from NVS by `mod_wifi_creds`) instead of the compile-time values in `secrets.h`. Both `esp_now_set_pmk()` and the encrypted-peer registration path check an internal flag and fall back to `secrets.h` if this function has not been called. `accessory_node.ino` calls it from `wifi_creds_get_pmk()` / `wifi_creds_get_lmk()` during `setup()`, before `bus_init()`.
