@@ -2,3 +2,5 @@
 firmware/accessory_node/secrets.h
 firmware/accessory_node/node_config.h
 .claude/
+tuner/Tuner.xcodeproj/project.xcworkspace/xcuserdata/
+tuner/Tuner.xcodeproj/xcuserdata/
