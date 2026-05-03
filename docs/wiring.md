@@ -619,32 +619,64 @@ All nodes GPIO 5 (CAN TX) ──┬──── [1 kΩ–4.7 kΩ pull-up] ──
 
 ## 9. Power Distribution
 
-The system runs off a **dedicated accessory battery** isolated from the factory wiring.
+### 9.1 Overview
+
+The system uses two isolated 12V sources carried over Cat5e ethernet cable between the relay box and the switch panel. All grounds are joined; the two 12V positives are **never connected to each other**.
+
+| Pair | Color | Signal |
+|------|-------|--------|
+| Pair 1 | Orange / White-Orange | CAN bus (CANH / CANL) |
+| Pair 2 | Blue / White-Blue | Factory battery 12V (+) / GND return |
+| Pair 3 | Brown / White-Brown | Accessory battery 12V (+) / GND return |
+| Pair 4 | Green / White-Green | 5V logic rail (+) / GND return |
+
+> **Critical:** The Blue (factory) and Brown (accessory) 12V positives must never be bridged. These are two separate batteries; joining the positives without proper isolation circuitry will cause cross-charging and potential damage.
+
+### 9.2 12V Sources
+
+**Factory battery (Blue pair)** — originates at the relay controller node. The relay box connects directly to the factory battery through its own fuse. The relay controller distributes this voltage over the Blue pair to the switch panel, where it is used only to power the voltage gauge for monitoring. The relay coils are powered directly from the relay box battery — the Blue pair carries monitoring current only, not coil current.
+
+**Accessory battery (Brown pair)** — originates at the switch panel. The switch panel connects to its own dedicated accessory battery and distributes it over the Brown pair back toward the relay box if needed. The voltage gauge on the switch panel can read this rail independently.
+
+### 9.3 5V Logic Rail (Green Pair) — Redundant
+
+Both the relay controller and the switch panel have their own 12V → 5V buck converter, both tied into the Green pair. This gives redundant 5V for the ESP32 logic rail: if one converter fails, the other keeps all nodes running.
 
 ```
-[Accessory Battery +12V]
+Relay Controller Node
+   [Factory Battery 12V] ──→ [Buck Converter A] ──→ [5V Green+]
+                                                        │
+Switch Panel Node                                  (shared 5V bus)
+   [Accessory Battery 12V] → [Buck Converter B] ──→ [5V Green+]
+                                                        │
+                                               All ESP32 nodes VIN
+```
+
+> **TODO:** Add Schottky ORing diodes (one per buck converter, before they join the Green pair). A voltage mismatch between converters causes the higher-voltage one to carry all load; a failed-shorted converter drags the whole rail down without diodes. With ORing diodes, each converter can fail independently without affecting the other. Each converter must be rated for the full 5V load on its own — do not assume 50/50 load sharing.
+
+### 9.4 Ground
+
+All grounds are joined at a common point. The GND wire in each ethernet pair carries the return current for that pair's signal only — the twisted geometry reduces loop area and EMI. The CAN transceiver ground, ESP32 GND, and all buck converter GNDs tie together at each node.
+
+### 9.5 Relay Load Circuits
+
+Relay output loads (headlights, horn, etc.) are fused and wired directly at the relay box — they do not traverse the ethernet cable. The relay box fuse block sits between the factory battery and the relay output wiring.
+
+```
+[Factory Battery +12V]
         │
    [Main Fuse]
         │
-   [Fuse Block]
-   ├── F1 ── Relay Controller (12V → 5V buck converter → ESP32 VIN)
-   ├── F2 ── Switch Panel ESP32 VIN
-   ├── F3 ── Viper Interface ESP32 VIN
-   ├── F4 ── ECU Node ESP32 VIN
-   ├── F5 ── Bridge Node ESP32 VIN
-   ├── F6 ── Relay 1 load circuit
-   ├── F7 ── Relay 2 load circuit
-   ├── F8 ── Relay 3 load circuit
-   ├── F9 ── Relay 4 load circuit
-   ├── F10 ── Relay 5 load circuit (horn)
-   └── F11 ── Relay 6 load circuit
-
-[Accessory Battery GND] ──── Common chassis GND
+   [Relay Box Fuse Block]
+   ├── F1 ── Relay 1 load
+   ├── F2 ── Relay 2 load
+   ├── F3 ── Relay 3 load
+   ├── F4 ── Relay 4 load
+   ├── F5 ── Relay 5 load (horn — 30 s safety cutoff in firmware)
+   └── F6 ── Relay 6 load
 ```
 
-- ESP32 dev boards accept 5–12 V on VIN, or use a 12V → 5V buck converter.
-- All ground returns must share a common point — star ground at the battery negative is preferred.
-- ECU injectors require **separate** fused +12V runs directly from the fuse block (not through the relay controller).
+ECU injectors require separate fused +12V runs directly from the fuse block — do not share with relay load circuits.
 
 ---
 

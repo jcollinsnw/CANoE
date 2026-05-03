@@ -49,14 +49,14 @@
 #define RPM_SAMPLE_MS   250     // faster sample for ECU closed-loop use
 
 // ---- Wideband O2 sensor ----
-// Analog output of standalone WBO2 controller (Innovate LC-2, AEM X-Series, etc.)
-// Run the 0–5V output through a 100kΩ+100kΩ voltage divider → GPIO 35.
-// Calibrate WBO2_MIN_V / WBO2_MAX_V to match your controller's output spec.
-// Innovate LC-2: 0V=7.35 AFR, 5V=22.39 AFR (lambda 0.5–1.52); typical street range 10–20 AFR.
+// LSU 4.9 sensor + off-brand standalone controller (0–5V analog output).
+// Run the 0–5V output through a 100kΩ+100kΩ voltage divider → GPIO 35 (ADC sees 0–2.5V).
+// WBO2_MIN/MAX_V are post-divider voltages. Calibrate against stoich (14.7 AFR) once wired up.
 #define ENABLE_WBO2
 #define WBO2_PIN          35      // input-only; connect through 2:1 voltage divider
 #define WBO2_SAMPLE_MS    100     // 10 Hz for closed-loop control
-#define WBO2_MIN_V        0.0f    // after divider: sensor 0V → ADC 0V  (adjust if controller differs)
+#define WBO2_OVERSAMPLE   16      // average 16 ADC reads to reduce ESP32 ADC noise
+#define WBO2_MIN_V        0.0f    // after divider: sensor 0V → ADC 0V
 #define WBO2_MAX_V        2.5f    // after divider: sensor 5V → ADC 2.5V
 #define WBO2_MIN_AFR      10.0f
 #define WBO2_MAX_AFR      20.0f
