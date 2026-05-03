@@ -343,6 +343,81 @@ Payload: `[afr_lo, afr_hi]` — uint16 little-endian, AFR × 100.
 
 ---
 
+## ECU Node
+
+### ECU sensor data — `0x307 ECU_DATA`
+
+Broadcast by the ECU node when the engine is running. One frame per `ECU_SAMPLE_MS` (default 250 ms).
+
+Payload: `[mode, map_kpa, tps_pct, clt_enc, iat_enc, pw_lo, pw_hi, flags]`
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | mode | 0 = carb, 1 = TBI injection |
+| 1 | map_kpa | MAP sensor reading in kPa |
+| 2 | tps_pct | Throttle position 0–100% |
+| 3 | clt_enc | Coolant temp: °C + 40 (e.g. 80°C → 120) |
+| 4 | iat_enc | Intake air temp: °C + 40 |
+| 5–6 | pw (uint16 LE) | Carb: duty × 100 (e.g. 5000 = 50.00%); Injection: pulse width µs |
+| 7 | flags | bit0=closed_loop, bit1=enriching, bit2=inj_saturated, bit3=running |
+
+```
+# Example: injection mode, 90 kPa MAP, 15% TPS, 80°C CLT, 25°C IAT, 3200 µs PW, running + closed loop
+307  01 5A 0F 78 41 80 0C 09
+```
+
+### ECU commands — `0x308 ECU_CMD`
+
+Send from any node or the web console to control the ECU at runtime.
+
+Payload: `[cmd, arg0, arg1, arg2]`
+
+| `data[0]` | Command | Arguments |
+|-----------|---------|-----------|
+| `0x01` | Set mode | `arg0`: 0 = carb, 1 = TBI injection |
+| `0x02` | Set target AFR | `arg1 + arg2` = uint16 LE, AFR × 100 |
+| `0x03` | Fuel cut | `arg0`: 0 = off, 1 = on |
+| `0x04` | Reset fuel trim | — (clears STFT to 0%) |
+
+```
+# Switch to injection mode
+308 01 01 00 00
+
+# Switch to carb mode
+308 01 00 00 00
+
+# Set target AFR to 14.70 (0x05BE)
+308 02 00 BE 05
+
+# Set target AFR to 13.00 (0x0514)
+308 02 00 14 05
+
+# Fuel cut ON (e.g. decel)
+308 03 01 00 00
+
+# Fuel cut OFF
+308 03 00 00 00
+
+# Reset short-term fuel trim to 0%
+308 04 00 00 00
+```
+
+Mode and target AFR are persisted to NVS. `BASE_PW` is changed via `CONFIG_WRITE` (target=0x04, key=0x53).
+
+---
+
+## Other Sensor Frames (read-only)
+
+These frames are broadcast automatically by their respective modules — no query needed.
+
+| ID | Frame | Payload summary |
+|----|-------|----------------|
+| `0x301` | `ENV_DATA` | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` — 0.1 °C / 0.1 % from DHT22 |
+| `0x302` | `IMU_DATA` | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` — raw accelerometer |
+| `0x303` | `SHAKE_EVENT` | `[magnitude, axis_mask]` — emitted by viper_interface on shake detection |
+
+---
+
 ## Runtime Configuration
 
 Config frames let you change node behavior over the bus without reflashing.
@@ -373,6 +448,19 @@ The target node replies with one `0x402 CONFIG_READ_RESP` per index (same layout
 | Commit RAM → NVS | 0x01 |
 | Reload NVS → RAM | 0x02 |
 | Factory reset | 0x03 |
+
+---
+
+### Node ID reassignment — key `0x01`
+
+Reassigns a node's ID, saves to NVS, and restarts the node immediately. Broadcast target (`0xFF`) is not accepted for this key.
+
+`arg` (data[4]) = new node ID (0x01–0xFE).
+
+```
+# Reassign switch_panel (0x01) to ID 0x06, persist
+400 01 01 00 00 06 00 00 01
+```
 
 ---
 
@@ -425,7 +513,7 @@ Sets the maximum time a relay can stay on before the watchdog cuts it off. `0` m
 
 ### WiFi enable / disable — key `0x30`
 
-Toggles WiFi on a specific node. The node saves the flag to NVS and restarts immediately to apply.
+Legacy key — sets both SoftAP and ESP-NOW together. The node saves to NVS and restarts immediately.
 
 ```
 # Disable WiFi on switch_panel (node 0x01)
@@ -434,14 +522,52 @@ Toggles WiFi on a specific node. The node saves the flag to NVS and restarts imm
 # Enable WiFi on switch_panel
 400 01 30 00 00 01 00 00 00
 
-# Disable WiFi on viper_interface (node 0x03)
-400 03 30 00 00 00 00 00 00
-
-# Enable WiFi on viper_interface
-400 03 30 00 00 01 00 00 00
-
 # Disable WiFi on all nodes (broadcast)
 400 FF 30 00 00 00 00 00 00
+```
+
+### Independent SoftAP control — key `0x31`
+
+Enable or disable only the SoftAP + web server, leaving ESP-NOW unaffected. Node restarts to apply.
+
+```
+# Disable AP on relay_controller (saves power if no one needs the web UI there)
+400 02 31 00 00 00 00 00 00
+
+# Re-enable AP on relay_controller
+400 02 31 00 00 01 00 00 00
+```
+
+### Independent ESP-NOW control — key `0x32`
+
+Enable or disable only the ESP-NOW radio. Node restarts to apply.
+
+```
+# Disable ESP-NOW on viper_interface (wired bus only)
+400 03 32 00 00 00 00 00 00
+
+# Re-enable
+400 03 32 00 00 01 00 00 00
+```
+
+---
+
+### ECU configuration — keys `0x51`, `0x52`, `0x53`
+
+These can also be set via ECU_CMD (0x308) at runtime; CONFIG_WRITE persists them to NVS.
+
+```
+# Set ECU mode: carb (0) — target=0x04, key=0x51, arg=0
+400 04 51 00 00 00 00 00 01
+
+# Set ECU mode: injection (1)
+400 04 51 00 00 01 00 00 01
+
+# Set target AFR to 14.70 (0x05BE) — key=0x52, arg2=0x05BE
+400 04 52 00 00 00 BE 05 01
+
+# Set base pulse width to 3500 µs (0x0DAC) — key=0x53
+400 04 53 00 00 00 AC 0D 01
 ```
 
 ---
@@ -578,4 +704,34 @@ These shortcuts expand to the raw CAN frames above. Enter them in the web consol
 
 # Query battery voltage — watch frame log for 0x300 response
 # (relay controller sends it automatically at 1 Hz — no query needed)
+
+# ECU: switch to carb mode, set target 14.7 AFR, reset trim
+308 01 00 00 00
+308 02 00 BE 05
+308 04 00 00 00
+
+# Request capability frames from all nodes (bridge uses these to build its panel)
+0F3 FF
 ```
+
+---
+
+## MQTT Bridge
+
+The bridge node (0x05) can publish all CAN frames to an MQTT broker when `MQTT_BROKER` is defined in `bridge.h`. No CAN frames are needed to control MQTT — it's configured at compile time.
+
+**Published topic:** `{MQTT_TOPIC_PREFIX}/frames`
+
+Each message is a JSON object:
+```json
+{"id": 256, "data": [1, 1], "source": "can"}
+```
+
+**Injection topic:** `{MQTT_TOPIC_PREFIX}/send`
+
+Publish a JSON frame to inject it onto the CAN bus:
+```json
+{"id": 256, "data": [1, 1]}
+```
+
+This is equivalent to typing `100 01 01` in the web console. The bridge converts and calls `bus_tx()`, so the frame appears on both the wired bus and via ESP-NOW, and is logged in the web UI frame log.

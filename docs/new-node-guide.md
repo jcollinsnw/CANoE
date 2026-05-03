@@ -45,15 +45,20 @@ Add `#define ENABLE_*` flags for the capabilities this node needs. Every flag is
 | Flag | What it adds | Required companion defines |
 |------|-------------|--------------------------|
 | `ENABLE_RELAY` | 6 relay GPIO outputs, safety watchdog, battery ADC telemetry | `NUM_RELAYS`, `RELAY_ACTIVE_HIGH`, `RELAY_PINS_INIT`, `RELAY_MAX_ON_INIT` |
-| `ENABLE_SWITCHES` | 6 latching switches + 4 buttons + rotary encoder; publishes `SWITCH_EVENT` / `ENCODER_EVENT` | `NUM_SWITCHES`, `NUM_BUTTONS`, `INPUT_PINS_INIT`, `ENC_CLK_PIN`, `ENC_DT_PIN` |
+| `ENABLE_SWITCHES` | Switch/button/encoder inputs; publishes `SWITCH_EVENT` / `ENCODER_EVENT` | `NUM_SWITCHES`, `NUM_BUTTONS`, `INPUT_PINS_INIT`, `ENC_CLK_PIN`, `ENC_DT_PIN` |
 | `ENABLE_RULES` | CAN-frame-triggered rules engine stored in NVS | `MAX_RULES`, optionally `RULES_DEFAULT_INIT` |
 | `ENABLE_LCD` | HD44780 16×2 via PCF8574 I2C backpack | `LCD_I2C_ADDR`, `LCD_SDA_PIN`, `LCD_SCL_PIN` |
 | `ENABLE_MENU` | LCD menu system (requires `ENABLE_LCD`) | `MENU_HAS_*` subflags; see below |
 | `ENABLE_BUZZER` | Passive piezo tone sequencer | `BUZZER_PIN` |
 | `ENABLE_LEDS` | CAN-controllable status LEDs | `NUM_LEDS`, `LED_PINS_INIT`, `LED_ACTIVE_HIGH` |
 | `ENABLE_VIPER` | Viper 5305V serial bridge over UART2 | `VIPER_TX_PIN`, `VIPER_RX_PIN` |
-| `ENABLE_MPU6050` | MPU-6050 accelerometer / shake detection | shares I2C pins with LCD if both enabled; `MPU_SDA_PIN`, `MPU_SCL_PIN` |
+| `ENABLE_MPU6050` | MPU-6050 accelerometer / shake detection | `MPU_SDA_PIN`, `MPU_SCL_PIN` (shares I2C with LCD) |
 | `ENABLE_DHT22` | AM2302 temperature/humidity broadcast | `DHT22_PIN` |
+| `ENABLE_RPM` | Engine RPM via PC817C optocoupler + interrupt counting; optional LCD bar widget | `RPM_PIN` (if sensing); `RPM_WIDGET_ROW` (if LCD widget); `RPM_CYLINDERS` |
+| `ENABLE_GPS` | GPS speed/heading via NMEA UART; broadcasts `GPS_DATA (0x305)` | `GPS_SERIAL_NUM`, `GPS_RX_PIN`, `GPS_TX_PIN`, `GPS_BAUD` |
+| `ENABLE_WBO2` | Wideband O2 analog read; broadcasts `WBO2_DATA (0x306)` | `WBO2_PIN`, `WBO2_SAMPLE_MS`, `WBO2_MIN_V`, `WBO2_MAX_V`, `WBO2_MIN_AFR`, `WBO2_MAX_AFR` |
+| `ENABLE_ECU` | Dual-mode fuel controller: carb PI loop or TBI dual-injector; reads MAP/TPS/CLT/IAT | `ECU_*` defines — see ECU node config for full list |
+| `BRIDGE_MODE` | CAN ↔ WiFi/STA bridge; no ESP-NOW; aggregated node discovery web UI | `STA_SSID`, `STA_PASSWORD`; optionally `MQTT_BROKER` |
 
 ### ENABLE_RELAY
 
@@ -181,6 +186,82 @@ Requires `ENABLE_LCD`. Enable the submenus you want:
 #define ENABLE_DHT22
 
 #define DHT22_PIN     15
+```
+
+### ENABLE_RPM
+
+```cpp
+#define ENABLE_RPM
+
+#define RPM_PIN           35    // PC817C collector; input-only — external 10kΩ pull-up to 3.3V required
+#define RPM_CYLINDERS     8     // coil fires per crankshaft revolution (8 for V8 distributor)
+#define RPM_SAMPLE_MS     500   // how often to compute and broadcast ENGINE_DATA (0x304)
+
+// Optional LCD bar widget — omit if no LCD
+#define RPM_WIDGET_ROW    1     // which LCD row to draw the bar on
+```
+
+> GPIO 34, 35, 36, and 39 are input-only with no internal pull-up. Any of these used as `RPM_PIN` needs an external 10 kΩ resistor to 3.3V.
+
+### ENABLE_GPS
+
+```cpp
+#define ENABLE_GPS
+
+#define GPS_SERIAL_NUM    2     // UART number (Serial2 on most ESP32 boards)
+#define GPS_RX_PIN        16    // ESP32 UART RX ← GPS TX
+#define GPS_TX_PIN        17    // ESP32 UART TX → GPS RX (optional for read-only)
+#define GPS_BAUD          9600  // default for u-blox Neo-6M / Neo-8M
+```
+
+Speed and heading broadcast on `GPS_DATA (0x305)`. Only RX is needed for basic NMEA parsing.
+
+### ENABLE_WBO2
+
+```cpp
+#define ENABLE_WBO2
+
+#define WBO2_PIN          35    // ADC1 input — connect via 2:1 voltage divider from 0–5V controller output
+#define WBO2_SAMPLE_MS    500   // broadcast interval for WBO2_DATA (0x306)
+
+// Voltage at the ADC pin (after divider), not the raw controller output:
+#define WBO2_MIN_V        0.0f  // volts at ADC pin = minimum AFR
+#define WBO2_MAX_V        2.5f  // volts at ADC pin = maximum AFR (2.5V after 2:1 divider from 5V)
+#define WBO2_MIN_AFR      10.0f // AFR at WBO2_MIN_V
+#define WBO2_MAX_AFR      20.0f // AFR at WBO2_MAX_V
+```
+
+> Mapping is linear. `WBO2_MIN_V`/`WBO2_MAX_V` must be the **post-divider** voltage, not the raw 0–5V controller output.
+
+### BRIDGE_MODE
+
+`BRIDGE_MODE` replaces normal feature flags. Do not combine it with `ENABLE_RELAY`, `ENABLE_SWITCHES`, etc.
+
+```cpp
+#define BRIDGE_MODE       // CAN ↔ WiFi/STA bridge; disables ESP-NOW
+
+#define NODE_NAME         "bridge"
+#define NODE_ID           0x05
+#define USE_CAN_TRANSCEIVER 1   // bridge is typically a permanent install
+#define NVS_NAMESPACE     "bridge"
+
+// Home WiFi credentials (STA mode)
+#define STA_SSID          "YourHomeNetwork"
+#define STA_PASSWORD      "YourPassword"
+
+// SoftAP settings (still runs a local AP for CAN-side devices)
+#define AP_SSID           "AccessoryBus"
+#define AP_PASSWORD       ""
+#define AP_HIDDEN         0
+
+// Optional MQTT publishing — omit to disable
+// #define MQTT_BROKER       "192.168.1.100"
+// #define MQTT_TOPIC_PREFIX "canbus"
+```
+
+When `MQTT_BROKER` is defined, install the PubSubClient library before compiling:
+```bash
+arduino-cli lib install "PubSubClient"
 ```
 
 ---
@@ -311,6 +392,11 @@ Copy this and fill in the blanks:
 // #define ENABLE_VIPER
 // #define ENABLE_MPU6050
 // #define ENABLE_DHT22
+// #define ENABLE_RPM
+// #define ENABLE_GPS
+// #define ENABLE_WBO2
+// #define ENABLE_ECU
+// For a bridge node, replace everything above with just: #define BRIDGE_MODE
 
 // ---- Pin and module config ----
 // (add defines for each ENABLE_* flag you uncommented above)
