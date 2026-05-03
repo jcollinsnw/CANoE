@@ -403,6 +403,16 @@ void loop() {
     }
 #endif
 
+    // Any node that receives a SWITCH_EVENT from another node sends an ACK so the
+    // switch panel can confirm delivery and stop retrying.
+    if (f.id == CAN_ID_SWITCH_EVENT && strcmp(f.source, "self") != 0 && f.dlc >= 2) {
+      uint8_t ack[2] = { f.data[0], f.data[1] };
+      bus_tx(CAN_ID_SWITCH_ACK, ack, 2);
+    }
+
+    // Clear pending ACK retry on this node (switch panel only; no-op stub elsewhere).
+    switches_handle_ack(f);
+
     // Encoder scroll drives menu when active (encoder events are self-echoed from mod_switches).
 #if defined(ENABLE_MENU) && defined(ENABLE_SWITCHES)
     if (f.id == CAN_ID_ENCODER_EVENT && f.dlc >= 2 && menu_is_active()) {

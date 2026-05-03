@@ -44,6 +44,34 @@ static uint8_t  g_last_error_code = 0;    // last BUS_ERR_* emitted; 0 = healthy
 static uint32_t g_last_tx_failed  = 0;    // cumulative tx_failed_count at last check
 static uint32_t g_last_rx_missed  = 0;    // cumulative rx_missed_count at last check
 
+// Encrypted unicast peers — added dynamically when we first hear from each node.
+// ESP-NOW broadcast (FF:FF:FF:FF:FF:FF) cannot be encrypted; unicast can.
+// Frames are sent both unicast (encrypted) to known peers and broadcast (unencrypted)
+// for initial discovery. Dedup by (node_id, seq) handles the overlap on the RX side.
+#define MAX_ENC_PEERS 6
+static uint8_t g_enc_macs[MAX_ENC_PEERS][6];
+static uint8_t g_enc_count = 0;
+
+static bool enc_peer_known(const uint8_t* mac) {
+  for (int i = 0; i < g_enc_count; i++)
+    if (memcmp(g_enc_macs[i], mac, 6) == 0) return true;
+  return false;
+}
+
+static void enc_peer_add(const uint8_t* mac) {
+  if (enc_peer_known(mac) || g_enc_count >= MAX_ENC_PEERS) return;
+  esp_now_peer_info_t p = {};
+  memcpy(p.peer_addr, mac, 6);
+  p.channel = 0;
+  p.encrypt = true;
+  memcpy(p.lmk, (const uint8_t*)ESPNOW_LMK, 16);
+  if (esp_now_add_peer(&p) == ESP_OK) {
+    memcpy(g_enc_macs[g_enc_count++], mac, 6);
+    Serial.printf("[bus] encrypted peer added (%02X:%02X:%02X:%02X:%02X:%02X)\n",
+                  mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+  }
+}
+
 static bus_observer_t g_observer = nullptr;
 
 // Per-peer activity tracking — used to report connect/disconnect counts.
@@ -99,15 +127,17 @@ static void ring_push(const BusFrame& f) {
 // --------------------------------------------------------------
 // arduino-esp32 v3.x changed the ESP-NOW receive callback signature.
 #if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
-static void on_espnow_recv(const esp_now_recv_info_t* /*recv_info*/, const uint8_t* data, int len) {
+static void on_espnow_recv(const esp_now_recv_info_t* recv_info, const uint8_t* data, int len) {
+  const uint8_t* sender_mac = recv_info ? recv_info->src_addr : nullptr;
 #else
-static void on_espnow_recv(const uint8_t* /*mac*/, const uint8_t* data, int len) {
+static void on_espnow_recv(const uint8_t* sender_mac, const uint8_t* data, int len) {
 #endif
   if (len != sizeof(WifiFrame)) return;
   WifiFrame f;
   memcpy(&f, data, sizeof(f));
   if (f.magic != WIFI_FRAME_MAGIC) return;
   if (f.node_id == g_node_id) return; // our own broadcast coming back
+  if (sender_mac) enc_peer_add(sender_mac); // upgrade to encrypted unicast on first contact
   if (dedup_seen_or_record(f.node_id, f.seq)) return;
   g_last_wifi_rx = millis();
   peer_touch(f.node_id);
@@ -134,10 +164,11 @@ void bus_init(uint8_t node_id) {
     Serial.println("[bus] esp_now_init failed");
     return;
   }
+  esp_now_set_pmk((const uint8_t*)ESPNOW_PMK);
   esp_now_register_recv_cb(on_espnow_recv);
 
   esp_now_peer_info_t peer = {};
-  memset(peer.peer_addr, 0xFF, 6); // broadcast MAC
+  memset(peer.peer_addr, 0xFF, 6); // broadcast MAC — encryption not supported on broadcast
   peer.channel = 0;                // follow current WiFi channel
   peer.encrypt = false;
   esp_now_add_peer(&peer);
@@ -162,6 +193,7 @@ void bus_init_no_ap(uint8_t node_id) {
     Serial.println("[bus] esp_now_init failed (no-ap mode)");
     return;
   }
+  esp_now_set_pmk((const uint8_t*)ESPNOW_PMK);
   esp_now_register_recv_cb(on_espnow_recv);
 
   esp_now_peer_info_t peer = {};
@@ -217,6 +249,10 @@ bool bus_tx(uint32_t id, const uint8_t* data, uint8_t dlc) {
   dedup_seen_or_record(g_node_id, f.seq); // suppress our own echo if it wraps around
 
   if (g_wifi_enabled && g_tx_mode != BUS_TX_CAN_ONLY) {
+    // Unicast (encrypted) to every peer we've already heard from.
+    for (int i = 0; i < g_enc_count; i++)
+      if (esp_now_send(g_enc_macs[i], (uint8_t*)&f, sizeof(f)) == ESP_OK) any_ok = true;
+    // Broadcast (unencrypted) as discovery beacon for peers not yet contacted.
     uint8_t bcast[6]; memset(bcast, 0xFF, 6);
     if (esp_now_send(bcast, (uint8_t*)&f, sizeof(f)) == ESP_OK) any_ok = true;
   }

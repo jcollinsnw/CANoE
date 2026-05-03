@@ -16,6 +16,7 @@
 
 #include "can_protocol.h"
 #include "bus.h"
+#include "mod_buzzer.h"
 
 #if USE_WIFI
 #include "webui.h"
@@ -46,12 +47,30 @@ struct EncoderState { uint8_t last_ab; int8_t pending; };
 static EncoderState g_enc;
 
 // --------------------------------------------------------------
+// Switch event ACK + retry
+// --------------------------------------------------------------
+static const uint8_t  SW_MAX_RETRIES = 3;
+static const uint16_t SW_RETRY_MS    = 80;
+static const uint8_t  SW_PENDING_MAX = 4;
+static const uint8_t  SW_ERROR_LED   = 2;   // LED index on this node used as error indicator
+
+struct PendingAck { bool active; uint8_t sw_id, event, retries; uint32_t next_ms; };
+static PendingAck g_pending[SW_PENDING_MAX];
+
+// --------------------------------------------------------------
 // Outgoing frames
 // --------------------------------------------------------------
 static void send_sw_event(uint8_t id, uint8_t ev) {
   uint8_t d[2] = { id, ev };
   bus_tx(CAN_ID_SWITCH_EVENT, d, 2);
   wlog("[sw%u] event=%u\n", id, ev);
+  // Register for ACK retry — find a free slot.
+  for (uint8_t i = 0; i < SW_PENDING_MAX; i++) {
+    if (!g_pending[i].active) {
+      g_pending[i] = { true, id, ev, SW_MAX_RETRIES, millis() + SW_RETRY_MS };
+      break;
+    }
+  }
 }
 
 static void send_encoder_event(uint8_t ev, uint8_t count = 1) {
@@ -132,6 +151,38 @@ void switches_setup() {
 void switches_loop() {
   poll_switches();
   poll_encoder();
+
+  // Advance ACK retry timers.
+  uint32_t now = millis();
+  for (uint8_t i = 0; i < SW_PENDING_MAX; i++) {
+    PendingAck& p = g_pending[i];
+    if (!p.active || now < p.next_ms) continue;
+    if (p.retries > 0) {
+      uint8_t d[2] = { p.sw_id, p.event };
+      bus_tx(CAN_ID_SWITCH_EVENT, d, 2);
+      p.retries--;
+      p.next_ms = now + SW_RETRY_MS;
+      wlog("[sw] retry sw%u ev%u (%u left)\n", p.sw_id, p.event, p.retries);
+    } else {
+      wlogln("[sw] ACK timeout — no response after retries");
+      buzzer_alert();
+      uint8_t led[4] = { NODE_ID, 1u << SW_ERROR_LED, 1u << SW_ERROR_LED, 4 };
+      bus_tx(CAN_ID_LED_CMD, led, 4);
+      p.active = false;
+    }
+  }
+}
+
+void switches_handle_ack(const BusFrame& f) {
+  if (f.id != CAN_ID_SWITCH_ACK || f.dlc < 2) return;
+  for (uint8_t i = 0; i < SW_PENDING_MAX; i++) {
+    PendingAck& p = g_pending[i];
+    if (p.active && p.sw_id == f.data[0] && p.event == f.data[1]) {
+      p.active = false;
+      wlog("[sw] ACK sw%u ev%u\n", f.data[0], f.data[1]);
+      break;
+    }
+  }
 }
 
 #endif // ENABLE_SWITCHES

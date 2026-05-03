@@ -17,6 +17,7 @@
 #define CAN_ID_LED_CMD           0x102  // Any node -> target node: [target, mask, state]
 #define CAN_ID_LED_STATUS        0x103  // Target node  -> everyone, on change: [node_id, bitmap]
 #define CAN_ID_SWITCH_EVENT      0x200  // Switch panel  -> everyone, on change
+#define CAN_ID_SWITCH_ACK        0x202  // Any non-originating node -> switch panel: [switch_id, event]
 #define CAN_ID_ENCODER_EVENT     0x201  // Switch panel  -> everyone: rotary encoder
 #define CAN_ID_TELEMETRY         0x300  // Relay ctrl    -> everyone, periodic
 #define CAN_ID_ENV_DATA          0x301  // Switch panel  -> everyone, periodic (temp/humidity)
