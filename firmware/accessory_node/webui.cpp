@@ -12,9 +12,12 @@
 #include <DNSServer.h>
 #include <stdarg.h>
 #include "node_config.h"
+#include "can_protocol.h"
 #include "bus.h"
 #include "webui.h"
 #include "index_html.h"
+#include "mod_wifi_creds.h"
+#include "mod_blob.h"
 #ifdef ENABLE_RULES
 #include "mod_rules.h"
 #endif
@@ -79,6 +82,8 @@ static DNSServer g_dns;
 static const char* g_node_name = "unknown";
 static uint8_t     g_node_id = 0;
 static uint32_t    g_boot_ms = 0;
+static uint8_t     g_ap_clients = 0;
+static void (*g_ap_client_cb)(uint8_t, uint8_t) = nullptr;
 
 // --------------------------------------------------------------
 // Node capability cache — populated from CAN_ID_NODE_CAP (0x0F2) frames.
@@ -439,6 +444,103 @@ static void handle_nodecaps() {
   g_http.send(200, "application/json", s);
 }
 
+// ---------- wifi creds helpers ----------
+static bool hex_to_bytes(const String& hex, uint8_t* out, size_t len) {
+  if ((size_t)hex.length() != len * 2) return false;
+  for (size_t i = 0; i < len; i++) {
+    auto hval = [](char c) -> int {
+      if (c >= '0' && c <= '9') return c - '0';
+      if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+      if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+      return -1;
+    };
+    int h = hval(hex[i*2]), l = hval(hex[i*2+1]);
+    if (h < 0 || l < 0) return false;
+    out[i] = (uint8_t)((h << 4) | l);
+  }
+  return true;
+}
+
+static bool json_str_val(const String& body, const char* key, String& out) {
+  String needle = String("\"") + key + "\":\"";
+  int pos = body.indexOf(needle);
+  if (pos < 0) return false;
+  pos += needle.length();
+  // Handle escaped quotes minimally
+  int end = pos;
+  while (end < (int)body.length() && !(body[end] == '"' && (end == 0 || body[end-1] != '\\'))) end++;
+  out = body.substring(pos, end);
+  return true;
+}
+
+static bool json_bool_val(const String& body, const char* key, bool& out) {
+  String needle = String("\"") + key + "\":";
+  int pos = body.indexOf(needle);
+  if (pos < 0) return false;
+  pos += needle.length();
+  while (pos < (int)body.length() && body[pos] == ' ') pos++;
+  out = (body.substring(pos, pos + 4) == "true");
+  return true;
+}
+
+static void handle_wifi_creds_get() {
+  char ssid[33], pass[65];
+  uint8_t pmk[16], lmk[16];
+  wifi_creds_get_ssid(ssid, sizeof(ssid));
+  wifi_creds_get_pass(pass, sizeof(pass));
+  wifi_creds_get_pmk(pmk);
+  wifi_creds_get_lmk(lmk);
+  String s = "{\"ssid\":\""; s += ssid; s += "\",\"pass\":\""; s += pass; s += "\",\"pmk\":\"";
+  for (int i = 0; i < 16; i++) { char b[3]; sprintf(b, "%02x", pmk[i]); s += b; }
+  s += "\",\"lmk\":\"";
+  for (int i = 0; i < 16; i++) { char b[3]; sprintf(b, "%02x", lmk[i]); s += b; }
+  s += "\"}";
+  g_http.sendHeader("Cache-Control", "no-store");
+  g_http.send(200, "application/json", s);
+}
+
+static void handle_wifi_creds_post() {
+  if (!g_http.hasArg("plain")) { g_http.send(400, "text/plain", "no body"); return; }
+  const String& body = g_http.arg("plain");
+
+  String ssid_s, pass_s, pmk_s, lmk_s;
+  bool has_ssid = json_str_val(body, "ssid", ssid_s);
+  bool has_pass = json_str_val(body, "pass", pass_s);
+  bool has_pmk  = json_str_val(body, "pmk",  pmk_s);
+  bool has_lmk  = json_str_val(body, "lmk",  lmk_s);
+  bool broadcast = false;
+  json_bool_val(body, "broadcast", broadcast);
+
+  if (has_ssid && (ssid_s.length() == 0 || ssid_s.length() > 32)) {
+    g_http.send(400, "text/plain", "ssid: 1-32 chars"); return;
+  }
+  if (has_pass && pass_s.length() > 0 && pass_s.length() < 8) {
+    g_http.send(400, "text/plain", "pass: empty or >=8 chars"); return;
+  }
+  uint8_t pmk[16] = {}, lmk[16] = {};
+  if (has_pmk && !hex_to_bytes(pmk_s, pmk, 16)) {
+    g_http.send(400, "text/plain", "pmk: need 32 hex chars"); return;
+  }
+  if (has_lmk && !hex_to_bytes(lmk_s, lmk, 16)) {
+    g_http.send(400, "text/plain", "lmk: need 32 hex chars"); return;
+  }
+
+  if (has_ssid) wifi_creds_set_ssid(ssid_s.c_str());
+  if (has_pass) wifi_creds_set_pass(pass_s.c_str());
+  if (has_pmk)  wifi_creds_set_pmk(pmk);
+  if (has_lmk)  wifi_creds_set_lmk(lmk);
+  wifi_creds_save();
+
+  if (broadcast) wifi_creds_broadcast(0xFF, BLOB_FLAG_PERSIST);
+
+  g_http.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handle_wifi_creds_reset() {
+  wifi_creds_reset();
+  g_http.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handle_not_found() {
   // Captive portal: any unknown host → redirect to our root
   g_http.sendHeader("Location", String("http://") + AP_IP.toString() + "/", true);
@@ -457,11 +559,14 @@ void webui_init(const char* node_name, uint8_t node_id) {
   WiFi.softAPConfig(AP_IP, AP_IP, AP_NETMASK);
   // Same SSID on every node so the phone roams; channel is fixed so
   // ESP-NOW across nodes just works.
-  WiFi.softAP(AP_SSID, strlen(AP_PASSWORD) ? AP_PASSWORD : nullptr, AP_CHANNEL, AP_HIDDEN);
+  char ap_ssid[33], ap_pass[65];
+  wifi_creds_get_ssid(ap_ssid, sizeof(ap_ssid));
+  wifi_creds_get_pass(ap_pass, sizeof(ap_pass));
+  WiFi.softAP(ap_ssid, strlen(ap_pass) ? ap_pass : nullptr, AP_CHANNEL, AP_HIDDEN);
   delay(100);
   Serial.printf("[wifi] AP up  SSID=\"%s\"%s  IP=%s  ch=%d\n",
-                AP_HIDDEN ? "<hidden>" : AP_SSID,
-                strlen(AP_PASSWORD) ? " (WPA2)" : " (open)",
+                AP_HIDDEN ? "<hidden>" : ap_ssid,
+                strlen(ap_pass) ? " (WPA2)" : " (open)",
                 WiFi.softAPIP().toString().c_str(), AP_CHANNEL);
 #ifdef BRIDGE_MODE
   // Connect to existing router so bridge is reachable from home network.
@@ -494,6 +599,10 @@ void webui_init(const char* node_name, uint8_t node_id) {
   });
 #endif
 
+  g_http.on("/api/wifi_creds",       HTTP_GET,  handle_wifi_creds_get);
+  g_http.on("/api/wifi_creds",       HTTP_POST, handle_wifi_creds_post);
+  g_http.on("/api/wifi_creds/reset", HTTP_POST, handle_wifi_creds_reset);
+
   // Common captive-portal probe paths — just bounce them to our root
   g_http.on("/generate_204",         HTTP_GET, handle_not_found);
   g_http.on("/gen_204",              HTTP_GET, handle_not_found);
@@ -508,9 +617,22 @@ void webui_init(const char* node_name, uint8_t node_id) {
   bus_set_observer(webui_observe);
 }
 
+void webui_set_ap_client_cb(void (*cb)(uint8_t new_count, uint8_t old_count)) {
+  g_ap_client_cb = cb;
+}
+
 void webui_tick() {
   g_dns.processNextRequest();
   g_http.handleClient();
+  {
+    uint8_t n = (uint8_t)WiFi.softAPgetStationNum();
+    if (n != g_ap_clients) {
+      uint8_t old = g_ap_clients;
+      g_ap_clients = n;
+      wlog("[wifi] AP clients: %u -> %u\n", old, n);
+      if (g_ap_client_cb) g_ap_client_cb(n, old);
+    }
+  }
 #ifdef BRIDGE_MODE
   static uint8_t sta_state = 0;
   if (sta_state == 0) {

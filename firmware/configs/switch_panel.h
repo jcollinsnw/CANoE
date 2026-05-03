@@ -85,6 +85,7 @@
 #define MENU_HAS_DISPLAY  // Display submenu (backlight toggle)
 #define MENU_HAS_WIFI     // WiFi submenu (enable/disable per node)
 #define MENU_HAS_BEEP     // Beep toggle (mute/unmute buzzer)
+#define MENU_HAS_REBOOT   // Reboot submenu (reboot any node by ID via CAN_ID_REBOOT_CMD)
 
 // ---- Relay labels and custom LCD icons (optional) ----
 // Each relay can have a human-readable label and/or custom CGRAM icons for the

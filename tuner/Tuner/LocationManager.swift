@@ -30,7 +30,10 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         manager.pausesLocationUpdatesAutomatically  = false
         // Keep delivering location when the app is backgrounded (blue status bar
         // is shown on device). Required for GPS→CAN injection while screen is off.
+        // macOS does not have this property.
+#if os(iOS)
         manager.allowsBackgroundLocationUpdates = true
+#endif
     }
 
     func start() {

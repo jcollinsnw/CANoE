@@ -114,9 +114,13 @@ struct ConnectView: View {
 
                 TextField("192.168.4.1", text: $nodeIP)
                     .textFieldStyle(.roundedBorder)
+#if os(iOS)
                     .keyboardType(.decimalPad)
+#endif
                     .autocorrectionDisabled()
+#if os(iOS)
                     .textInputAutocapitalization(.never)
+#endif
                     .font(.system(.body, design: .monospaced))
                     .onSubmit(onWifiConnect)
 
@@ -218,7 +222,10 @@ struct NativeDashboardView: View {
                     HStack(spacing: 12) {
                         Button(systemImage: "trash") { ble.clearFrames() }
                             .tint(.secondary)
+#if os(iOS)
+                        // GPS hardware is available on iPhone; Macs typically have none.
                         GpsToggleButton(location: location)
+#endif
                     }
                 }
             }
@@ -230,10 +237,16 @@ struct NativeDashboardView: View {
         // Auto-start GPS as soon as the dashboard appears (BLE just connected).
         // The user can still stop/start manually with the GPS toolbar button.
         .onAppear {
+#if os(iOS)
             UIApplication.shared.isIdleTimerDisabled = true
+#endif
             if !location.isRunning { location.start() }
         }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onDisappear {
+#if os(iOS)
+            UIApplication.shared.isIdleTimerDisabled = false
+#endif
+        }
         .sheet(isPresented: $showWebConsole) {
             NodeBrowserView(nodeIP: savedIP, location: location,
                             closeLabel: "Close") {
@@ -241,11 +254,13 @@ struct NativeDashboardView: View {
             }
         }
         .alert("Location Access Denied", isPresented: $location.authDenied) {
+#if os(iOS)
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)
                 }
             }
+#endif
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Enable location access in Settings so the app can publish phone GPS to the CAN bus.")
@@ -291,8 +306,16 @@ struct NodeBrowserView: View {
         NavigationStack {
             NodeWebView(url: nodeURL, onCoordinatorReady: { webCoordinator = $0 })
                 .ignoresSafeArea(edges: .bottom)
-                .onAppear   { UIApplication.shared.isIdleTimerDisabled = true  }
-                .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+                .onAppear {
+#if os(iOS)
+                    UIApplication.shared.isIdleTimerDisabled = true
+#endif
+                }
+                .onDisappear {
+#if os(iOS)
+                    UIApplication.shared.isIdleTimerDisabled = false
+#endif
+                }
                 // Forward GPS frames to the web UI via JavaScript.
                 .onReceive(location.$latestFrame.compactMap { $0 }) { frame in
                     webCoordinator?.sendGpsFrame(frame)
@@ -313,11 +336,13 @@ struct NodeBrowserView: View {
                 }
         }
         .alert("Location Access Denied", isPresented: $location.authDenied) {
+#if os(iOS)
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)
                 }
             }
+#endif
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Enable location access in Settings so the app can publish phone speed to the CAN bus.")

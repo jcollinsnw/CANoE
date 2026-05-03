@@ -54,3 +54,7 @@ void bus_set_observer(bus_observer_t cb);
 // Register CAN-status and WiFi-status LCD widgets. Call once from setup() after lcd_setup().
 // No-op when ENABLE_LCD is not defined in node_config.h.
 void bus_register_lcd_widgets();
+
+// Override the ESP-NOW PMK and LMK used at bus_init() time.
+// Call before bus_init(). Falls back to secrets.h ESPNOW_PMK/LMK if never called.
+void bus_set_espnow_keys(const uint8_t pmk[16], const uint8_t lmk[16]);

@@ -36,6 +36,7 @@
 #define MENU_ID_WIFI    5
 #define MENU_ID_TX_MODE 6
 #define MENU_ID_BEEP    7
+#define MENU_ID_REBOOT  8
 
 struct MenuItem {
   uint8_t     id;
@@ -58,7 +59,12 @@ static bool g_node_wifi[3] = { true, false, true };
 static bool g_startup_snd = true;  // NVS pref; loaded in menu_setup()
 #endif
 
-static MenuItem g_items[9];  // max 8 sections + spare
+#ifdef MENU_HAS_REBOOT
+static const char* const REBOOT_LABELS[]  = { "Self", "Relay Ctrl", "Viper Ifc", "ECU Node ", "All Nodes" };
+static const uint8_t     REBOOT_TARGETS[] = { NODE_ID, 0x02, 0x03, 0x04, 0xFF };
+#endif
+
+static MenuItem g_items[10];  // max 9 sections + spare
 static uint8_t  g_item_count = 0;
 
 static uint8_t  g_level    = 0;
@@ -202,6 +208,18 @@ static void menu_draw() {
         break;
 #endif
 
+#ifdef MENU_HAS_REBOOT
+      case MENU_ID_REBOOT:
+        if (is_back) {
+          snprintf(r0, sizeof(r0), "Reboot");
+          snprintf(r1, sizeof(r1), "\x7F Back");
+        } else {
+          snprintf(r0, sizeof(r0), "Reboot  [%u/5]", g_sub_sel + 1);
+          snprintf(r1, sizeof(r1), "\x7E %s", REBOOT_LABELS[g_sub_sel]);
+        }
+        break;
+#endif
+
       default:
         snprintf(r0, sizeof(r0), "Menu");
         snprintf(r1, sizeof(r1), "---");
@@ -246,6 +264,9 @@ void menu_setup() {
     g_startup_snd = p.getBool("startup_snd", true);
     p.end();
   }
+#endif
+#ifdef MENU_HAS_REBOOT
+  g_items[g_item_count++] = { MENU_ID_REBOOT, "Reboot",    6 };  // 5 targets + Back
 #endif
   g_items[g_item_count++] = { MENU_ID_EXIT,    "\x7F Exit",  0 };  // always last
 }
@@ -396,6 +417,23 @@ void menu_action() {
         wlog("[menu] startup_snd=%u\n", g_startup_snd);
       }
       p.end();
+      menu_draw();
+      break;
+    }
+#endif
+
+#ifdef MENU_HAS_REBOOT
+    case MENU_ID_REBOOT: {
+      uint8_t target = REBOOT_TARGETS[idx];
+      uint8_t d[1] = { target };
+      bus_tx(CAN_ID_REBOOT_CMD, d, 1);
+      wlog("[menu] reboot target=0x%02X\n", target);
+      if (target == NODE_ID || target == 0xFF) {
+        lcd_write_row(0, "Rebooting...");
+        lcd_write_row(1, "");
+        delay(200);
+        ESP.restart();
+      }
       menu_draw();
       break;
     }

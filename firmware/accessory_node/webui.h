@@ -31,3 +31,7 @@ void webui_serial_tee_install();
 // for messages you want visible in the Serial tab.
 int wlog(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void wlogln(const char* msg);
+
+// Register a callback invoked when the SoftAP client count changes.
+// Called from webui_tick() on the main thread.
+void webui_set_ap_client_cb(void (*cb)(uint8_t new_count, uint8_t old_count));

@@ -70,10 +70,14 @@ final class BLEManager: NSObject, ObservableObject,
 
     override init() {
         super.init()
-        // restoreIdentifier lets iOS restart the app in the background when the
-        // peripheral range appears, completing the reconnect without user action.
+#if os(iOS)
+        // State restoration lets iOS restart/resume the app in the background
+        // when the peripheral comes back in range.
         central = CBCentralManager(delegate: self, queue: .main,
                                    options: [CBCentralManagerOptionRestoreIdentifierKey: restoreKey])
+#else
+        central = CBCentralManager(delegate: self, queue: .main)
+#endif
     }
 
     // ── Public API ────────────────────────────────────────────────────────
@@ -123,6 +127,7 @@ final class BLEManager: NSObject, ObservableObject,
 
     // ── CBCentralManagerDelegate ──────────────────────────────────────────
 
+#if os(iOS)
     func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
         // iOS calls this when it relaunches the app in the background to restore
         // an ongoing BLE session. Grab the peripheral so delegates fire correctly.
@@ -134,6 +139,7 @@ final class BLEManager: NSObject, ObservableObject,
             connectionState  = .connecting
         }
     }
+#endif
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {

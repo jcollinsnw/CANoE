@@ -51,6 +51,8 @@
 #include "mod_gps.h"
 #include "mod_serial_shell.h"
 #include "mod_mqtt.h"
+#include "mod_blob.h"
+#include "mod_wifi_creds.h"
 
 // --------------------------------------------------------------
 // Shared state definitions (declared extern in node_state.h)
@@ -162,9 +164,18 @@ void setup() {
   if (eff_id != NODE_ID) wlog("[boot] node_id overridden: 0x%02X -> 0x%02X\n", NODE_ID, eff_id);
 
 #if USE_WIFI
+  wifi_creds_setup();
+  { uint8_t pmk[16], lmk[16]; wifi_creds_get_pmk(pmk); wifi_creds_get_lmk(lmk); bus_set_espnow_keys(pmk, lmk); }
+#endif
+
+#if USE_WIFI
 #ifdef BRIDGE_MODE
   // Bridge: AP + web UI always on; no ESP-NOW (avoids channel conflict with STA).
   webui_init(NODE_NAME, eff_id);
+  webui_set_ap_client_cb([](uint8_t n, uint8_t old) {
+    if (n > old) { lcd_set_event("Web UI connected");    buzzer_wifi_connect(); }
+    else         { lcd_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
+  });
   bus_init_no_wifi(eff_id);
   wlogln("[boot] bridge mode: AP up, ESP-NOW disabled");
 #else
@@ -183,10 +194,18 @@ void setup() {
 
     if (ap_en && espnow_en) {
       webui_init(NODE_NAME, eff_id);
+      webui_set_ap_client_cb([](uint8_t n, uint8_t old) {
+        if (n > old) { lcd_set_event("Web UI connected");    buzzer_wifi_connect(); }
+        else         { lcd_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
+      });
       bus_init(eff_id);
     } else if (ap_en) {
       // AP + web UI up, but ESP-NOW radio disabled.
       webui_init(NODE_NAME, eff_id);
+      webui_set_ap_client_cb([](uint8_t n, uint8_t old) {
+        if (n > old) { lcd_set_event("Web UI connected");    buzzer_wifi_connect(); }
+        else         { lcd_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
+      });
       bus_init_no_wifi(eff_id);
       wlogln("[boot] ESP-NOW disabled by config");
     } else if (espnow_en) {
@@ -203,6 +222,14 @@ void setup() {
 #else
   bus_init_no_wifi(eff_id);
 #endif
+
+  blob_set_commit_cb([](uint8_t ns, uint8_t key, const uint8_t* data, uint16_t len, uint8_t flags) {
+#if USE_WIFI
+    if (ns == BLOB_NS_WIFI) { wifi_creds_on_blob(key, data, len, flags); return; }
+#endif
+    // Future namespaces handled here
+    wlog("[blob] unhandled ns=0x%02X key=0x%02X len=%u\n", ns, key, len);
+  });
 
 // I2C — initialize once for all modules that share the bus (LCD, MPU-6050).
 #if defined(ENABLE_LCD)
@@ -419,6 +446,17 @@ void loop() {
 
     // Clear pending ACK retry on this node (switch panel only; no-op stub elsewhere).
     switches_handle_ack(f);
+
+    blob_handle_frame(f);
+
+    // Reboot command — restart if this frame targets us or is a broadcast.
+    if (f.id == CAN_ID_REBOOT_CMD && f.dlc >= 1) {
+      if (f.data[0] == bus_node_id() || f.data[0] == 0xFF) {
+        wlog("[boot] reboot cmd target=0x%02X\n", f.data[0]);
+        delay(100);
+        ESP.restart();
+      }
+    }
 
     // Encoder scroll drives menu when active (encoder events are self-echoed from mod_switches).
 #if defined(ENABLE_MENU) && defined(ENABLE_SWITCHES)

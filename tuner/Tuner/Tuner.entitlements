@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App sandbox (required for Mac App Store; fine for direct distribution too) -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Outgoing network connections to ESP32 nodes via HTTP and BLE -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+
+	<!-- CoreBluetooth central role -->
+	<key>com.apple.security.device.bluetooth</key>
+	<true/>
+
+	<!-- CoreLocation (GPS on Macs with hardware; also needed for API availability) -->
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+</dict>
+</plist>

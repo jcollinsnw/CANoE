@@ -61,6 +61,10 @@
 // data[0]=target_node_id (0xFF = all nodes)
 #define CAN_ID_NODE_CAP_REQ      0x0F3
 
+// Reboot command — any node may send; target restarts when its node_id matches or target is 0xFF.
+// data[0] = target_node_id (0x01–0x04 for a specific node, 0xFF = all nodes)
+#define CAN_ID_REBOOT_CMD        0x0F5
+
 // Bus error event — emitted by any node that detects a CAN error condition.
 // Sent on both transports (ESP-NOW carries it even if wired CAN is failing).
 // data[0]=node_id, data[1]=error_code (BUS_ERR_*), data[2]=tx_err_cnt, data[3]=rx_err_cnt
@@ -78,6 +82,29 @@
 #define NODE_CAP_VIPER    0x04   // has Viper alarm interface
 #define NODE_CAP_LEDS     0x08   // has CAN-controllable LEDs
 #define NODE_CAP_RULES    0x10   // has rules engine
+
+// Generic chunked blob write protocol.
+// One transfer = N BLOB_WRITE frames + one BLOB_COMMIT frame.
+// Multiple (ns, key) transfers may interleave; each has its own RX slot.
+// Self-echoed frames are ignored on the receiving side.
+//
+// BLOB_WRITE  [0]=target [1]=ns [2]=key [3]=chunk_idx [4-7]=data (4 bytes)
+// BLOB_COMMIT [0]=target [1]=ns [2]=key [3]=len_lo    [4]=len_hi [5]=flags
+#define CAN_ID_BLOB_WRITE    0x410
+#define CAN_ID_BLOB_COMMIT   0x411
+
+// Blob namespaces
+#define BLOB_NS_WIFI         0x01   // WiFi + ESP-NOW credentials
+
+// Keys within BLOB_NS_WIFI
+#define BLOB_KEY_SSID        0x01   // AP SSID string, max 32 bytes
+#define BLOB_KEY_PASS        0x02   // AP password string, max 63 bytes (0 len = open)
+#define BLOB_KEY_PMK         0x03   // ESP-NOW PMK, exactly 16 bytes
+#define BLOB_KEY_LMK         0x04   // ESP-NOW LMK, exactly 16 bytes
+
+// Blob commit flags (BLOB_COMMIT data[5])
+#define BLOB_FLAG_PERSIST    0x01   // write to NVS after commit
+#define BLOB_FLAG_REBOOT     0x02   // restart node after applying
 
 // Config-over-CAN — change behavior at runtime without reflashing.
 #define CAN_ID_CONFIG_WRITE      0x400

@@ -108,6 +108,7 @@ Four ESP32 nodes, each runs up to four things concurrently:
 | `MENU_HAS_BUS`     | Live TWAI health counter display           |
 | `MENU_HAS_DISPLAY` | LCD backlight toggle                       |
 | `MENU_HAS_WIFI`    | Per-node WiFi enable/disable (sends CONFIG_WRITE; self-toggle restarts) |
+| `MENU_HAS_REBOOT`  | Reboot any node by ID (Self / Relay Ctrl / Viper Ifc / ECU Node / All Nodes) via `REBOOT_CMD (0x0F5)` |
 
 ## Rules engine
 
@@ -205,6 +206,7 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x0F2  | NODE_CAP          | `[node_id, caps, switch_count, button_count, led_count, relay_count]` — capability advertisement; broadcast at boot and every 30 s; also sent in response to NODE_CAP_REQ. caps bits: 0x01=relay, 0x02=switches, 0x04=viper, 0x08=leds, 0x10=rules |
 | 0x0F3  | NODE_CAP_REQ      | `[target_node_id]` — request capability frame; 0xFF = all nodes respond |
 | 0x0F4  | BUS_ERROR         | `[node_id, error_code, tx_err_cnt, rx_err_cnt]` — emitted on error transitions (BUS_OFF=1, ERROR_PASSIVE=2, TX_FAIL=3, RX_OVERFLOW=4); error_code=0 signals recovery. Sent over both transports so ESP-NOW carries it even when wired CAN has failed. |
+| 0x0F5  | REBOOT_CMD        | `[target_node_id]` — any node may send; target calls `ESP.restart()` when its node_id matches or target is 0xFF (all nodes). Menu shows LCD "Rebooting..." for local reboots. |
 | 0x100  | RELAY_CMD         | `[mask, state]` — only bits set in mask are applied    |
 | 0x101  | RELAY_STATUS      | `[bitmap]` — broadcast at 5 Hz                         |
 | 0x102  | LED_CMD           | 3-byte form: `[target_node_id, mask, state]`; 4-byte form: `[target_node_id, mask, state, flash_period_ds]` — flash_period_ds in 100 ms units (0 = solid). Any node → target; 0xFF target = broadcast. |

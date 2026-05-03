@@ -103,3 +103,4 @@ A full off-device tuning platform built as a Quasar/Vue app that talks to the ex
 - Buzzer CAN?
 - LCD Menu for Bluetooth discoverability/power
 - Switch wiring to regular rotory encoder
+- Take a look at the web ui communication. For example, setting CAN ID, changing wifi credentials, etc. I am hoping these are all essentially CAN "scripts". I don't want custom HTTP communication for every feature added through the web UI. I want everything to go over CAN.

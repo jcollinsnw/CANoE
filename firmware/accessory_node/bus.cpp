@@ -52,6 +52,10 @@ static uint32_t g_last_rx_missed  = 0;    // cumulative rx_missed_count at last 
 static uint8_t g_enc_macs[MAX_ENC_PEERS][6];
 static uint8_t g_enc_count = 0;
 
+static uint8_t g_espnow_pmk[16] = {};
+static uint8_t g_espnow_lmk[16] = {};
+static bool    g_espnow_keys_set = false;
+
 static bool enc_peer_known(const uint8_t* mac) {
   for (int i = 0; i < g_enc_count; i++)
     if (memcmp(g_enc_macs[i], mac, 6) == 0) return true;
@@ -64,7 +68,7 @@ static void enc_peer_add(const uint8_t* mac) {
   memcpy(p.peer_addr, mac, 6);
   p.channel = 0;
   p.encrypt = true;
-  memcpy(p.lmk, (const uint8_t*)ESPNOW_LMK, 16);
+  memcpy(p.lmk, g_espnow_keys_set ? g_espnow_lmk : (const uint8_t*)ESPNOW_LMK, 16);
   if (esp_now_add_peer(&p) == ESP_OK) {
     memcpy(g_enc_macs[g_enc_count++], mac, 6);
     Serial.printf("[bus] encrypted peer added (%02X:%02X:%02X:%02X:%02X:%02X)\n",
@@ -164,7 +168,7 @@ void bus_init(uint8_t node_id) {
     Serial.println("[bus] esp_now_init failed");
     return;
   }
-  esp_now_set_pmk((const uint8_t*)ESPNOW_PMK);
+  esp_now_set_pmk(g_espnow_keys_set ? g_espnow_pmk : (const uint8_t*)ESPNOW_PMK);
   esp_now_register_recv_cb(on_espnow_recv);
 
   esp_now_peer_info_t peer = {};
@@ -193,7 +197,7 @@ void bus_init_no_ap(uint8_t node_id) {
     Serial.println("[bus] esp_now_init failed (no-ap mode)");
     return;
   }
-  esp_now_set_pmk((const uint8_t*)ESPNOW_PMK);
+  esp_now_set_pmk(g_espnow_keys_set ? g_espnow_pmk : (const uint8_t*)ESPNOW_PMK);
   esp_now_register_recv_cb(on_espnow_recv);
 
   esp_now_peer_info_t peer = {};
@@ -381,6 +385,12 @@ uint8_t bus_peer_node_bitmap() {
 void     bus_set_tx_mode(BusTxMode mode) { g_tx_mode = mode; }
 BusTxMode bus_get_tx_mode()              { return g_tx_mode; }
 void bus_set_observer(bus_observer_t cb) { g_observer = cb; }
+
+void bus_set_espnow_keys(const uint8_t pmk[16], const uint8_t lmk[16]) {
+  memcpy(g_espnow_pmk, pmk, 16);
+  memcpy(g_espnow_lmk, lmk, 16);
+  g_espnow_keys_set = true;
+}
 
 // --------------------------------------------------------------
 // LCD status widgets for CAN and WiFi health indicators

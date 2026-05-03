@@ -614,7 +614,83 @@ function buildSettingsPanel() {
   h += '</div>';
   h += '<div class="nid-hint">Saves to NVS and restarts. Must be unique on the bus (0x01–0xFE).</div>';
   h += '</div>';
+
+  h += '<div class="ctrl-section">';
+  h += '<div class="ctrl-head">WiFi Credentials</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:8px;max-width:480px">';
+  h += '  <div class="re-row"><label>SSID</label><input type="text" id="wc-ssid" class="nid-input" style="width:200px" maxlength="32" placeholder="AccessoryBus"></div>';
+  h += '  <div class="re-row"><label>Password</label><input type="password" id="wc-pass" class="nid-input" style="width:200px" maxlength="64" placeholder="(empty = open)"></div>';
+  h += '  <div class="re-row"><label>PMK (hex)</label><input type="text" id="wc-pmk" class="nid-input" style="width:280px;font-family:monospace" maxlength="32" placeholder="32 hex chars = 16 bytes"></div>';
+  h += '  <div class="re-row"><label>LMK (hex)</label><input type="text" id="wc-lmk" class="nid-input" style="width:280px;font-family:monospace" maxlength="32" placeholder="32 hex chars = 16 bytes"></div>';
+  h += '</div>';
+  h += '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">';
+  h += '  <button class="ctrl-btn" onclick="loadWifiCreds()">&#8635; Load Current</button>';
+  h += '  <button class="ctrl-btn" onclick="saveWifiCreds(false)">Save to This Node</button>';
+  h += '  <button class="ctrl-btn" onclick="saveWifiCreds(true)">Broadcast to All Nodes</button>';
+  h += '  <button class="ctrl-btn danger" onclick="rebootAll()">Reboot All</button>';
+  h += '</div>';
+  h += '<div id="wc-status" style="margin-top:8px;font-size:11px;color:#808a95"></div>';
+  h += '<div style="margin-top:10px;font-size:11px;color:#4a5a6a;line-height:1.6">';
+  h += '  <b style="color:#f29900">Warning:</b> Changing SSID or password will disconnect your current session after reboot.<br>';
+  h += '  <b>WiFi-only mode:</b> Broadcast sends over ESP-NOW using current keys. Reboot all nodes simultaneously to apply PMK/LMK changes.';
+  h += '</div>';
+  h += '</div>';
+
   document.getElementById('settings-panel').innerHTML = h;
+  loadWifiCreds();
+}
+
+async function loadWifiCreds() {
+  const st = document.getElementById('wc-status');
+  try {
+    const r = await fetch('/api/wifi_creds');
+    const j = await r.json();
+    document.getElementById('wc-ssid').value = j.ssid || '';
+    document.getElementById('wc-pass').value = j.pass || '';
+    document.getElementById('wc-pmk').value  = j.pmk  || '';
+    document.getElementById('wc-lmk').value  = j.lmk  || '';
+    if (st) st.textContent = 'Loaded.';
+  } catch(e) {
+    if (st) st.textContent = 'Failed to load: ' + e;
+  }
+}
+
+async function saveWifiCreds(broadcast) {
+  const st = document.getElementById('wc-status');
+  const ssid = document.getElementById('wc-ssid').value.trim();
+  const pass = document.getElementById('wc-pass').value;
+  const pmk  = document.getElementById('wc-pmk').value.trim().toLowerCase();
+  const lmk  = document.getElementById('wc-lmk').value.trim().toLowerCase();
+  if (!ssid) { if (st) st.textContent = 'SSID is required.'; return; }
+  if (pass && pass.length < 8) { if (st) st.textContent = 'Password must be empty or ≥ 8 chars.'; return; }
+  if (pmk && pmk.length !== 32) { if (st) st.textContent = 'PMK must be exactly 32 hex chars.'; return; }
+  if (lmk && lmk.length !== 32) { if (st) st.textContent = 'LMK must be exactly 32 hex chars.'; return; }
+  const body = { ssid, pass, broadcast };
+  if (pmk) body.pmk = pmk;
+  if (lmk) body.lmk = lmk;
+  try {
+    if (st) st.textContent = broadcast ? 'Broadcasting\u2026' : 'Saving\u2026';
+    const r = await fetch('/api/wifi_creds', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (j.ok) {
+      if (st) st.textContent = broadcast
+        ? 'Broadcast sent. Use "Reboot All" to apply.'
+        : 'Saved to this node. Reboot to apply.';
+    } else {
+      if (st) st.textContent = 'Error: ' + JSON.stringify(j);
+    }
+  } catch(e) {
+    if (st) st.textContent = 'Request failed: ' + e;
+  }
+}
+
+async function rebootAll() {
+  if (!confirm('Reboot all nodes now?')) return;
+  await sendFrame(0x0F5, [0xFF]);
 }
 
 function toggleLed(idx, targetNode) {

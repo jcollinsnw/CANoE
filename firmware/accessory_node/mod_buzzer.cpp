@@ -157,6 +157,18 @@ void buzzer_alert() {
   play_seq(s, 5);
 }
 
+void buzzer_wifi_connect() {
+  // Ascending two-note chime: A5 → C6
+  static const Note s[] = { {880, 80}, {1047, 130} };
+  enqueue_seq(s, 2);
+}
+
+void buzzer_wifi_disconnect() {
+  // Descending two-note chime: C6 → A5
+  static const Note s[] = { {1047, 80}, {880, 130} };
+  enqueue_seq(s, 2);
+}
+
 void buzzer_set_muted(bool muted) { g_muted = muted; if (muted) noTone(BUZZER_PIN); }
 bool buzzer_is_muted()            { return g_muted; }
 
