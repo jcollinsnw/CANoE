@@ -70,6 +70,11 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
   .tab-dropdown .tab { display: block; width: 100%; text-align: left; border-bottom: none;
                        border-left: 3px solid transparent; padding: 8px 16px; }
   .tab-dropdown .tab.active { border-left-color: #9bd770; border-bottom: none; }
+  .tab-dropdown .tab-action { display: block; width: 100%; text-align: left; border: none;
+                              border-left: 3px solid transparent; padding: 8px 16px;
+                              background: none; font: inherit; color: #808a95; cursor: pointer; }
+  .tab-dropdown .tab-action:hover { color: #cfe2b0; background: #0f2030; }
+  .tab-dropdown .tab-divider { border: none; border-top: 1px solid #1e2a38; margin: 4px 0; }
   #serial-log { flex: 1; overflow-y: auto; padding: 6px 14px; font-size: 12.5px;
                 line-height: 1.5; white-space: pre-wrap; word-break: break-all;
                 color: #a0b0c0; display: none; }
@@ -232,6 +237,8 @@ static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
     <div class="tab-dropdown" id="tab-dropdown">
       <button class="tab" id="tab-serial" onclick="switchTab('serial')">Serial</button>
       <button class="tab" id="tab-settings" onclick="switchTab('settings')">Settings</button>
+      <hr class="tab-divider">
+      <button class="tab-action" onclick="exitCaptivePortal()">&#x1F4F1; Exit to App</button>
     </div>
   </div>
   <div id="help">
@@ -1148,6 +1155,95 @@ function renderNetwork() {
   }
 
   panel.innerHTML = h;
+}
+
+// ---------- exit captive portal ----------
+// Navigates to a non-captive URL so iOS/Android dismiss the portal browser
+// and return to the native app (e.g., the Tuner Swift app in bridge mode).
+// The phone stays connected to the Wi-Fi network — it just exits the mini browser.
+function exitCaptivePortal() {
+  document.getElementById('tab-dropdown').classList.remove('open');
+  // Any routable external URL works; using Apple's captive-portal probe endpoint
+  // is reliable and won't trigger a real browser redirect on non-captive networks.
+  window.location.href = 'http://captive.apple.com/hotspot-detect.html';
+}
+
+// ---------- phone GPS → CAN bridge ----------
+// NOTE: The Geolocation API requires HTTPS and will not work from this captive portal
+// (plain http://192.168.4.1). This code is intentionally left here for future use
+// once the bridge node is wired up — the Tuner Swift app uses CoreLocation natively
+// and injects GPS frames via WKWebView.evaluateJavaScript instead.
+// Uses the Geolocation API to read phone speed/heading and publishes it
+// as CAN_ID_GPS_DATA (0x305) frames at ~1 Hz, identical to the hardware GPS module.
+// Format: [speed_lo, speed_hi, heading_lo, heading_hi, flags]
+//   speed  = mph × 10 (uint16 LE)   heading = degrees × 10 (uint16 LE)
+//   flags  = bit0 fix | bit1 speed valid | bit2 heading valid
+let phoneGpsActive  = false;
+let phoneGpsWatchId = null;
+let lastPhoneGpsTx  = 0;
+const PHONE_GPS_MS  = 1000;
+
+function togglePhoneGps() {
+  phoneGpsActive ? stopPhoneGps() : startPhoneGps();
+}
+
+function updatePhoneGpsBtn() {
+  const b = document.getElementById('pgps-btn');
+  if (b) {
+    b.className = 'txm-btn' + (phoneGpsActive ? ' active' : '');
+    b.textContent = phoneGpsActive ? '\u{1F4CD} GPS ON' : '\u{1F4CD} Phone GPS';
+  }
+}
+
+function startPhoneGps() {
+  if (!navigator.geolocation) {
+    append('err', '[phone-gps] Geolocation not supported by this browser');
+    return;
+  }
+  phoneGpsActive = true;
+  updatePhoneGpsBtn();
+  phoneGpsWatchId = navigator.geolocation.watchPosition(
+    onPhoneGpsPos,
+    onPhoneGpsErr,
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+  );
+  append('inf', '[phone-gps] started — publishing as 0x305 GPS_DATA');
+}
+
+function stopPhoneGps() {
+  if (phoneGpsWatchId !== null) {
+    navigator.geolocation.clearWatch(phoneGpsWatchId);
+    phoneGpsWatchId = null;
+  }
+  phoneGpsActive = false;
+  updatePhoneGpsBtn();
+  append('inf', '[phone-gps] stopped');
+}
+
+function onPhoneGpsPos(pos) {
+  const now = Date.now();
+  if (now - lastPhoneGpsTx < PHONE_GPS_MS) return;
+  lastPhoneGpsTx = now;
+
+  const c = pos.coords;
+  // m/s → mph × 10  (0.1-mph units match hardware GPS module)
+  const spd = (c.speed != null && c.speed >= 0) ? Math.round(c.speed * 22.3694) : 0;
+  // degrees × 10  (0.1-degree units)
+  const hdg = (c.heading != null && c.heading >= 0) ? Math.round(c.heading * 10) : 0;
+  let flags = 0x01;                                          // bit0 = fix valid
+  if (c.speed   != null && c.speed   >= 0) flags |= 0x02;  // bit1 = speed valid
+  if (c.heading != null && c.heading >= 0) flags |= 0x04;  // bit2 = heading valid
+
+  sendFrame(0x305, [
+    spd & 0xFF, (spd >> 8) & 0xFF,
+    hdg & 0xFF, (hdg >> 8) & 0xFF,
+    flags
+  ]);
+}
+
+function onPhoneGpsErr(err) {
+  append('err', '[phone-gps] ' + err.message);
+  stopPhoneGps();
 }
 
 // ---------- events ----------

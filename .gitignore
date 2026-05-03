@@ -1,2 +1,4 @@
 .DS_Store
 firmware/accessory_node/secrets.h
+firmware/accessory_node/node_config.h
+.claude/

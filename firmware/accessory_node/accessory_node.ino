@@ -45,6 +45,7 @@
 #include "mod_mpu6050.h"
 #include "mod_dht22.h"
 #include "mod_wbo2.h"
+#include "mod_bluetooth.h"
 #include "mod_ecu.h"
 #include "mod_rpm.h"
 #include "mod_gps.h"
@@ -249,6 +250,9 @@ void setup() {
 #ifdef ENABLE_WBO2
   wbo2_setup();
 #endif
+#ifdef ENABLE_BLUETOOTH
+  bluetooth_setup();
+#endif
 #ifdef ENABLE_ECU
   ecu_setup();
 #endif
@@ -326,6 +330,9 @@ void loop() {
 
 #ifdef ENABLE_WBO2
   wbo2_loop();
+#endif
+#ifdef ENABLE_BLUETOOTH
+  bluetooth_loop();
 #endif
 #ifdef ENABLE_ECU
   ecu_loop();
@@ -445,6 +452,9 @@ void loop() {
 #endif
 #ifdef ENABLE_WBO2
     wbo2_handle_frame(f);
+#endif
+#ifdef ENABLE_BLUETOOTH
+    bluetooth_handle_frame(f);
 #endif
 #ifdef ENABLE_ECU
     ecu_handle_frame(f);

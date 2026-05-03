@@ -60,5 +60,20 @@ Each module lives in `firmware/accessory_node/mod_*.cpp` and is compiled in only
 | [gps](docs/modules/gps.md) | `ENABLE_GPS` | GPS speed/heading via NMEA UART |
 | [wbo2](docs/modules/wbo2.md) | `ENABLE_WBO2` | Wideband O2 sensor analog read |
 | [ecu](docs/modules/ecu.md) | `ENABLE_ECU` | Dual-mode fuel controller (carb PI + TBI injection) |
+| [bluetooth](docs/modules/bluetooth.md) | `ENABLE_BLUETOOTH` | BLE GATT CAN mirror — native iOS app + auto GPS injection |
 | [mqtt](docs/modules/mqtt.md) | `MQTT_BROKER` | MQTT bridge: publish all frames, inject via subscribe |
 | [serial_shell](docs/modules/serial_shell.md) | *(always)* | Serial debug shell |
+
+---
+
+## Tuner iOS App
+
+[`tuner/`](tuner/) is a native Swift app that pairs with any node running `ENABLE_BLUETOOTH`.
+
+- **BLE auto-pair** — saves the peripheral UUID on first connect; reconnects automatically on every ignition cycle without user interaction, even with the app backgrounded.
+- **Live CAN frame log** — dark monospaced display styled after the web console, showing decoded IDs and payloads in real time.
+- **Native GPS injection** — CoreLocation speed and heading encoded as `GPS_DATA (0x305)` frames, sent over BLE while driving. Keeps running with the screen off.
+- **Web console access** — "Open Web Console" sheet loads the full in-node web UI (rules editor, relay controls, etc.) from inside the app.
+- **Wi-Fi fallback** — connect by IP to open the web UI directly without BLE.
+
+See the [Tuner README](tuner/README.md) for build instructions and GATT profile details.

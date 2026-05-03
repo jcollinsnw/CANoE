@@ -96,3 +96,10 @@ A full off-device tuning platform built as a Quasar/Vue app that talks to the ex
 - ~~LED flash mode via CAN~~ — 4-byte `LED_CMD` extension, `ACT_LED_FLASH` rule action
 - ~~CAN reliability monitoring~~ — `CAN_ID_BUS_ERROR`, error-passive detection, alert rules
 - ~~LCD startup animation + jingle~~ — CANoE reveal, mutable via menu
+- ~~BLE GATT CAN mirror~~ — `mod_bluetooth` on ESP32 + Tuner iOS app; auto-pair, background GPS injection, live frame log
+
+
+## Quick TODOs (TO ORGANIZE)
+- Buzzer CAN?
+- LCD Menu for Bluetooth discoverability/power
+- Switch wiring to regular rotory encoder
