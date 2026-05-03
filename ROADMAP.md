@@ -6,8 +6,8 @@ Future features, integrations, and platform evolution ideas. Items are grouped b
 
 ## Security & Reliability
 
-- **Encrypt ESP-NOW** — `esp_now_set_pmk()` + mark broadcast peer `encrypt = true`. Prevents replay attacks and eavesdropping on the wireless fallback channel.
-- **ESP-NOW ack/retry for switch events** — switch presses are the only edge-triggered (non-idempotent) frames on the bus. Add a lightweight seq-number ack so a missed press isn't silently dropped under WiFi congestion.
+- ~~**Encrypt ESP-NOW**~~ — done: PMK set at init; dynamic encrypted unicast peers added on first contact; broadcast retained for discovery with dedup handling overlap.
+- ~~**ESP-NOW ack/retry for switch events**~~ — done: `CAN_ID_SWITCH_ACK (0x202)`, 3 retries at 80 ms, `buzzer_alert()` + LED flash on exhaustion.
 - **Low-voltage cutoff** — `mod_relay.cpp`: when `vbat_cv` from `TELEMETRY (0x300)` drops below a configurable threshold (stored in NVS, editable over CAN), force non-essential relays off and broadcast an alert. Protects the battery from being drained to failure.
 - **Battery voltage graph** — Control tab in the web UI already receives `TELEMETRY (0x300)` frames; add a small rolling graph of `vbat_cv` over time.
 

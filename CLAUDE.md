@@ -48,7 +48,9 @@ A parallel 12V accessory wiring system for an antique car, built around four ESP
         ├── mod_wbo2.h / mod_wbo2.cpp           # wideband O2 sensor analog read + WBO2_DATA broadcast
         ├── mod_ecu.h / mod_ecu.cpp             # dual-mode fuel controller (carb PI + TBI injection)
         ├── mod_gps.h / mod_gps.cpp             # GPS speed/heading via NMEA UART (u-blox Neo-6M/8M)
-        └── mod_mqtt.h / mod_mqtt.cpp           # MQTT bridge: publishes CAN frames, subscribes for injection (bridge only)
+        ├── mod_mqtt.h / mod_mqtt.cpp           # MQTT bridge: publishes CAN frames, subscribes for injection (bridge only)
+        ├── secrets.h                           # ← gitignored; AP_SSID, AP_PASSWORD, ESPNOW_PMK, ESPNOW_LMK
+        └── secrets.h.example                  # committed placeholder with zero ESP-NOW keys
 ```
 
 **How it works:** `firmware/configs/<node>.h` defines which feature flags (`ENABLE_RELAY`, `ENABLE_LCD`, etc.) and pin assignments apply to that physical ESP32. The Makefile copies the right config to `node_config.h` before compiling, so the single sketch folder produces the correct firmware for each node. Every module's `.cpp` wraps its entire body in `#ifdef ENABLE_*` so unneeded modules compile to nothing.
@@ -61,8 +63,8 @@ Four ESP32 nodes, each runs up to four things concurrently:
 
 1. **TWAI** (ESP32's CAN controller) — primary bus transport at 125 kbit/s.
 2. **ESP-NOW** — secondary transport, broadcasts every frame to all peers on the same WiFi channel. Works as a failover if the wire breaks.
-3. **SoftAP** — SSID `AccessoryBus`, fixed channel 6, so phones roam to whichever node is closer and ESP-NOW peers find each other regardless of which AP the user is on.
-4. **HTTP + DNS captive portal** — serves a terminal-style web UI at `http://192.168.4.1` with a CAN command line, live frame log, node status, and a "force WiFi-only" toggle for testing the fallback path.
+3. **SoftAP** — SSID configurable via `AP_SSID` in `secrets.h`, fixed channel 6, so phones roam to whichever node is closer and ESP-NOW peers find each other regardless of which AP the user is on.
+4. **HTTP + DNS captive portal** — serves a terminal-style web UI at `http://192.168.4.1` with a CAN command line, live frame log, node status, and transport-mode selector (CAN+WiFi / WiFi-only / CAN-only).
 
 `bus.cpp` is the transport abstraction. Application code never calls `twai_transmit` or `esp_now_send` directly — it calls `bus_tx()`, which fans out to both transports, and `bus_rx()`, which returns frames from either with (node_id, seq) dedup.
 
@@ -131,14 +133,19 @@ TRIG_RELAY_BIT_ON(n)    // RELAY_STATUS, bit n set
 TRIG_RELAY_BIT_OFF(n)   // RELAY_STATUS, bit n clear
 TRIG_RELAY_CMD_ON(n)    // RELAY_CMD sets bit n ON (change-driven)
 TRIG_RELAY_CMD_OFF(n)   // RELAY_CMD sets bit n OFF
+TRIG_BUS_ERROR()        // CAN_ID_BUS_ERROR (0x0F4) — any error code
+TRIG_CAN_OK()           // CAN_ID_BUS_ERROR with error_code == 0 (recovery)
+TRIG_BOOT()             // BOOT_EVENT (0x0F1) — fires once at end of setup()
 ```
 
 **Action macros:**
 ```c
 ACT_RELAY_TOGGLE(r)      ACT_RELAY_ON(r)       ACT_RELAY_OFF(r)
 ACT_ALL_OFF()            ACT_LED_ON(node,led)  ACT_LED_OFF(node,led)
+ACT_LED_FLASH(node,led,period_ds)              // flash LED; period_ds in 100 ms units
 ACT_WIFI_ENABLE(node)    ACT_WIFI_DISABLE(node)
 ACT_VIPER(cmd)           ACT_MENU_SELECT()     ACT_MENU_ENTER()
+ACT_BUZZER_ALERT()       // 3 urgent 1047 Hz pulses; interrupts any active sequence
 ```
 
 **Rule DSL:**
@@ -159,11 +166,13 @@ HOLD-style behavior (relay on while switch pressed, off on release) is expressed
 
 ## Switch module
 
-`mod_switches` is now **input-only**. It polls GPIO state, debounces, and publishes:
+`mod_switches` is **input-only**. It polls GPIO state, debounces, and publishes:
 - `SWITCH_EVENT (0x200)` — `[switch_id, event]` where event is 0 RELEASE, 1 PRESS, 2 LONG_PRESS, 3 DOUBLE_PRESS.
 - `ENCODER_EVENT (0x201)` — `[event, count]` where event is 0 CW, 1 CCW, 2 PRESS, 3 RELEASE, 4 LONG_PRESS.
 
 It has no action dispatch and no NVS config. All switch→action behavior lives in the rules engine. Encoder scroll-in-menu is handled directly in `accessory_node.ino`'s `bus_rx()` loop (encoder events are self-echoed so they appear in rx just like any other frame).
+
+**ACK / retry:** Every `SWITCH_EVENT` is registered in a `PendingAck` slot. Any non-originating node that receives a `SWITCH_EVENT` responds with `CAN_ID_SWITCH_ACK (0x202) [switch_id, event]`. If no ACK arrives within 80 ms the frame is retransmitted up to 3 times. After exhausting retries: `buzzer_alert()` fires + a `LED_CMD` flashes LED index 2 (the error indicator). Relay controller and any other node with `ENABLE_RULES` serve as implicit ACK responders via `accessory_node.ino`'s frame dispatch.
 
 ## Pinout
 
@@ -195,12 +204,14 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x0F1  | BOOT_EVENT        | `[node_id]` — emitted once at end of setup(), self-echoed; used by TRIG_BOOT() in rules |
 | 0x0F2  | NODE_CAP          | `[node_id, caps, switch_count, button_count, led_count, relay_count]` — capability advertisement; broadcast at boot and every 30 s; also sent in response to NODE_CAP_REQ. caps bits: 0x01=relay, 0x02=switches, 0x04=viper, 0x08=leds, 0x10=rules |
 | 0x0F3  | NODE_CAP_REQ      | `[target_node_id]` — request capability frame; 0xFF = all nodes respond |
+| 0x0F4  | BUS_ERROR         | `[node_id, error_code, tx_err_cnt, rx_err_cnt]` — emitted on error transitions (BUS_OFF=1, ERROR_PASSIVE=2, TX_FAIL=3, RX_OVERFLOW=4); error_code=0 signals recovery. Sent over both transports so ESP-NOW carries it even when wired CAN has failed. |
 | 0x100  | RELAY_CMD         | `[mask, state]` — only bits set in mask are applied    |
 | 0x101  | RELAY_STATUS      | `[bitmap]` — broadcast at 5 Hz                         |
-| 0x102  | LED_CMD           | `[target_node_id, mask, state]` — any node → target; 0xFF target = broadcast |
+| 0x102  | LED_CMD           | 3-byte form: `[target_node_id, mask, state]`; 4-byte form: `[target_node_id, mask, state, flash_period_ds]` — flash_period_ds in 100 ms units (0 = solid). Any node → target; 0xFF target = broadcast. |
 | 0x103  | LED_STATUS        | `[node_id, bitmap]` — sent by target on change         |
 | 0x200  | SWITCH_EVENT      | `[switch_id, SwitchEvent]`                             |
 | 0x201  | ENCODER_EVENT     | `[EncoderEvent, count]`                                |
+| 0x202  | SWITCH_ACK        | `[switch_id, event]` — any non-originating node ACKs a SWITCH_EVENT; clears the switch panel's retry timer for that event |
 | 0x300  | TELEMETRY         | `[vbat_cv_lo, vbat_cv_hi, i_da_lo, i_da_hi, vsol_cv_lo, vsol_cv_hi, flags, _]` |
 | 0x301  | ENV_DATA          | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` (0.1°C, 0.1%) |
 | 0x302  | IMU_DATA          | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` |
@@ -336,7 +347,7 @@ Examples:
 Trailing `!` persists the change to NVS immediately.
 
 ### Wire-failure fallback test
-Check "force wifi-only" in the header. `bus_tx()` stops using TWAI; everything should still work via ESP-NOW. Uncheck to restore wire.
+Use the transport-mode selector in the web UI header: **CAN+WiFi** (normal), **WiFi only** (simulates wire failure), **CAN only** (disables ESP-NOW). `bus_tx()` respects the current `BusTxMode`; ESP-NOW framing still applies when WiFi is active.
 
 ## Conventions and gotchas
 
@@ -345,7 +356,9 @@ Check "force wifi-only" in the header. `bus_tx()` stops using TWAI; everything s
 - **Self-echo.** `bus_tx()` feeds every outbound frame back into the RX ring (tagged `source="self"`). This means state mirrors, LCD updates, buzzer, and rules all react to web-UI-injected frames exactly the same as frames from other nodes. Don't be surprised when you see your own TX come back through `bus_rx()`.
 - **Dedup.** ESP-NOW frames carry their own `(node_id, seq)` header; a 2-second window filters repeats. CAN frames are canonical and always passed through. This is safe because our application messages are idempotent (RELAY_CMD, STATUS, TELEMETRY) or edge-triggered with short windows (SWITCH_EVENT).
 - **Captive-portal probes.** iOS and Android each hit different URLs to detect captive portals — we catch the common ones in `webui.cpp` and bounce them to `/`.
-- **Open AP.** Fine in a garage, risky in public. Set `AP_PASSWORD` in each WiFi node's config header (`switch_panel.h`, `viper_interface.h`) before the car leaves the driveway. Must be ≥ 8 chars for WPA2 and identical on every node. `AP_SSID` and `AP_HIDDEN` are also configurable there.
+- **Credentials live in `secrets.h`.** `firmware/accessory_node/secrets.h` is gitignored and holds `AP_SSID`, `AP_PASSWORD`, `ESPNOW_PMK` (16 bytes), and `ESPNOW_LMK` (16 bytes). Copy `secrets.h.example` to `secrets.h` and fill in real values before building. Every WiFi node includes this file; the bridge node does not use PMK/LMK (no ESP-NOW). Must be identical on all ESP-NOW nodes or they won't decrypt each other's frames.
+- **ESP-NOW encryption.** `bus_init()` calls `esp_now_set_pmk()` with `ESPNOW_PMK`. The broadcast peer (FF:FF:FF:FF:FF:FF) cannot be encrypted by hardware, so initial peer discovery still uses broadcast. On first receipt of a frame from any MAC, `enc_peer_add()` registers that MAC as an encrypted unicast peer with `ESPNOW_LMK`. Subsequent `bus_tx()` calls send to all encrypted peers *and* broadcast; `(node_id, seq)` dedup handles the overlap.
+- **Open AP.** Fine in a garage, risky in public. `AP_PASSWORD` in `secrets.h` must be ≥ 8 chars for WPA2 and identical on every WiFi node. `AP_SSID` and `AP_HIDDEN` are configurable there too.
 - **Horn safety.** `RELAY_MAX_ON_INIT` in `configs/relay_controller.h` caps relay 5 (horn) at 30s. HOLD-style rules (SW_PRESS→relay ON, SW_RELEASE→relay OFF) still rely on the relay controller's watchdog as a backstop.
 - **ADC calibration.** GPIO 34 on the relay controller is read with default attenuation; `VBAT_DIVIDER_RATIO` in `configs/relay_controller.h` assumes 10k + 2.2k divider. Re-tune to your resistors before trusting the telemetry.
 - **Strapping pins.** Avoid GPIO 0, 2, 12, 15 for anything that's externally driven at reset. GPIO 13 is borderline — watch for flakiness.
@@ -364,16 +377,15 @@ Check "force wifi-only" in the header. `bus_tx()` stops using TWAI; everything s
 
 ## Known TODO list (in rough priority order)
 
-1. Add a password to the SoftAP before any field install (`AP_PASSWORD` in each node's config header — must match on all WiFi nodes).
-2. Encrypt ESP-NOW (`esp_now_set_pmk`, mark broadcast peer `encrypt = true`).
+1. ~~Add a password to the SoftAP before any field install~~ — **done** (`secrets.h` pattern; AP_SSID/AP_PASSWORD gitignored).
+2. ~~Encrypt ESP-NOW~~ — **done** (PMK at init, dynamic encrypted unicast peers, broadcast retained for discovery).
 3. ~~Dashboard panel in the web UI~~ — **done** (Control tab: switch state, buttons, LEDs, relay tiles on relay_controller, viper controls on viper_interface). Still missing: battery voltage graph from TELEMETRY (0x300) frames.
 4. Python `can-gw` utility so a Mac with a CANable/MCP2515 USB adapter can be a bus participant for scripting and logging.
 5. Low-voltage cutoff in `mod_relay.cpp` — when `vbat_cv` drops below a configurable threshold, force non-essential relays off.
-6. Persist the "force wifi-only" flag across reboots (currently RAM-only).
-7. Switch from polling to SSE or WebSocket for the frame log (lower latency, less traffic).
-8. ESP-NOW ack/retry for switch events specifically (they're the only edge-triggered frames).
-9. ~~Bridge node joining home WiFi~~ — **done** (bridge.h, BRIDGE_MODE, STA_SSID/STA_PASSWORD, NODE_CAP discovery, MQTT via mod_mqtt).
-10. Auto-unify: firmware recognizes a "factory_wiring_trusted" flag in NVS and drops the isolation (longer term, once the owner trusts the factory harness).
+6. Switch from polling to SSE or WebSocket for the frame log (lower latency, less traffic).
+7. ~~ESP-NOW ack/retry for switch events~~ — **done** (`SWITCH_ACK 0x202`, 3 retries at 80 ms, buzzer + LED flash on timeout).
+8. ~~Bridge node joining home WiFi~~ — **done** (bridge.h, BRIDGE_MODE, STA_SSID/STA_PASSWORD, NODE_CAP discovery, MQTT via mod_mqtt).
+9. Auto-unify: firmware recognizes a "factory_wiring_trusted" flag in NVS and drops the isolation (longer term, once the owner trusts the factory harness).
 
 ## Preferences
 
