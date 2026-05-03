@@ -48,9 +48,6 @@ enum BusTxMode : uint8_t {
 void     bus_set_tx_mode(BusTxMode mode);
 BusTxMode bus_get_tx_mode();
 
-// Legacy wrappers kept for source compat
-static inline void bus_set_wifi_only(bool on) { bus_set_tx_mode(on ? BUS_TX_WIFI_ONLY : BUS_TX_CAN_WIFI); }
-static inline bool bus_is_wifi_only()         { return bus_get_tx_mode() == BUS_TX_WIFI_ONLY; }
 
 void bus_set_observer(bus_observer_t cb);
 
