@@ -6,11 +6,6 @@
 //
 // Frame wire format (11 bytes, fixed length): [id_lo, id_hi, dlc, d0..d7]
 // Unused data bytes beyond dlc are zero-padded.
-//
-// Thread model:
-//   bluetooth_handle_frame() and bluetooth_loop() run on the Arduino main task.
-//   BLE write callbacks fire on the BT task — phone→ESP32 frames are queued with
-//   a portMUX spinlock and drained safely on the main task in bluetooth_loop().
 
 #include <Arduino.h>
 #include "node_config.h"
@@ -43,7 +38,7 @@ static inline bool tx_empty() { return s_tx_head == s_tx_tail; }
 static inline bool tx_full()  { return ((s_tx_tail + 1) % BLE_TX_RING) == s_tx_head; }
 
 static void tx_push(const uint8_t* frame) {
-    if (tx_full()) s_tx_head = (s_tx_head + 1) % BLE_TX_RING;  // drop oldest on overflow
+    if (tx_full()) s_tx_head = (s_tx_head + 1) % BLE_TX_RING;
     memcpy(s_tx_buf[s_tx_tail], frame, BLE_FRAME_LEN);
     s_tx_tail = (s_tx_tail + 1) % BLE_TX_RING;
 }
@@ -62,7 +57,7 @@ static BLEServer*         s_server     = nullptr;
 static BLECharacteristic* s_tx_char    = nullptr;
 static BLECharacteristic* s_rx_char    = nullptr;
 static bool               s_connected  = false;
-static bool               s_advertising = false;  // true while actively advertising
+static bool               s_advertising = false;
 
 // ── Callbacks ─────────────────────────────────────────────────────────────
 class BtServerCallbacks : public BLEServerCallbacks {
@@ -79,24 +74,33 @@ class BtServerCallbacks : public BLEServerCallbacks {
             wlogln("[bt] phone disconnected — advertising suppressed");
         }
     }
+#if defined(CONFIG_BLUEDROID_ENABLED)
+    void onConnect(BLEServer* s, esp_ble_gatts_cb_param_t*) override    { onConnect(s); }
+    void onDisconnect(BLEServer* s, esp_ble_gatts_cb_param_t*) override { onDisconnect(s); }
+    void onMtuChanged(BLEServer*, esp_ble_gatts_cb_param_t*) override   {}
+    void onConnParamsUpdate(esp_bd_addr_t, uint16_t, uint16_t, uint16_t, esp_bt_status_t) override {}
+#endif
 };
 
 class BtRxCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* c) override {
-        std::string v = c->getValue();
+        String v = c->getValue();
         if ((int)v.length() < BLE_FRAME_LEN) return;
         portENTER_CRITICAL(&s_rx_mux);
         if (!rx_full_unsafe()) {
-            memcpy(s_rx_buf[s_rx_tail], v.data(), BLE_FRAME_LEN);
+            memcpy(s_rx_buf[s_rx_tail], (const uint8_t*)v.c_str(), BLE_FRAME_LEN);
             s_rx_tail = (s_rx_tail + 1) % BLE_RX_RING;
         }
         portEXIT_CRITICAL(&s_rx_mux);
     }
+#if defined(CONFIG_BLUEDROID_ENABLED)
+    void onRead(BLECharacteristic*, esp_ble_gatts_cb_param_t*) override {}
+    void onWrite(BLECharacteristic* c, esp_ble_gatts_cb_param_t*) override { onWrite(c); }
+#endif
 };
 
 // ── Public API ────────────────────────────────────────────────────────────
 void bluetooth_setup() {
-    // Check NVS power flag — allows menu to disable BLE entirely (saves ~80 KB heap).
     {
         Preferences p; p.begin(NVS_NAMESPACE, true);
         bool en = p.getBool("bt_en", true);
@@ -115,14 +119,12 @@ void bluetooth_setup() {
 
     BLEService* svc = s_server->createService(BLE_SERVICE_UUID);
 
-    // TX characteristic — ESP32 notifies phone of each CAN frame
     s_tx_char = svc->createCharacteristic(
         BLE_TX_CHAR_UUID,
         BLECharacteristic::PROPERTY_NOTIFY
     );
     s_tx_char->addDescriptor(new BLE2902());
 
-    // RX characteristic — phone writes CAN frames to inject onto the bus
     s_rx_char = svc->createCharacteristic(
         BLE_RX_CHAR_UUID,
         BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
@@ -154,7 +156,6 @@ void bluetooth_set_advertising(bool en) {
 }
 
 void bluetooth_loop() {
-    // Drain phone→ESP32 frames and inject them onto the CAN bus.
     while (true) {
         uint8_t frame[BLE_FRAME_LEN];
         bool got = false;
@@ -171,7 +172,6 @@ void bluetooth_loop() {
         bus_tx(id, &frame[3], dlc);
     }
 
-    // Drain ESP32→phone ring and send BLE notifications.
     if (!s_connected || !s_tx_char) return;
     while (!tx_empty()) {
         s_tx_char->setValue(s_tx_buf[s_tx_head], BLE_FRAME_LEN);
@@ -181,12 +181,29 @@ void bluetooth_loop() {
 }
 
 void bluetooth_handle_frame(const BusFrame& f) {
+    // Forward every frame to any connected phone.
     uint8_t frame[BLE_FRAME_LEN] = {};
     frame[0] = (uint8_t)(f.id & 0xFF);
     frame[1] = (uint8_t)(f.id >> 8);
     frame[2] = (f.dlc <= 8) ? f.dlc : 8;
     memcpy(&frame[3], f.data, frame[2]);
     tx_push(frame);
+
+    // Handle BT config commands (CONFIG_WRITE targeting this node or broadcast).
+    if (f.id == CAN_ID_CONFIG_WRITE && f.dlc >= 5 &&
+        (f.data[0] == NODE_ID || f.data[0] == CFG_TARGET_BROADCAST)) {
+        uint8_t key = f.data[1];
+        if (key == CFG_KEY_BT_ENABLED) {
+            bool en = (f.data[4] != 0);
+            Preferences p; p.begin(NVS_NAMESPACE, false);
+            p.putBool("bt_en", en);
+            p.end();
+            wlog("[bt] bt_en=%u -> restart\n", en);
+            delay(100); ESP.restart();
+        } else if (key == CFG_KEY_BT_ADVERTISING) {
+            bluetooth_set_advertising(f.data[4] != 0);
+        }
+    }
 }
 
 #endif  // ENABLE_BLUETOOTH

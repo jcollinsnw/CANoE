@@ -35,6 +35,10 @@ BUILD_DIR   := build
 SKETCH_NAME := accessory_node
 OTA_IP      ?= 192.168.4.1
 
+# Cardputer UF2 / mass-storage deploy (plug in via USB while holding G0 for UF2 mode)
+CARDPUTER_VOLUME ?= /Volumes/CARDPUTER
+CARDPUTER_DIR    ?= CANoE
+
 # ---- select node config ----
 .PHONY: relay switch viper ecu bridge cardputer
 
@@ -63,9 +67,13 @@ bridge:
 	cp $(CONFIGS)/bridge.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) --output-dir $(BUILD_DIR)/bridge $(SKETCH)
 
+CARDPUTER_BUILD := $(SKETCH)/build/m5stack.esp32.m5stack_cardputer
+
 cardputer:
 	cp $(CONFIGS)/cardputer.h $(SKETCH)/node_config.h
-	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN_S3) $(SKETCH)
+	arduino-cli compile --jobs 1 --fqbn $(FQBN_S3) --export-binaries $(SKETCH)
+	mkdir -p $(BUILD_DIR)/cardputer
+	cp $(CARDPUTER_BUILD)/$(SKETCH_NAME).ino.bin $(BUILD_DIR)/cardputer/m5canoe.bin
 
 # ---- compile all ----
 .PHONY: all
@@ -100,43 +108,52 @@ upload-bridge: bridge
 	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
 
 upload-cardputer: cardputer
-	@pids=$$(lsof -t $(PORT) 2>/dev/null); [ -n "$$pids" ] && kill -9 $$pids 2>/dev/null || true
-	arduino-cli upload -p $(PORT) --fqbn $(FQBN_S3) --upload-field upload.speed=$(UPLOAD_SPEED) $(SKETCH)
-	arduino-cli monitor -p $(PORT) -c baudrate=$(BAUD)
+	@echo ">>> Copying to $(CARDPUTER_VOLUME)/$(CARDPUTER_DIR)/m5canoe.bin ..."
+	@test -d "$(CARDPUTER_VOLUME)" || (echo "ERROR: $(CARDPUTER_VOLUME) not mounted — plug in Cardputer" && exit 1)
+	mkdir -p "$(CARDPUTER_VOLUME)/$(CARDPUTER_DIR)"
+	cp $(BUILD_DIR)/cardputer/m5canoe.bin "$(CARDPUTER_VOLUME)/$(CARDPUTER_DIR)/m5canoe.bin"
+	@echo ">>> Unmounting $(CARDPUTER_VOLUME) ..."
+	diskutil unmount "$(CARDPUTER_VOLUME)"
+	@echo "Done — Cardputer will reboot and load the new firmware"
 
 # ---- OTA upload (connect to node AP first; OTA_IP defaults to 192.168.4.1) ----
 .PHONY: ota-relay ota-switch ota-viper ota-ecu ota-bridge
 
 ota-relay: relay
-	@echo ">>> OTA flash: relay_controller → http://$(OTA_IP)/api/ota"
+	@echo ">>> Press enter to OTA flash: relay_controller → http://$(OTA_IP)/api/ota"
+	read
 	curl --max-time 60 -f \
 	     -F "firmware=@$(BUILD_DIR)/relay/$(SKETCH_NAME).ino.bin" \
 	     http://$(OTA_IP)/api/ota
 	@echo "Done — node is rebooting"
 
 ota-switch: switch
-	@echo ">>> OTA flash: switch_panel → http://$(OTA_IP)/api/ota"
+	@echo ">>> Press enter to OTA flash: switch_panel → http://$(OTA_IP)/api/ota"
+	read
 	curl --max-time 60 -f \
 	     -F "firmware=@$(BUILD_DIR)/switch/$(SKETCH_NAME).ino.bin" \
 	     http://$(OTA_IP)/api/ota
 	@echo "Done — node is rebooting"
 
 ota-viper: viper
-	@echo ">>> OTA flash: viper_interface → http://$(OTA_IP)/api/ota"
+	@echo ">>> Press enter to OTA flash: viper_interface → http://$(OTA_IP)/api/ota"
+	read
 	curl --max-time 60 -f \
 	     -F "firmware=@$(BUILD_DIR)/viper/$(SKETCH_NAME).ino.bin" \
 	     http://$(OTA_IP)/api/ota
 	@echo "Done — node is rebooting"
 
 ota-ecu: ecu
-	@echo ">>> OTA flash: ecu_node → http://$(OTA_IP)/api/ota"
+	@echo ">>> Press enter to OTA flash: ecu_node → http://$(OTA_IP)/api/ota"
+	read
 	curl --max-time 60 -f \
 	     -F "firmware=@$(BUILD_DIR)/ecu/$(SKETCH_NAME).ino.bin" \
 	     http://$(OTA_IP)/api/ota
 	@echo "Done — node is rebooting"
 
 ota-bridge: bridge
-	@echo ">>> OTA flash: bridge → http://$(OTA_IP)/api/ota"
+	@echo ">>> Press enter to OTA flash: bridge → http://$(OTA_IP)/api/ota"
+	read
 	curl --max-time 60 -f \
 	     -F "firmware=@$(BUILD_DIR)/bridge/$(SKETCH_NAME).ino.bin" \
 	     http://$(OTA_IP)/api/ota

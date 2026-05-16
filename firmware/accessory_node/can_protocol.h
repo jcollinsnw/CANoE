@@ -358,6 +358,8 @@ struct CanRule {
 #define CFG_KEY_WIFI_ENABLED      0x30   // legacy: sets both ap_en and espnow_en; node restarts
 #define CFG_KEY_AP_ENABLED        0x31   // data[4]=0/1 — enable/disable SoftAP + web server; restarts
 #define CFG_KEY_ESPNOW_ENABLED    0x32   // data[4]=0/1 — enable/disable ESP-NOW radio; restarts
+#define CFG_KEY_BT_ENABLED        0x33   // data[4]=0/1 — enable/disable BLE; saves to NVS; node restarts
+#define CFG_KEY_BT_ADVERTISING    0x34   // data[4]=0/1 — start/stop BLE advertising; runtime only, no restart
 
 // Save actions (for CAN_ID_CONFIG_SAVE data[1]):
 #define CFG_SAVE_COMMIT           0x01   // flush RAM config to NVS

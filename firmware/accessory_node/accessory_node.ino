@@ -64,6 +64,16 @@ uint8_t g_relay_mirror = 0;
 bool    g_menu_active  = false;
 
 // --------------------------------------------------------------
+// Relay-command confirmation timer (non-relay nodes only).
+// Fires buzzer_alert() if RELAY_STATUS doesn't arrive within the
+// deadline after any RELAY_CMD is observed on the bus.
+// --------------------------------------------------------------
+#if defined(ENABLE_BUZZER) && !defined(ENABLE_RELAY)
+static uint32_t g_relay_cmd_deadline = 0;  // 0 = inactive
+static const uint16_t RELAY_CONFIRM_MS = 500;
+#endif
+
+// --------------------------------------------------------------
 // Node capability advertisement
 // --------------------------------------------------------------
 static uint8_t node_caps_byte() {
@@ -188,8 +198,8 @@ void setup() {
   // Bridge: AP + web UI always on; no ESP-NOW (avoids channel conflict with STA).
   webui_init(NODE_NAME, eff_id);
   webui_set_ap_client_cb([](uint8_t n, uint8_t old) {
-    if (n > old) { lcd_set_event("Web UI connected");    buzzer_wifi_connect(); }
-    else         { lcd_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
+    if (n > old) { lcd_set_event("Web UI connected");    m5_set_event("Web UI connected");    buzzer_wifi_connect(); }
+    else         { lcd_set_event("Web UI disconnected"); m5_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
   });
   bus_init_no_wifi(eff_id);
   wlogln("[boot] bridge mode: AP up, ESP-NOW disabled");
@@ -214,16 +224,16 @@ void setup() {
     if (ap_en && espnow_en) {
       webui_init(NODE_NAME, eff_id);
       webui_set_ap_client_cb([](uint8_t n, uint8_t old) {
-        if (n > old) { lcd_set_event("Web UI connected");    buzzer_wifi_connect(); }
-        else         { lcd_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
+        if (n > old) { lcd_set_event("Web UI connected");    m5_set_event("Web UI connected");    buzzer_wifi_connect(); }
+        else         { lcd_set_event("Web UI disconnected"); m5_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
       });
       bus_init(eff_id);
     } else if (ap_en) {
       // AP + web UI up, but ESP-NOW radio disabled.
       webui_init(NODE_NAME, eff_id);
       webui_set_ap_client_cb([](uint8_t n, uint8_t old) {
-        if (n > old) { lcd_set_event("Web UI connected");    buzzer_wifi_connect(); }
-        else         { lcd_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
+        if (n > old) { lcd_set_event("Web UI connected");    m5_set_event("Web UI connected");    buzzer_wifi_connect(); }
+        else         { lcd_set_event("Web UI disconnected"); m5_set_event("Web UI disconnected"); buzzer_wifi_disconnect(); }
       });
       bus_init_no_wifi(eff_id);
       wlogln("[boot] ESP-NOW disabled by config");
@@ -320,6 +330,7 @@ void setup() {
   lcd_update_status();
   lcd_set_event(NODE_NAME);
 #endif
+  m5_set_event(NODE_NAME);
 
 #ifdef MQTT_BROKER
   mqtt_setup();
@@ -340,6 +351,7 @@ void setup() {
   buzzer_startup();
 #endif
   lcd_set_event("Ready");
+  m5_set_event("Ready");
 }
 
 void loop() {
@@ -385,6 +397,12 @@ void loop() {
 #endif
 #ifdef ENABLE_BUZZER
   buzzer_tick();
+#if !defined(ENABLE_RELAY)
+  if (g_relay_cmd_deadline && millis() >= g_relay_cmd_deadline) {
+    g_relay_cmd_deadline = 0;
+    buzzer_alert();
+  }
+#endif
 #endif
 #ifdef ENABLE_LEDS
   led_tick();
@@ -422,12 +440,25 @@ void loop() {
 #ifdef MQTT_BROKER
     mqtt_handle_frame(f);
 #endif
-    // Maintain the shared relay mirror for any node that observes relay state
+    // Maintain the shared relay mirror for any node that observes relay state.
+    // Non-relay nodes only trust RELAY_STATUS (broadcast by the relay controller
+    // at 5 Hz) so the mirror reflects actual hardware state, not optimistic
+    // assumptions from self-echoed commands.
     if (f.id == CAN_ID_RELAY_STATUS && f.dlc >= 1) {
       g_relay_mirror = f.data[0];
-    } else if (f.id == CAN_ID_RELAY_CMD && f.dlc >= 2) {
+#if defined(ENABLE_BUZZER) && !defined(ENABLE_RELAY)
+      g_relay_cmd_deadline = 0;
+#endif
+    }
+    if (f.id == CAN_ID_RELAY_CMD && f.dlc >= 2) {
       uint8_t mask = f.data[0], state = f.data[1];
+#ifdef ENABLE_RELAY
+      // Relay controller can update immediately — it IS the executor.
       g_relay_mirror = (g_relay_mirror & ~mask) | (state & mask);
+#endif
+#if defined(ENABLE_BUZZER) && !defined(ENABLE_RELAY)
+      g_relay_cmd_deadline = millis() + RELAY_CONFIRM_MS;
+#endif
       {
         char msg[17];
         if (mask == 0x3F && state == 0) {
@@ -480,12 +511,15 @@ void loop() {
     }
 #endif
 
-    // Any node that receives a SWITCH_EVENT from another node sends an ACK so the
-    // switch panel can confirm delivery and stop retrying.
+#ifdef ENABLE_RELAY
+    // Only the relay controller ACKs SWITCH_EVENTs — it's the node that actually
+    // executes relay commands. Observer nodes (Cardputer, bridge) must not ACK or
+    // the switch panel's retry mechanism won't detect a missing relay controller.
     if (f.id == CAN_ID_SWITCH_EVENT && strcmp(f.source, "self") != 0 && f.dlc >= 2) {
       uint8_t ack[2] = { f.data[0], f.data[1] };
       bus_tx(CAN_ID_SWITCH_ACK, ack, 2);
     }
+#endif
 
     // Clear pending ACK retry on this node (switch panel only; no-op stub elsewhere).
     switches_handle_ack(f);
@@ -554,6 +588,7 @@ void loop() {
       lcd_update_status();
 #endif
       lcd_set_event(can_up ? "CAN ok" : "CAN down");
+      m5_set_event(can_up ? "CAN ok" : "CAN down");
 #ifdef ENABLE_BUZZER
       if (can_up) buzzer_can_up();
       else        buzzer_can_down();
@@ -593,6 +628,7 @@ void loop() {
           }
         }
         lcd_set_event(msg);
+        m5_set_event(msg);
       }
 #ifdef ENABLE_BUZZER
       buzzer_peer_count(pc);

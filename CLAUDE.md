@@ -20,6 +20,21 @@ A parallel 12V accessory wiring system for an antique car, built around multiple
 ├── Makefile                                    # configure + compile/upload
 ├── wiring-with-transceivers.svg                # production wiring diagram
 ├── wiring-bench-mode.svg                       # bench wiring (no transceivers)
+├── tuner/                                      # native iOS companion app (see below)
+│   ├── README.md
+│   ├── Tuner.xcodeproj/
+│   └── Tuner/
+│       ├── TunerApp.swift                      # @main — injects AppSettings environment object
+│       ├── Theme.swift                         # Color.acapulcoBlue, AppSettings (font scales), AppearanceSheet
+│       ├── ContentView.swift                   # root view: ConnectView / NativeDashboardView / NodeBrowserView
+│       ├── LogView.swift                       # data logger UI: live gauges, line graphs, Braun analog dials
+│       ├── DataLogger.swift                    # session recording, CSV export, channel descriptors
+│       ├── BLEManager.swift                    # CoreBluetooth central, auto-reconnect, frame log
+│       ├── LocationManager.swift               # CoreLocation → GPS_DATA (0x305) CAN frames
+│       ├── NodeWebView.swift                   # WKWebView with pull-to-refresh + JS GPS bridge
+│       ├── SimulatorDriver.swift               # synthetic engine data for testing without hardware
+│       ├── WeatherService.swift                # ambient weather fetch → ENV_DATA (0x301)
+│       └── AltimeterManager.swift              # barometric pressure from CMAltimeter
 └── firmware/
     ├── configs/                                # one header per physical node
     │   ├── relay_controller.h
@@ -79,7 +94,7 @@ Multiple ESP32 nodes (ESP32-WROOM-32 and ESP32-S3), each running up to four thin
 | Node             | NODE_ID | Config file                      | Features                                                                    |
 |------------------|---------|----------------------------------|-----------------------------------------------------------------------------|
 | switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_RULES, ENABLE_LCD, ENABLE_MENU, ENABLE_BUZZER, ENABLE_LEDS, ENABLE_BATTERY |
-| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RULES, ENABLE_BATTERY                                  |
+| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RULES, ENABLE_BATTERY, ENABLE_BLUETOOTH                |
 | viper_interface  | 0x03    | configs/viper_interface.h        | ENABLE_VIPER, ENABLE_LCD, ENABLE_MPU6050                                    |
 | ecu_node         | 0x04    | configs/ecu_node.h               | ENABLE_RPM, ENABLE_WBO2, ENABLE_ECU (MAP, TPS, CLT, IAT, carb solenoid, dual injectors) |
 | bridge           | 0x05    | configs/bridge.h                 | BRIDGE_MODE — wired CAN + SoftAP + STA to home router; no ESP-NOW. Aggregated node discovery web UI. Optional MQTT publishing via mod_mqtt. |
@@ -106,7 +121,8 @@ Multiple ESP32 nodes (ESP32-WROOM-32 and ESP32-S3), each running up to four thin
 | `BRIDGE_MODE`     | (webui + mod_mqtt)  | Bridge node: SoftAP + wired CAN + WiFi STA to home router. No ESP-NOW. Web UI shows aggregated control panel built from NODE_CAP discovery. Enables `/api/nodecaps` endpoint. Requires `STA_SSID`/`STA_PASSWORD`. |
 | `MQTT_BROKER`     | mod_mqtt            | Enable MQTT publishing on the bridge. Set to broker IP/hostname. Requires PubSubClient library. Publishes all CAN frames to `{MQTT_TOPIC_PREFIX}/frames`; subscribes to `{MQTT_TOPIC_PREFIX}/send` for injection. |
 | `ENABLE_BATTERY`  | mod_battery         | Dual-channel battery voltage ADC; broadcasts CAN_ID_TELEMETRY (0x300). Requires `VBAT_ADC_PIN` and/or `VBAT2_ADC_PIN`. |
-| `ENABLE_M5_CARDPUTER` | mod_m5_cardputer | M5Stack Cardputer TFT display + keyboard CLI; relay status bar, frame log, command injection, hotkeys. Requires M5Cardputer library. |
+| `ENABLE_BLUETOOTH` | mod_bluetooth      | BLE GATT CAN bus mirror. Notifies a connected phone of every frame (TX characteristic) and injects frames written by the phone (RX characteristic). NVS key `"bt_en"` in `NVS_NAMESPACE` enables/disables at boot. Controllable via `CFG_KEY_BT_ENABLED` (0x33) and `CFG_KEY_BT_ADVERTISING` (0x34) config writes. Wire format: `[id_lo, id_hi, dlc, d0..d7]` (11 bytes, matches iOS Tuner `BLEManager.swift`). |
+| `ENABLE_M5_CARDPUTER` | mod_m5_cardputer | M5Stack Cardputer TFT display + keyboard CLI; relay status bar (#006DAC), frame log, command injection, hotkeys. CLI bar shows status events (relay changes, peer joins, CAN health) when closed. `;`/`.` scroll through 8-entry command history in the CLI. Requires M5Cardputer library. |
 | `ESPNOW_ONLY`    | (accessory_node.ino) | Skip SoftAP and web server; init ESP-NOW via `bus_init_no_ap()` only. Used by headless nodes like the Cardputer. |
 
 `ENABLE_MENU` subflags (defined alongside `ENABLE_MENU` in the node config):
@@ -187,7 +203,7 @@ HOLD-style behavior (relay on while switch pressed, off on release) is expressed
 
 It has no action dispatch and no NVS config. All switch→action behavior lives in the rules engine. Encoder scroll-in-menu is handled directly in `accessory_node.ino`'s `bus_rx()` loop (encoder events are self-echoed so they appear in rx just like any other frame).
 
-**ACK / retry:** Every `SWITCH_EVENT` is registered in a `PendingAck` slot. Any non-originating node that receives a `SWITCH_EVENT` responds with `CAN_ID_SWITCH_ACK (0x202) [switch_id, event]`. If no ACK arrives within 80 ms the frame is retransmitted up to 3 times. After exhausting retries: `buzzer_alert()` fires + a `LED_CMD` flashes LED index 2 (the error indicator). Relay controller and any other node with `ENABLE_RULES` serve as implicit ACK responders via `accessory_node.ino`'s frame dispatch.
+**ACK / retry:** Every `SWITCH_EVENT` is registered in a `PendingAck` slot. The SWITCH_ACK responder is gated behind `#ifdef ENABLE_RELAY` — only the relay controller sends `CAN_ID_SWITCH_ACK (0x202) [switch_id, event]`. Observer nodes (Cardputer, bridge) no longer falsely ACK. If no ACK arrives within 80 ms the frame is retransmitted up to 3 times. After exhausting retries: `buzzer_alert()` fires + a `LED_CMD` flashes LED index 2 (the error indicator).
 
 ## Pinout
 
@@ -229,7 +245,7 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x104  | BUZZER_CMD        | `[target_node_id, cmd, arg0]` — target 0xFF = broadcast. cmd = `BUZZER_SEQ_*` (0x01–0x12) or `BUZZER_CMD_MUTE (0x20)`. arg0 is optional (peer count for `BUZZER_SEQ_PEER`, mute flag for `BUZZER_CMD_MUTE`). |
 | 0x200  | SWITCH_EVENT      | `[switch_id, SwitchEvent]`                             |
 | 0x201  | ENCODER_EVENT     | `[EncoderEvent, count]`                                |
-| 0x202  | SWITCH_ACK        | `[switch_id, event]` — any non-originating node ACKs a SWITCH_EVENT; clears the switch panel's retry timer for that event |
+| 0x202  | SWITCH_ACK        | `[switch_id, event]` — relay controller (`ENABLE_RELAY` nodes only) ACKs a SWITCH_EVENT; clears the switch panel's retry timer for that event |
 | 0x300  | TELEMETRY         | `[vbat_cv_lo, vbat_cv_hi, 0, 0, vbat2_cv_lo, vbat2_cv_hi, 0, 0]` — from mod_battery; primary battery centvolts in bytes 0–1, auxiliary in bytes 4–5 |
 | 0x301  | ENV_DATA          | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` (0.1°C, 0.1%) |
 | 0x302  | IMU_DATA          | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` |
@@ -259,6 +275,8 @@ Config keys:
 - `0x30 CFG_KEY_WIFI_ENABLED` — legacy: sets both ap_en and espnow_en; arg=0/1; node restarts
 - `0x31 CFG_KEY_AP_ENABLED` — enable/disable SoftAP + web server; arg=0/1; node restarts
 - `0x32 CFG_KEY_ESPNOW_ENABLED` — enable/disable ESP-NOW radio; arg=0/1; node restarts
+- `0x33 CFG_KEY_BT_ENABLED` — enable/disable BLE; arg=0/1; saves `bt_en` to NVS, node restarts (no-op without `ENABLE_BLUETOOTH`)
+- `0x34 CFG_KEY_BT_ADVERTISING` — start/stop BLE advertising; arg=0/1; runtime only, no restart
 - `0x40 CFG_KEY_RPM_REDLINE` — RPM redline for display widget (arg2_lo/hi = uint16 RPM)
 - `0x51 CFG_KEY_ECU_MODE` — 0=carb, 1=inject; arg[4]=value; persisted to NVS
 - `0x52 CFG_KEY_ECU_TARGET_AFR` — target AFR × 100 (uint16 LE in arg2_lo/hi)
@@ -320,7 +338,7 @@ make upload-relay   PORT=/dev/cu.usbserial-YYYY
 make upload-viper   PORT=/dev/cu.usbserial-ZZZZ
 make upload-ecu     PORT=/dev/cu.usbserial-WWWW
 make upload-bridge  PORT=/dev/cu.usbserial-VVVV
-make upload-cardputer PORT=/dev/cu.usbserial-CCCC
+make upload-cardputer                              # copies bin to /Volumes/CARDPUTER/CANoE/ then unmounts
 make monitor        PORT=/dev/cu.usbserial-XXXX
 ```
 
@@ -386,7 +404,8 @@ Use the transport-mode selector in the web UI header: **CAN+WiFi** (normal), **W
 
 - **Init order.** In `setup()` the order must be `relay_setup()` → `setup_can()` → `webui_init()` → `bus_init()`. `webui_init` brings up WiFi so `esp_now_init` has a radio to bind to; `bus_init` requires WiFi ready. Relay pins are initialized first so outputs are known-good before any CAN traffic.
 - **Frame-flow direction.** Application code only goes through the bus. Do not call `twai_transmit` directly except inside `bus.cpp`; it will bypass ESP-NOW and the web UI log.
-- **Self-echo.** `bus_tx()` feeds every outbound frame back into the RX ring (tagged `source="self"`). This means state mirrors, LCD updates, buzzer, and rules all react to web-UI-injected frames exactly the same as frames from other nodes. Don't be surprised when you see your own TX come back through `bus_rx()`.
+- **Self-echo.** `bus_tx()` feeds every outbound frame back into the RX ring (tagged `source="self"`). This means LCD updates, rules, and the relay controller's own state all react to web-UI-injected frames exactly the same as frames from other nodes. Don't be surprised when you see your own TX come back through `bus_rx()`.
+- **Relay mirror.** `g_relay_mirror` on non-relay nodes is updated only from `RELAY_STATUS` frames (confirmed state), not optimistically from `RELAY_CMD`. The relay controller itself still updates immediately from CMD since it is the executor. On non-relay nodes with `ENABLE_BUZZER`, any outbound `RELAY_CMD` starts a 500 ms confirmation timer; if no matching `RELAY_STATUS` arrives before the deadline, `buzzer_alert()` fires (same error tone as the SWITCH_EVENT ACK timeout). This catches relay-controller-offline scenarios.
 - **Dedup.** ESP-NOW frames carry their own `(node_id, seq)` header; a 2-second window filters repeats. CAN frames are canonical and always passed through. This is safe because our application messages are idempotent (RELAY_CMD, STATUS, TELEMETRY) or edge-triggered with short windows (SWITCH_EVENT).
 - **Captive-portal probes.** iOS and Android each hit different URLs to detect captive portals — we catch the common ones in `webui.cpp` and bounce them to `/`.
 - **Credentials live in `secrets.h` (compile-time) and NVS (runtime).** `firmware/accessory_node/secrets.h` is gitignored and holds `AP_SSID`, `AP_PASSWORD`, `ESPNOW_PMK` (16 bytes), `ESPNOW_LMK` (16 bytes). Copy `secrets.h.example` and fill in real values before building. At first boot (or after `wifi_creds_reset()`), `mod_wifi_creds` seeds NVS `"wifi_creds"` from `secrets.h`. Subsequent boots load from NVS. The Settings panel's WiFi Credentials section or a blob transfer can update credentials at runtime without reflashing.
@@ -407,13 +426,16 @@ Use the transport-mode selector in the web UI header: **CAN+WiFi** (normal), **W
 - **`/api/nodecaps` endpoint.** All WiFi nodes serve a JSON array of the NODE_CAP frames they've received, including `id`, `caps`, `switch_count`, `button_count`, `led_count`, `relay_count`, and `age_ms`. The bridge web UI fetches this to build its aggregated control panel.
 - **Node capability broadcast.** Every node calls `send_node_cap()` at boot and every 30 s (piggybacked on the 5 s announce, firing every 6th cycle). Any node can also request caps with a `NODE_CAP_REQ (0x0F3)` frame; all nodes (or a specific target) respond immediately. `BusFrame.source` is `"self"` for self-echoed frames, `"can"` for wired CAN, `"wifi"` for ESP-NOW — use this to distinguish sources since `BusFrame` has no `outbound` field.
 - **GPIO 36/39 have no internal pull-up.** These are RTC-domain input-only pins on the ESP32. `INPUT_PULLUP` is silently ignored; the pull-up request has no effect. Any input on these pins needs an external 10kΩ resistor to 3V3. BTN3 and BTN4 were moved here from GPIO 19/23 to free those pins for LED outputs — document the external resistor requirement clearly for anyone who assembles the hardware.
-- **Buzzer sequencer.** `mod_buzzer` uses Arduino `tone()`/`noTone()` to drive a passive piezo — no LEDC setup required. Sequences are arrays of `{freq, ms}` notes advanced by `buzzer_tick()` each loop; a new `play_seq()` call immediately interrupts any active sequence. Relay sounds fire on RELAY_CMD frames (including self-echoed ones from the web UI), so every relay state change produces feedback regardless of its source. `BUZZER_PIN` must not be an input-only GPIO (avoid 34/35).
+- **Buzzer sequencer.** `mod_buzzer` uses Arduino `tone()`/`noTone()` to drive a passive piezo — no LEDC setup required. Sequences are arrays of `{freq, ms}` notes advanced by `buzzer_tick()` each loop; a new `play_seq()` call immediately interrupts any active sequence. Relay sounds fire on `RELAY_STATUS` frames (confirmed state changes), not `RELAY_CMD` — so no misleading tone plays when the relay controller is offline. `BUZZER_PIN` must not be an input-only GPIO (avoid 34/35).
 - **`/api/wifi_creds` endpoint.** GET returns `{ssid, pass, pmk_hex, lmk_hex}`. POST body: JSON with any subset of those fields plus optional `broadcast: true` to send a blob transfer to all nodes. POST `/api/wifi_creds/reset` restores `secrets.h` defaults in RAM and NVS. Changes take effect on next reboot; use "Reboot All" button or `REBOOT_CMD 0xFF` to apply.
 - **`index_html.h` is auto-generated.** The Makefile runs `minify_index_html.sh` before each compile, which minifies `index_html.h.bak` and writes `index_html.h`. Always edit `index_html.h.bak`; never edit `index_html.h` directly.
 - **Rules NVS layout.** Namespace `"rules"`, keys `"r0"` through `"r<MAX_RULES-1>"`. Each key holds a 12-byte blob (`CanRule`). Empty/deleted rules have `trig_id == 0` and are skipped at evaluation time. Factory reset clears all keys and re-writes from `RULES_DEFAULT_INIT`.
 - **Configurable CAN pins.** Default CAN TX/RX are GPIO 5/4. Override with `#define CAN_TX_PIN GPIO_NUM_x` and `#define CAN_RX_PIN GPIO_NUM_y` in a node config (used by the Cardputer which wires CAN to GPIO 1/2).
 - **ESPNOW_ONLY mode.** Define `ESPNOW_ONLY` in a node config to skip SoftAP and web server setup entirely. The node still participates on ESP-NOW channel 6. `webui_tick()` and `webui_handle_node_cap()` are compiled out. Used by the Cardputer and headless nodes.
 - **Channel capabilities.** `mod_channels` advertises what data channels a node publishes (e.g. VBAT, RPM, GPS). Define `CHAN_CAPS_INIT` in the node config using `CHAN_DEF()` macros. Responds to `CHAN_CAP_REQ (0x320)` with individual `CHAN_CAP (0x321)` frames per channel.
+- **Cardputer upload via mass storage.** `make upload-cardputer` builds the firmware, copies `m5canoe.bin` to `$(CARDPUTER_VOLUME)/$(CARDPUTER_DIR)/` (defaults: `/Volumes/CARDPUTER/CANoE`), then calls `diskutil unmount`. The Cardputer must be mounted as a USB mass-storage drive (hold G0 at boot for UF2 mode). Override volume/path with `make upload-cardputer CARDPUTER_VOLUME=/Volumes/MYCARD CARDPUTER_DIR=firmware`.
+- **Cardputer CLI bar status events.** `m5_set_event(const char*)` (declared in `mod_m5_cardputer.h`, stub when `ENABLE_M5_CARDPUTER` is not defined) writes a message to the CLI bar when it is in idle (non-CLI-active) state. Call it alongside `lcd_set_event()` for any event that should surface on both the LCD and the Cardputer. `m5_handle_frame()` also intercepts `RELAY_CMD` frames internally so relay events appear automatically.
+- **Cardputer CLI history.** The CLI maintains an 8-entry ring buffer (`CLI_HIST_SZ`). In CLI mode, `;` scrolls to older commands and `.` scrolls to newer; pressing `.` past the newest restores the original draft. Typing any character or pressing del breaks out of history-browse mode and edits the currently shown text. Exact-duplicate consecutive entries are not stored.
 
 ## Known TODO list (in rough priority order)
 
@@ -426,6 +448,29 @@ Use the transport-mode selector in the web UI header: **CAN+WiFi** (normal), **W
 7. ~~ESP-NOW ack/retry for switch events~~ — **done** (`SWITCH_ACK 0x202`, 3 retries at 80 ms, buzzer + LED flash on timeout).
 8. ~~Bridge node joining home WiFi~~ — **done** (bridge.h, BRIDGE_MODE, STA_SSID/STA_PASSWORD, NODE_CAP discovery, MQTT via mod_mqtt).
 9. Auto-unify: firmware recognizes a "factory_wiring_trusted" flag in NVS and drops the isolation (longer term, once the owner trusts the factory harness).
+
+## iOS Tuner app (`tuner/`)
+
+Native iOS companion app (iOS 17+, Swift/SwiftUI, no third-party dependencies). Connects to any CANoE node via BLE or Wi-Fi and provides live telemetry, data logging, and GPS injection.
+
+### Architecture
+
+- **`TunerApp.swift`** — `@main`. Creates an `AppSettings` `@StateObject` and injects it as an `@EnvironmentObject` into the entire SwiftUI tree.
+- **`Theme.swift`** — Single source of truth for appearance:
+  - `Color.acapulcoBlue` — brand primary (`#006DAC`), used for all accent/tint throughout both light and dark mode.
+  - `AppSettings` — `ObservableObject` with five `@AppStorage` font-scale multipliers (gauge, label, data, axis, caption). Views consume these via `@EnvironmentObject`.
+  - `AppearanceSheet` — presented from the dashboard toolbar (`textformat.size` icon); live-preview sliders (0.7×–1.8×) per font category, Reset to Defaults.
+- **`ContentView.swift`** — Root router. `ConnectView` handles BLE scan, Wi-Fi IP entry, and simulator launch. `NativeDashboardView` owns the tab bar (Frames / Logger) and toolbar.
+- **`LogView.swift`** — Logger tab. Live gauge grid (`GaugeTile`), line graph panels (`GraphPanel`), Braun analog dial panels (`BraunGaugeView`), session stats. All font sizes pull from `AppSettings`.
+- **`DataLogger.swift`** — Session recording, CSV export, `ChannelDescriptor` registry, dynamic decoder for `CHAN_CAP (0x321)` frames.
+- **`BLEManager.swift`** — CoreBluetooth central. Auto-reconnects to saved peripheral UUID on every launch. Parses `[id_lo, id_hi, dlc, d0..d7]` wire format.
+
+### Theme conventions
+
+- Never hard-code a tint color. Use `.tint(.acapulcoBlue)` for primary actions and `.tint(.secondary)` for destructive/neutral ones (`.tint(.red)` for the Disconnect button is the only exception).
+- Font sizes come from `AppSettings` helpers (`gaugeFont()`, `labelFont()`, `dataFont()`, `axisFont()`, `captionFont()`). Hard-coded `size:` values are only acceptable inside `Canvas` blocks where environment objects aren't accessible — pass `fontScale`/`axisScale` as plain properties in that case (see `BraunGaugeView`).
+- CAN frame log: TX rows use `Color.acapulcoBlue`, RX rows use `Color.secondary`.
+- New source files must be added to both `Tuner/` directory and `Tuner.xcodeproj/project.pbxproj` (PBXBuildFile, PBXFileReference, Tuner group children, and Sources build phase).
 
 ## Preferences
 

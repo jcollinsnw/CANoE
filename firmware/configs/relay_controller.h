@@ -16,6 +16,7 @@
 // ---- Features enabled on this node ----
 #define ENABLE_RELAY
 #define ENABLE_RULES
+#define ENABLE_BLUETOOTH
 // #define ENABLE_RPM
 
 // ---- Relay module ----
