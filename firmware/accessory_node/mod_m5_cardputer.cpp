@@ -401,15 +401,16 @@ static void draw_status_bar() {
         M5Cardputer.Display.print("REC");
     }
 
-    // Peer count pill
+    // Peer count circle
     uint8_t peers = bus_peer_count();
     char nbuf[4];
     snprintf(nbuf, sizeof(nbuf), "%d", peers);
-    int pw = strlen(nbuf) * 6 + 4;
-    int px = SCREEN_W - pw - 2;
-    M5Cardputer.Display.fillRoundRect(px, 4, pw, 14, 7, peers > 0 ? (uint16_t)0x0400 : (uint16_t)RED);
-    M5Cardputer.Display.drawRoundRect(px, 4, pw, 14, 7, WHITE);
-    M5Cardputer.Display.setCursor(px + 2, 7);
+    int cr      = 7;
+    int cx_peer = SCREEN_W - cr - 2;
+    int cy_peer = STATUS_BAR_H / 2;
+    M5Cardputer.Display.fillCircle(cx_peer, cy_peer, cr, peers > 0 ? (uint16_t)0x0400 : (uint16_t)RED);
+    M5Cardputer.Display.drawCircle(cx_peer, cy_peer, cr, WHITE);
+    M5Cardputer.Display.setCursor(cx_peer - (int)(strlen(nbuf) * 3), cy_peer - 4);
     M5Cardputer.Display.setTextColor(WHITE);
     M5Cardputer.Display.print(nbuf);
 
