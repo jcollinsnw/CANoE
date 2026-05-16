@@ -1,6 +1,6 @@
 # Antique Car CAN Bus Accessory System
 
-A parallel 12V accessory wiring system for an antique car, built around four ESP32 nodes on a shared CAN bus with ESP-NOW wireless fallback and a self-hosted web console. This file exists to onboard future Claude sessions quickly — read it top to bottom before making changes.
+A parallel 12V accessory wiring system for an antique car, built around multiple ESP32 nodes on a shared CAN bus with ESP-NOW wireless fallback and a self-hosted web console. This file exists to onboard future Claude sessions quickly — read it top to bottom before making changes.
 
 ## Project goals (from the owner)
 
@@ -25,7 +25,8 @@ A parallel 12V accessory wiring system for an antique car, built around four ESP
     │   ├── relay_controller.h
     │   ├── switch_panel.h
     │   ├── viper_interface.h
-    │   └── ecu_node.h
+    │   ├── ecu_node.h
+    │   └── cardputer.h
     └── accessory_node/                         # single unified sketch (all nodes)
         ├── accessory_node.ino                  # setup() / loop() / frame dispatch
         ├── node_config.h                       # ← overwritten by Makefile before each build
@@ -51,6 +52,9 @@ A parallel 12V accessory wiring system for an antique car, built around four ESP
         ├── mod_mqtt.h / mod_mqtt.cpp           # MQTT bridge: publishes CAN frames, subscribes for injection (bridge only)
         ├── mod_blob.h / mod_blob.cpp           # generic chunked blob write protocol (BLOB_WRITE 0x410 + BLOB_COMMIT 0x411); 4-slot RX, up to 256 B per key
         ├── mod_wifi_creds.h / mod_wifi_creds.cpp # runtime WiFi + ESP-NOW credential storage (NVS "wifi_creds"); seeds from secrets.h on first boot
+        ├── mod_battery.h / mod_battery.cpp     # dual-channel battery voltage ADC → CAN_ID_TELEMETRY (0x300)
+        ├── mod_channels.h / mod_channels.cpp   # channel capability advertisement (CHAN_CAP_REQ / CHAN_CAP)
+        ├── mod_m5_cardputer.h / mod_m5_cardputer.cpp # M5Stack Cardputer TFT + keyboard CAN terminal
         ├── secrets.h                           # ← gitignored; AP_SSID, AP_PASSWORD, ESPNOW_PMK, ESPNOW_LMK
         └── secrets.h.example                  # committed placeholder with zero ESP-NOW keys
 ```
@@ -61,7 +65,7 @@ A parallel 12V accessory wiring system for an antique car, built around four ESP
 
 ## Architecture overview
 
-Four ESP32 nodes, each runs up to four things concurrently:
+Multiple ESP32 nodes (ESP32-WROOM-32 and ESP32-S3), each running up to four things concurrently:
 
 1. **TWAI** (ESP32's CAN controller) — primary bus transport at 125 kbit/s.
 2. **ESP-NOW** — secondary transport, broadcasts every frame to all peers on the same WiFi channel. Works as a failover if the wire breaks.
@@ -74,17 +78,18 @@ Four ESP32 nodes, each runs up to four things concurrently:
 
 | Node             | NODE_ID | Config file                      | Features                                                                    |
 |------------------|---------|----------------------------------|-----------------------------------------------------------------------------|
-| switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_RULES, ENABLE_LCD, ENABLE_MENU, ENABLE_BUZZER, ENABLE_LEDS |
-| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RULES, ENABLE_RPM                                      |
+| switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_RULES, ENABLE_LCD, ENABLE_MENU, ENABLE_BUZZER, ENABLE_LEDS, ENABLE_BATTERY |
+| relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RULES, ENABLE_BATTERY                                  |
 | viper_interface  | 0x03    | configs/viper_interface.h        | ENABLE_VIPER, ENABLE_LCD, ENABLE_MPU6050                                    |
 | ecu_node         | 0x04    | configs/ecu_node.h               | ENABLE_RPM, ENABLE_WBO2, ENABLE_ECU (MAP, TPS, CLT, IAT, carb solenoid, dual injectors) |
 | bridge           | 0x05    | configs/bridge.h                 | BRIDGE_MODE — wired CAN + SoftAP + STA to home router; no ESP-NOW. Aggregated node discovery web UI. Optional MQTT publishing via mod_mqtt. |
+| cardputer        | 0x06    | configs/cardputer.h              | ENABLE_M5_CARDPUTER — M5Stack Cardputer (ESP32-S3); TFT CAN terminal + keyboard CLI; ESPNOW_ONLY mode (no SoftAP/web server). |
 
 ## Feature flags (defined in configs/*.h)
 
 | Flag              | Module              | Description                                                          |
 |-------------------|---------------------|----------------------------------------------------------------------|
-| `ENABLE_RELAY`    | mod_relay           | 6 relay GPIO outputs, safety watchdog, battery ADC                   |
+| `ENABLE_RELAY`    | mod_relay           | 6 relay GPIO outputs, safety watchdog                                |
 | `ENABLE_SWITCHES` | mod_switches        | 10 inputs (6 latching + 4 buttons) + encoder; publishes SWITCH_EVENT / ENCODER_EVENT only |
 | `ENABLE_RULES`    | mod_rules           | CAN-frame-triggered rules engine; `MAX_RULES` cap; `RULES_DEFAULT_INIT` for compile-time defaults |
 | `ENABLE_LCD`      | mod_lcd             | HD44780 16×2 via PCF8574 I2C backpack; relay char/label helpers      |
@@ -100,6 +105,9 @@ Four ESP32 nodes, each runs up to four things concurrently:
 | `ENABLE_ECU`      | mod_ecu             | Dual-mode fuel controller: Mode 0 = carb air-bleed solenoid (LEDC PWM PI loop); Mode 1 = TBI dual injectors (esp_timer pulse). Reads MAP, TPS, CLT, IAT. VE table + STFT closed-loop from WBO2_DATA. |
 | `BRIDGE_MODE`     | (webui + mod_mqtt)  | Bridge node: SoftAP + wired CAN + WiFi STA to home router. No ESP-NOW. Web UI shows aggregated control panel built from NODE_CAP discovery. Enables `/api/nodecaps` endpoint. Requires `STA_SSID`/`STA_PASSWORD`. |
 | `MQTT_BROKER`     | mod_mqtt            | Enable MQTT publishing on the bridge. Set to broker IP/hostname. Requires PubSubClient library. Publishes all CAN frames to `{MQTT_TOPIC_PREFIX}/frames`; subscribes to `{MQTT_TOPIC_PREFIX}/send` for injection. |
+| `ENABLE_BATTERY`  | mod_battery         | Dual-channel battery voltage ADC; broadcasts CAN_ID_TELEMETRY (0x300). Requires `VBAT_ADC_PIN` and/or `VBAT2_ADC_PIN`. |
+| `ENABLE_M5_CARDPUTER` | mod_m5_cardputer | M5Stack Cardputer TFT display + keyboard CLI; relay status bar, frame log, command injection, hotkeys. Requires M5Cardputer library. |
+| `ESPNOW_ONLY`    | (accessory_node.ino) | Skip SoftAP and web server; init ESP-NOW via `bus_init_no_ap()` only. Used by headless nodes like the Cardputer. |
 
 `ENABLE_MENU` subflags (defined alongside `ENABLE_MENU` in the node config):
 
@@ -195,7 +203,8 @@ All nodes share the same CAN pins. Node-specific pins are defined in the config 
 | GPIO 16   | Switch panel: passive piezo buzzer (`BUZZER_PIN`). Positive leg to GPIO 16 via optional 100Ω series resistor; negative leg to GND. Driven by `tone()`/`noTone()`. |
 | GPIO 17, 19, 23 | Switch panel: status LEDs (`LED_PINS_INIT`). Each drives an LED via a 330Ω series resistor to GND (`LED_ACTIVE_HIGH true`). Controlled via CAN_ID_LED_CMD. |
 | GPIO 36, 39 | Switch panel: BTN3 and BTN4 (moved from GPIO 19/23 to free those for LED outputs). Input-only pins — **no internal pull-up**; wire a 10kΩ resistor from each pin to 3V3. |
-| GPIO 34   | Relay controller: battery voltage ADC (optional)               |
+| GPIO 34   | Relay controller: primary battery voltage ADC (input-only)     |
+| GPIO 36   | Relay controller: auxiliary battery voltage ADC (input-only)   |
 | GPIO 16   | Viper interface: UART2 TX → level shifter → Viper serial RX    |
 | GPIO 17   | Viper interface: UART2 RX ← level shifter ← Viper serial TX   |
 
@@ -221,7 +230,7 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x200  | SWITCH_EVENT      | `[switch_id, SwitchEvent]`                             |
 | 0x201  | ENCODER_EVENT     | `[EncoderEvent, count]`                                |
 | 0x202  | SWITCH_ACK        | `[switch_id, event]` — any non-originating node ACKs a SWITCH_EVENT; clears the switch panel's retry timer for that event |
-| 0x300  | TELEMETRY         | `[vbat_cv_lo, vbat_cv_hi, i_da_lo, i_da_hi, vsol_cv_lo, vsol_cv_hi, flags, _]` |
+| 0x300  | TELEMETRY         | `[vbat_cv_lo, vbat_cv_hi, 0, 0, vbat2_cv_lo, vbat2_cv_hi, 0, 0]` — from mod_battery; primary battery centvolts in bytes 0–1, auxiliary in bytes 4–5 |
 | 0x301  | ENV_DATA          | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` (0.1°C, 0.1%) |
 | 0x302  | IMU_DATA          | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` |
 | 0x303  | SHAKE_EVENT       | `[magnitude, axis_mask]`                               |
@@ -239,8 +248,10 @@ Note: GPIO 16/17 are relay outputs on the relay_controller board and UART2 on th
 | 0x411  | BLOB_COMMIT       | `[target, ns, key, len_lo, len_hi, flags]` — finalizes a blob transfer; fires commit callback on receiver. flags: `BLOB_FLAG_PERSIST=0x01` (save to NVS), `BLOB_FLAG_REBOOT=0x02` (restart after saving). Self-echoed frames are ignored by the blob handler; the sender saves its own copy directly. |
 | 0x510  | VIPER_CMD         | `[cmd]` — any node → viper_interface; cmd: 0x01 lock, 0x02 unlock, 0x03 remote start |
 | 0x511  | VIPER_STATUS      | `[b0..b4]` — viper_interface → everyone; raw 5-byte Viper alarm packet |
+| 0x320  | CHAN_CAP_REQ      | `[target_node_id]` — request channel capability advertisement; 0xFF = all nodes respond |
+| 0x321  | CHAN_CAP          | `[node_id, chan_id, can_id_lo, can_id_hi, offset, encoding, min, max]` — one frame per advertised data channel; encoding flags define type/scale |
 
-Config targets: `0x01 SWITCH_PANEL`, `0x02 RELAY_CTRL`, `0x03 VIPER`, `0x04 ECU`, `0x05 BRIDGE`, `0xFF BROADCAST`.
+Config targets: `0x01 SWITCH_PANEL`, `0x02 RELAY_CTRL`, `0x03 VIPER`, `0x04 ECU`, `0x05 BRIDGE`, `0x06 CARDPUTER`, `0xFF BROADCAST`.
 
 Config keys:
 - `0x01 CFG_KEY_NODE_ID` — reassign node_id; arg (data[4]) = new ID (0x01–0xFE); saves to NVS and restarts. Broadcast target **not accepted**.
@@ -277,13 +288,18 @@ In production mode, connect TJA1051T/3 or SN65HVD230 transceivers with 120Ω ter
 
 ## Libraries and toolchain
 
-Everything is in the Arduino-ESP32 core except the bridge node's MQTT module.
+Everything is in the Arduino-ESP32 core except the bridge node's MQTT module and the Cardputer display/keyboard library.
 
 - `driver/twai.h` — CAN controller
 - `WiFi.h` / `esp_now.h` — wireless
 - `WebServer.h` / `DNSServer.h` — HTTP + captive portal
 - `Preferences.h` — NVS persistence
 - `PubSubClient` — MQTT client (bridge only, when `MQTT_BROKER` is defined); install with `arduino-cli lib install "PubSubClient"`
+- `M5Cardputer` — M5Stack Cardputer display + keyboard (cardputer node only); requires M5Stack board package URL in arduino-cli config
+
+**Board packages:**
+- `esp32:esp32` — Espressif ESP32 core (all nodes except Cardputer)
+- `m5stack:esp32` — M5Stack ESP32 core (Cardputer only); add board manager URL: `https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json`
 
 Tested against Arduino-ESP32 **v2.x and v3.x**. The ESP-NOW receive callback signature changed in v3.x (`esp_now_recv_info_t*` first arg instead of `const uint8_t* mac`); `bus.cpp` uses a version preprocessor guard to handle both. TWAI APIs also changed in v3.x — if bumping, verify compilation before committing.
 
@@ -297,12 +313,14 @@ make switch                                        # compile for switch panel
 make viper                                         # compile for viper interface
 make ecu                                           # compile for ECU node
 make bridge                                        # compile for bridge node
-make all                                           # compile all five in sequence
+make cardputer                                     # compile for M5 Cardputer (ESP32-S3)
+make all                                           # compile all five in sequence (excludes cardputer)
 make upload-switch  PORT=/dev/cu.usbserial-XXXX
 make upload-relay   PORT=/dev/cu.usbserial-YYYY
 make upload-viper   PORT=/dev/cu.usbserial-ZZZZ
 make upload-ecu     PORT=/dev/cu.usbserial-WWWW
 make upload-bridge  PORT=/dev/cu.usbserial-VVVV
+make upload-cardputer PORT=/dev/cu.usbserial-CCCC
 make monitor        PORT=/dev/cu.usbserial-XXXX
 ```
 
@@ -377,7 +395,7 @@ Use the transport-mode selector in the web UI header: **CAN+WiFi** (normal), **W
 - **SoftAP client notifications.** `webui_set_ap_client_cb()` registers a callback fired when `WiFi.softAPgetStationNum()` changes (polled every 500 ms in `webui_tick()`). `accessory_node.ino` uses this to call `lcd_set_event()` and `buzzer_wifi_connect/disconnect()` when a device joins or leaves the AP.
 - **Open AP.** Fine in a garage, risky in public. `AP_PASSWORD` in `secrets.h` must be ≥ 8 chars for WPA2 and identical on every WiFi node. `AP_SSID` and `AP_HIDDEN` are configurable there too.
 - **Horn safety.** `RELAY_MAX_ON_INIT` in `configs/relay_controller.h` caps relay 5 (horn) at 30s. HOLD-style rules (SW_PRESS→relay ON, SW_RELEASE→relay OFF) still rely on the relay controller's watchdog as a backstop.
-- **ADC calibration.** GPIO 34 on the relay controller is read with default attenuation; `VBAT_DIVIDER_RATIO` in `configs/relay_controller.h` assumes 10k + 2.2k divider. Re-tune to your resistors before trusting the telemetry.
+- **ADC calibration.** Battery voltage monitoring is handled by `mod_battery` (enabled via `ENABLE_BATTERY`). GPIO pins must be ADC1 (GPIO 32–39) since ADC2 conflicts with WiFi. `VBAT_DIVIDER_RATIO` and `VBAT2_DIVIDER_RATIO` in the node config assume a 10k + 2.2k divider. Re-tune to your actual resistors before trusting the telemetry.
 - **Strapping pins.** Avoid GPIO 0, 2, 12, 15 for anything that's externally driven at reset. GPIO 13 is borderline — watch for flakiness.
 - **ULN2803 polarity.** Input high → output low → coil pulled to GND → relay on. `RELAY_ACTIVE_HIGH = true` is correct for ULN2803 + low-side-coil relays. Flip if using high-side-switch drivers.
 - **node_config.h is generated.** Never edit `firmware/accessory_node/node_config.h` directly — it gets overwritten by the next `make` invocation. Edit the appropriate `firmware/configs/<node>.h` instead.
@@ -393,6 +411,9 @@ Use the transport-mode selector in the web UI header: **CAN+WiFi** (normal), **W
 - **`/api/wifi_creds` endpoint.** GET returns `{ssid, pass, pmk_hex, lmk_hex}`. POST body: JSON with any subset of those fields plus optional `broadcast: true` to send a blob transfer to all nodes. POST `/api/wifi_creds/reset` restores `secrets.h` defaults in RAM and NVS. Changes take effect on next reboot; use "Reboot All" button or `REBOOT_CMD 0xFF` to apply.
 - **`index_html.h` is auto-generated.** The Makefile runs `minify_index_html.sh` before each compile, which minifies `index_html.h.bak` and writes `index_html.h`. Always edit `index_html.h.bak`; never edit `index_html.h` directly.
 - **Rules NVS layout.** Namespace `"rules"`, keys `"r0"` through `"r<MAX_RULES-1>"`. Each key holds a 12-byte blob (`CanRule`). Empty/deleted rules have `trig_id == 0` and are skipped at evaluation time. Factory reset clears all keys and re-writes from `RULES_DEFAULT_INIT`.
+- **Configurable CAN pins.** Default CAN TX/RX are GPIO 5/4. Override with `#define CAN_TX_PIN GPIO_NUM_x` and `#define CAN_RX_PIN GPIO_NUM_y` in a node config (used by the Cardputer which wires CAN to GPIO 1/2).
+- **ESPNOW_ONLY mode.** Define `ESPNOW_ONLY` in a node config to skip SoftAP and web server setup entirely. The node still participates on ESP-NOW channel 6. `webui_tick()` and `webui_handle_node_cap()` are compiled out. Used by the Cardputer and headless nodes.
+- **Channel capabilities.** `mod_channels` advertises what data channels a node publishes (e.g. VBAT, RPM, GPS). Define `CHAN_CAPS_INIT` in the node config using `CHAN_DEF()` macros. Responds to `CHAN_CAP_REQ (0x320)` with individual `CHAN_CAP (0x321)` frames per channel.
 
 ## Known TODO list (in rough priority order)
 

@@ -1,6 +1,8 @@
 # Module: mod_relay
 
-6-channel relay GPIO driver with per-relay safety watchdog, optional battery voltage ADC telemetry, and CAN control. The relay controller is the only node that drives physical relay outputs, but any node can send `RELAY_CMD` frames to control them.
+6-channel relay GPIO driver with per-relay safety watchdog and CAN control. The relay controller is the only node that drives physical relay outputs, but any node can send `RELAY_CMD` frames to control them.
+
+> **Battery voltage telemetry** is handled by `mod_battery` (enabled via `ENABLE_BATTERY`), not mod_relay. Any node with ADC pins wired to voltage dividers can broadcast TELEMETRY (0x300). See `switch_panel.h` or `relay_controller.h` for pin definitions.
 
 ## Enable
 
@@ -18,8 +20,6 @@
 | `RELAY_ACTIVE_HIGH` | `true` | `true` for ULN2803 (low-side, GPIO HIGH → relay ON). `false` for high-side drivers. |
 | `RELAY_PINS_INIT` | `{16,17,18,19,21,22}` | GPIO for each relay (index 0–5) |
 | `RELAY_MAX_ON_INIT` | `{0,0,0,0,30000,0}` | Per-relay safety auto-off in ms. `0` = no limit. Relay 5 (horn) defaults to 30 s. |
-| `VBAT_ADC_PIN` | `34` | *(optional)* ADC1 pin for battery voltage monitor |
-| `VBAT_DIVIDER_RATIO` | `5.545f` | `(R_top + R_bot) / R_bot`. Tune to actual resistors. Default assumes 10 kΩ + 2.2 kΩ. |
 
 **LCD relay widget** (requires `ENABLE_LCD`):
 
@@ -53,7 +53,6 @@ HD44780 CGRAM has 8 slots; slot 0 is reserved and 2 are used by CAN/WiFi status 
 | ID | Name | Payload | Rate |
 |----|------|---------|------|
 | `0x101` | `RELAY_STATUS` | `[bitmap]` | 5 Hz. Bit 0 = relay 1 state, bit 5 = relay 6. |
-| `0x300` | `TELEMETRY` | `[vbat_cv_lo, vbat_cv_hi, 0, 0, 0, 0, 0, 0]` | 1 Hz, when `VBAT_ADC_PIN` is defined. Battery voltage in centvolts. |
 | `0x402` | `CONFIG_READ_RESP` | same layout as CONFIG_WRITE | In response to `CONFIG_READ_REQ`. |
 
 ---

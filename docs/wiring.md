@@ -1,6 +1,6 @@
 # CANoE — Wiring Guide
 
-Hardware setup for all five nodes: bill of materials, pinouts, CAN bus backbone, and power distribution.
+Hardware setup for all nodes: bill of materials, pinouts, CAN bus backbone, and power distribution.
 
 ---
 
@@ -12,10 +12,11 @@ Hardware setup for all five nodes: bill of materials, pinouts, CAN bus backbone,
 4. [Viper Interface Node (0x03)](#4-viper-interface-node-0x03)
 5. [ECU Node (0x04)](#5-ecu-node-0x04)
 6. [Bridge Node (0x05)](#6-bridge-node-0x05)
-7. [GPS Module](#7-gps-module)
-8. [CAN Bus Backbone](#8-can-bus-backbone)
-9. [Power Distribution](#9-power-distribution)
-10. [Bench Mode vs Production Mode](#10-bench-mode-vs-production-mode)
+7. [Cardputer Node (0x06)](#7-cardputer-node-0x06)
+8. [GPS Module](#8-gps-module)
+9. [CAN Bus Backbone](#9-can-bus-backbone)
+10. [Power Distribution](#10-power-distribution)
+11. [Bench Mode vs Production Mode](#11-bench-mode-vs-production-mode)
 
 ---
 
@@ -26,6 +27,12 @@ Hardware setup for all five nodes: bill of materials, pinouts, CAN bus backbone,
 |-----|------|-------|
 | 1 | ESP32 WROOM-32 dev board | 38-pin variant preferred for GPIO count |
 | 1 | USB-to-serial cable | For initial flashing and serial monitor |
+
+### Cardputer Node
+| Qty | Part | Notes |
+|-----|------|-------|
+| 1 | M5Stack Cardputer (ESP32-S3) | Built-in TFT, keyboard, LiPo battery |
+| 1 | TJA1051T/3 or SN65HVD230 CAN transceiver | *(optional — can run ESP-NOW only)* |
 
 ### CAN Bus (Production Mode)
 | Qty | Part | Notes |
@@ -52,6 +59,8 @@ Hardware setup for all five nodes: bill of materials, pinouts, CAN bus backbone,
 | 3 | LED (any colour) | Status LEDs on GPIO 17, 19, 23; controlled over CAN |
 | 3 | 330 Ω resistor, ¼ W | Series resistor for each LED |
 | 2 | 10 kΩ resistor, ¼ W | Pull-up to 3V3 for BTN6 (GPIO 36) and BTN7 (GPIO 39) — no internal pull-up on these pins |
+| 2 | 10 kΩ resistor, ¼ W | *(battery ADC option)* Voltage divider top leg (GPIO 36 + GPIO 39) |
+| 2 | 2.2 kΩ resistor, ¼ W | *(battery ADC option)* Voltage divider bottom leg |
 
 ### Relay Controller Node
 | Qty | Part | Notes |
@@ -187,7 +196,27 @@ GPIO 36 and 39 are input-only with **no internal pull-up**. `INPUT_PULLUP` is si
                └── BTN7
 ```
 
-### 2.9 Full Switch Panel Pin Summary
+> **Note:** When `ENABLE_BATTERY` is configured on the switch panel, GPIO 36 and 39 are reassigned as battery voltage ADC inputs (see §2.9). In that case BTN6/BTN7 are unavailable.
+
+### 2.9 Battery Voltage Monitor (Optional)
+
+Two independent voltage dividers for primary and auxiliary battery monitoring. Both GPIOs are input-only ADC1 pins — required because ADC2 conflicts with WiFi.
+
+```
+Primary (factory) battery
+12 V rail ──[10 kΩ]──┬──[2.2 kΩ]── GND
+                     └── GPIO 36
+
+Auxiliary (accessory) battery
+12 V rail ──[10 kΩ]──┬──[2.2 kΩ]── GND
+                     └── GPIO 39
+```
+
+Divider ratio: 5.545 ((10k + 2.2k) / 2.2k). Adjust `VBAT_DIVIDER_RATIO` and `VBAT2_DIVIDER_RATIO` in `switch_panel.h` to match your actual resistors. Telemetry is reported in centvolts on CAN ID 0x300: primary battery in bytes 0–1, auxiliary in bytes 4–5.
+
+> **Pin conflict:** GPIO 36/39 are shared with BTN6/BTN7 spare buttons. When `ENABLE_BATTERY` is defined in the switch panel config, these pins read battery voltage instead. The buttons cannot be used simultaneously.
+
+### 2.10 Full Switch Panel Pin Summary
 
 ```
 ESP32 #1 (Switch Panel)
@@ -212,8 +241,8 @@ GPIO 32  BTN1  (Horn — hold)
 GPIO 33  BTN2  (Headlights toggle)
 GPIO 34  ENC GA  (CJMCU-111 — no external pull-up needed)
 GPIO 35  ENC GB  (CJMCU-111 — no external pull-up needed)
-GPIO 36  BTN6  (spare — requires external 10kΩ pull-up to 3V3)
-GPIO 39  BTN7  (spare — requires external 10kΩ pull-up to 3V3)
+GPIO 36  BTN6 / Vbat ADC  (spare button OR primary battery voltage divider)
+GPIO 39  BTN7 / Vbat2 ADC (spare button OR auxiliary battery voltage divider)
 5V (VIN) LCD VCC
 ```
 
@@ -255,12 +284,21 @@ ESP32 GPIO ──→ ULN2803 Input ──→ (internal NPN) ──→ Output ─
 
 ### 3.4 Battery Voltage Monitor (Optional)
 
+> **Note:** Battery voltage monitoring has been moved to `mod_battery` and is now configured on the **switch panel** node by default (see §2.9). The relay controller config still supports `ENABLE_BATTERY` with the same pin definitions if needed, but is currently disabled.
+
+Two independent dividers — one per battery rail. Both GPIOs are input-only with no pull-up, making them clean ADC inputs.
+
 ```
+Primary (factory) battery
 12 V rail ──[10 kΩ]──┬──[2.2 kΩ]── GND
                      └── GPIO 34
+
+Auxiliary (accessory) battery
+12 V rail ──[10 kΩ]──┬──[2.2 kΩ]── GND
+                     └── GPIO 36
 ```
 
-Divider ratio: 5.545 (10k + 2.2k / 2.2k). Adjust `VBAT_DIVIDER_RATIO` in `relay_controller.h` to match your actual resistors. Telemetry is reported in centvolts on CAN ID 0x300.
+Divider ratio: 5.545 ((10k + 2.2k) / 2.2k). Adjust `VBAT_DIVIDER_RATIO` and `VBAT2_DIVIDER_RATIO` in the node config to match your actual resistors. Telemetry is reported in centvolts on CAN ID 0x300: primary battery in bytes 0–1, auxiliary in bytes 4–5.
 
 ### 3.5 RPM Sensor (PC817C Optocoupler)
 
@@ -301,8 +339,9 @@ GPIO 18  Relay 3 ──→ ULN2803 IN3
 GPIO 19  Relay 4 ──→ ULN2803 IN4
 GPIO 21  Relay 5 ──→ ULN2803 IN5  (horn — 30 s safety cutoff)
 GPIO 22  Relay 6 ──→ ULN2803 IN6
-GPIO 34  Vbat ADC ←── voltage divider (10 kΩ / 2.2 kΩ)
+GPIO 34  Vbat ADC  ←── voltage divider (10 kΩ / 2.2 kΩ) — primary battery
 GPIO 35  RPM input ←── PC817C collector (10kΩ pull-up to 3V3)
+GPIO 36  Vbat2 ADC ←── voltage divider (10 kΩ / 2.2 kΩ) — auxiliary battery
 ```
 
 ---
@@ -544,7 +583,45 @@ GPIO 5   CAN TX  ──→ Transceiver TXD
 
 ---
 
-## 7. GPS Module
+## 7. Cardputer Node (0x06)
+
+The Cardputer is an M5Stack Cardputer (ESP32-S3 based) used as a portable CAN bus terminal. It has a built-in TFT display, keyboard, and runs in `ESPNOW_ONLY` mode — no SoftAP or web server.
+
+### 7.1 CAN Bus
+
+The Cardputer uses non-default CAN pins since GPIO 4/5 are not available on the M5Stack Cardputer form factor.
+
+| ESP32-S3 Pin | Signal | Goes to |
+|--------------|--------|---------|
+| GPIO 1 | CAN TX | Transceiver TXD |
+| GPIO 2 | CAN RX | Transceiver RXD |
+
+> The config sets `CAN_TX_PIN GPIO_NUM_1` and `CAN_RX_PIN GPIO_NUM_2` to override the defaults.
+
+### 7.2 External CAN Transceiver
+
+The Cardputer has no built-in CAN transceiver. Wire a TJA1051T/3 or SN65HVD230 module to the Grove/external GPIO connector:
+
+```
+ESP32-S3 GPIO 1  ──→ Transceiver TXD
+ESP32-S3 GPIO 2  ←── Transceiver RXD
+ESP32-S3 3.3V    ──→ Transceiver VCC
+ESP32-S3 GND     ──→ Transceiver GND
+Transceiver CANH ──→ CAN bus
+Transceiver CANL ──→ CAN bus
+```
+
+### 7.3 ESP-NOW (Wireless Only)
+
+The Cardputer can also operate without a CAN transceiver in ESP-NOW-only mode. It will receive frames from other nodes wirelessly and can inject frames back over ESP-NOW. Set `USE_CAN_TRANSCEIVER 0` if no transceiver is wired (bench mode still initializes TWAI in NO_ACK mode on GPIO 1/2).
+
+### 7.4 Power
+
+The Cardputer has a built-in LiPo battery and USB-C charging. No external power wiring required.
+
+---
+
+## 8. GPS Module
 
 The GPS module provides speed and heading over NMEA via UART. Only the module TX line is needed for basic NMEA reading.
 
@@ -565,11 +642,11 @@ Common modules (u-blox Neo-6M / Neo-8M) default to 9600 baud NMEA output. Set `G
 
 ---
 
-## 8. CAN Bus Backbone
+## 9. CAN Bus Backbone
 
 All nodes connect to the same two-wire CAN bus (CANH / CANL) at **125 kbit/s** with 11-bit IDs.
 
-### 8.1 Production Mode (Transceivers)
+### 9.1 Production Mode (Transceivers)
 
 Use a TJA1051T/3 or SN65HVD230 on each wired node. Place 120 Ω termination at the two physical ends of the cable.
 
@@ -604,7 +681,7 @@ Node A                 Node B                 Node C
 | CANL | Bus low | Twisted pair CANL |
 | RS | Speed / slope | Tie to GND (high-speed mode) |
 
-### 8.2 Bench Mode (No Transceivers)
+### 9.2 Bench Mode (No Transceivers)
 
 For bench testing with short runs (< 1 m). GPIO 5 of each node is reconfigured as open-drain via the `GPIO.pin[5].pad_driver` register, and TWAI runs in `TWAI_MODE_NO_ACK`.
 
@@ -617,9 +694,9 @@ All nodes GPIO 5 (CAN TX) ──┬──── [1 kΩ–4.7 kΩ pull-up] ──
 
 ---
 
-## 9. Power Distribution
+## 10. Power Distribution
 
-### 9.1 Overview
+### 10.1 Overview
 
 The system uses two isolated 12V sources carried over Cat5e ethernet cable between the relay box and the switch panel. All grounds are joined; the two 12V positives are **never connected to each other**.
 
@@ -632,13 +709,13 @@ The system uses two isolated 12V sources carried over Cat5e ethernet cable betwe
 
 > **Critical:** The Blue (factory) and Brown (accessory) 12V positives must never be bridged. These are two separate batteries; joining the positives without proper isolation circuitry will cause cross-charging and potential damage.
 
-### 9.2 12V Sources
+### 10.2 12V Sources
 
-**Factory battery (Blue pair)** — originates at the relay controller node. The relay box connects directly to the factory battery through its own fuse. The relay controller distributes this voltage over the Blue pair to the switch panel, where it is used only to power the voltage gauge for monitoring. The relay coils are powered directly from the relay box battery — the Blue pair carries monitoring current only, not coil current.
+**Factory battery (Blue pair)** — originates at the relay controller node. The relay box connects directly to the factory battery through its own fuse. The relay controller also monitors this rail via its primary battery ADC (GPIO 34). The Blue pair carries monitoring current to the switch panel for 5V redundancy — not relay coil current.
 
-**Accessory battery (Brown pair)** — originates at the switch panel. The switch panel connects to its own dedicated accessory battery and distributes it over the Brown pair back toward the relay box if needed. The voltage gauge on the switch panel can read this rail independently.
+**Accessory battery (Brown pair)** — originates at the switch panel. The switch panel connects to its own dedicated accessory battery and distributes it over the Brown pair back toward the relay box. The relay controller monitors this rail via its auxiliary battery ADC (GPIO 36). Both battery voltages are broadcast on CAN ID 0x300 (TELEMETRY) by whichever node has `ENABLE_BATTERY` configured (currently the switch panel).
 
-### 9.3 5V Logic Rail (Green Pair) — Redundant
+### 10.3 5V Logic Rail (Green Pair) — Redundant
 
 Both the relay controller and the switch panel have their own 12V → 5V buck converter, both tied into the Green pair. This gives redundant 5V for the ESP32 logic rail: if one converter fails, the other keeps all nodes running.
 
@@ -654,11 +731,11 @@ Switch Panel Node                                  (shared 5V bus)
 
 > **TODO:** Add Schottky ORing diodes (one per buck converter, before they join the Green pair). A voltage mismatch between converters causes the higher-voltage one to carry all load; a failed-shorted converter drags the whole rail down without diodes. With ORing diodes, each converter can fail independently without affecting the other. Each converter must be rated for the full 5V load on its own — do not assume 50/50 load sharing.
 
-### 9.4 Ground
+### 10.4 Ground
 
 All grounds are joined at a common point. The GND wire in each ethernet pair carries the return current for that pair's signal only — the twisted geometry reduces loop area and EMI. The CAN transceiver ground, ESP32 GND, and all buck converter GNDs tie together at each node.
 
-### 9.5 Relay Load Circuits
+### 10.5 Relay Load Circuits
 
 Relay output loads (headlights, horn, etc.) are fused and wired directly at the relay box — they do not traverse the ethernet cable. The relay box fuse block sits between the factory battery and the relay output wiring.
 
@@ -680,7 +757,7 @@ ECU injectors require separate fused +12V runs directly from the fuse block — 
 
 ---
 
-## 10. Bench Mode vs Production Mode
+## 11. Bench Mode vs Production Mode
 
 | | Bench Mode | Production Mode |
 |---|---|---|

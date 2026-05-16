@@ -32,9 +32,23 @@
 #define RPM_SAMPLE_MS   500   // recalculate and broadcast every 500 ms
 #define RPM_REDLINE     6500  // also settable at runtime: 400 02 40 00 00 <lo> <hi> 01
 
-// ---- Battery ADC ----
-#define VBAT_ADC_PIN        34
-#define VBAT_DIVIDER_RATIO  5.545f   // 10k + 2.2k divider; re-tune to your resistors
+// ---- Battery voltage monitoring ----
+// GPIO 34 and 36 are input-only ADC1 pins — no pull-up needed, no relay conflicts.
+// Wire a resistor voltage divider to each pin (e.g. 10k + 2.2k → ratio 5.545).
+// Broadcasts CAN_ID_TELEMETRY (0x300): main bat bytes 0-1, aux bat bytes 4-5.
+#define ENABLE_BATTERY
+#define VBAT_ADC_PIN         34      // main (primary) battery
+#define VBAT_DIVIDER_RATIO   5.545f  // re-tune to your actual resistor values
+#define VBAT2_ADC_PIN        36      // aux (secondary) battery
+#define VBAT2_DIVIDER_RATIO  5.545f
+#define VBAT_SAMPLE_MS       1000
+
+// ---- Channel capabilities ----
+// Advertises which channels this node publishes in response to CHAN_CAP_REQ (0x320).
+#define CHAN_CAPS_INIT { \
+    CHAN_DEF(CHAN_ID_VBAT,  CAN_ID_TELEMETRY, 0, CHAN_ENC_U16LE|CHAN_SCALE_100,               0, 0x00), \
+    CHAN_DEF(CHAN_ID_VBAT2, CAN_ID_TELEMETRY, 4, CHAN_ENC_U16LE|CHAN_SCALE_100|CHAN_SKIP_ZERO, 0, 0x00), \
+}
 
 // ---- Rules engine ----
 #define MAX_RULES 8

@@ -53,6 +53,9 @@
 #include "mod_mqtt.h"
 #include "mod_blob.h"
 #include "mod_wifi_creds.h"
+#include "mod_battery.h"
+#include "mod_channels.h"
+#include "mod_m5_cardputer.h"
 
 // --------------------------------------------------------------
 // Shared state definitions (declared extern in node_state.h)
@@ -99,13 +102,20 @@ static void send_node_cap() {
 }
 
 // --------------------------------------------------------------
-// CAN / TWAI setup (same wiring on all nodes: TX=GPIO5, RX=GPIO4)
+// CAN / TWAI setup — TX/RX pins configurable via node_config.h
 // --------------------------------------------------------------
+#ifndef CAN_TX_PIN
+#define CAN_TX_PIN GPIO_NUM_5
+#endif
+#ifndef CAN_RX_PIN
+#define CAN_RX_PIN GPIO_NUM_4
+#endif
+
 static void setup_can() {
 #if USE_CAN_TRANSCEIVER
-  twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_5, GPIO_NUM_4, TWAI_MODE_NORMAL);
+  twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN, TWAI_MODE_NORMAL);
 #else
-  twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_5, GPIO_NUM_4, TWAI_MODE_NO_ACK);
+  twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN, TWAI_MODE_NO_ACK);
 #endif
   g.tx_queue_len = 10; g.rx_queue_len = 20;
   // CAN_BUS_SPEED set in node_config.h — all nodes must agree. Default 125 kbps.
@@ -126,8 +136,8 @@ static void setup_can() {
 #if !USE_CAN_TRANSCEIVER
   // Open-drain via pad register preserves TWAI signal routing through GPIO matrix.
   // Do NOT use gpio_set_direction() — it would disconnect the TWAI peripheral binding.
-  GPIO.pin[5].pad_driver = 1;
-  gpio_set_pull_mode(GPIO_NUM_5, GPIO_PULLUP_ONLY);
+  GPIO.pin[(int)CAN_TX_PIN].pad_driver = 1;
+  gpio_set_pull_mode((gpio_num_t)CAN_TX_PIN, GPIO_PULLUP_ONLY);
   wlogln("[CAN] BENCH mode (open-drain TX, NO_ACK)");
 #else
   wlogln("[CAN] TRANSCEIVER mode");
@@ -140,6 +150,11 @@ static void setup_can() {
 void setup() {
   Serial.begin(115200);
   delay(200);
+
+  // M5 Cardputer: init display + keyboard before anything else so boot messages
+  // can be shown on the TFT. Does nothing on non-Cardputer builds.
+  m5_setup();
+
   wlogln("");
   wlogln("=== " NODE_NAME " boot ===");
 
@@ -178,6 +193,10 @@ void setup() {
   });
   bus_init_no_wifi(eff_id);
   wlogln("[boot] bridge mode: AP up, ESP-NOW disabled");
+#elif defined(ESPNOW_ONLY)
+  // ESP-NOW only — no SoftAP, no web server. Used by Cardputer and headless nodes.
+  bus_init_no_ap(eff_id);
+  wlogln("[boot] ESP-NOW only mode");
 #else
   {
     Preferences p; p.begin(NVS_NAMESPACE, true);
@@ -284,6 +303,9 @@ void setup() {
   led_setup();
 #endif
 
+#ifdef ENABLE_BATTERY
+  battery_setup();
+#endif
 #ifdef ENABLE_WBO2
   wbo2_setup();
 #endif
@@ -303,11 +325,14 @@ void setup() {
   mqtt_setup();
 #endif
   serial_shell_setup();
+  chan_caps_setup();
   { uint8_t b = bus_node_id(); bus_tx(CAN_ID_BOOT_EVENT, &b, 1); }
   send_node_cap();
+  chan_caps_send();
 #ifdef BRIDGE_MODE
   // Ask all nodes to announce their capabilities so bridge web UI populates immediately.
   { uint8_t b = 0xFF; bus_tx(CAN_ID_NODE_CAP_REQ, &b, 1); }
+  { uint8_t b = 0xFF; bus_tx(CAN_ID_CHAN_CAP_REQ, &b, 1); }
 #endif
   wlogln("[boot] ready");
 
@@ -318,7 +343,7 @@ void setup() {
 }
 
 void loop() {
-#if USE_WIFI
+#if USE_WIFI && !defined(ESPNOW_ONLY)
   webui_tick();
 #endif
   bus_tick();
@@ -365,6 +390,9 @@ void loop() {
   led_tick();
 #endif
 
+#ifdef ENABLE_BATTERY
+  battery_loop();
+#endif
 #ifdef ENABLE_WBO2
   wbo2_loop();
 #endif
@@ -374,6 +402,7 @@ void loop() {
 #ifdef ENABLE_ECU
   ecu_loop();
 #endif
+  m5_loop();
 
   // CAN frame dispatch — update shared state then route to modules
   BusFrame f;
@@ -383,7 +412,11 @@ void loop() {
     if (f.id == CAN_ID_NODE_CAP_REQ && f.dlc >= 1) {
       if (f.data[0] == 0xFF || f.data[0] == bus_node_id()) send_node_cap();
     }
-#if USE_WIFI
+    // Channel capability exchange — OBD2-style query/response
+    if (f.id == CAN_ID_CHAN_CAP_REQ && f.dlc >= 1) {
+      if (f.data[0] == 0xFF || f.data[0] == bus_node_id()) chan_caps_send();
+    }
+#if USE_WIFI && !defined(ESPNOW_ONLY)
     if (f.id == CAN_ID_NODE_CAP) webui_handle_node_cap(f);
 #endif
 #ifdef MQTT_BROKER
@@ -507,6 +540,7 @@ void loop() {
 #ifdef ENABLE_ECU
     ecu_handle_frame(f);
 #endif
+    m5_handle_frame(f);
   }
 
   // TWAI health check + bus-off recovery every 2 s
@@ -575,7 +609,7 @@ void loop() {
     last_announce = now;
     uint8_t ann[3] = { bus_node_id(), bus_peer_count(), (uint8_t)(bus_can_healthy() ? 1 : 0) };
     bus_tx(CAN_ID_NODE_ANNOUNCE, ann, 3);
-    if (++cap_div >= 6) { cap_div = 0; send_node_cap(); }  // caps every 30 s
+    if (++cap_div >= 6) { cap_div = 0; send_node_cap(); chan_caps_send(); }  // caps every 30 s
   }
 
   // Brief yield for switch panel input polling responsiveness

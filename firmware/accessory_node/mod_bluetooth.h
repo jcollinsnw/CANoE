@@ -21,8 +21,16 @@ void bluetooth_setup();
 void bluetooth_loop();
 void bluetooth_handle_frame(const BusFrame& f);
 
+/// Runtime advertising control (discoverability).
+/// Stopping advertising prevents new phones from finding the node; an already-
+/// connected phone is unaffected. Restarting advertising allows rediscovery.
+bool bluetooth_is_advertising();
+void bluetooth_set_advertising(bool en);
+
 #else   // ── stubs when ENABLE_BLUETOOTH is not defined ────────────────────
 static inline void bluetooth_setup() {}
 static inline void bluetooth_loop() {}
 static inline void bluetooth_handle_frame(const BusFrame&) {}
+static inline bool bluetooth_is_advertising() { return false; }
+static inline void bluetooth_set_advertising(bool) {}
 #endif

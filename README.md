@@ -6,7 +6,7 @@
 
 **Paddle your own canoe** — a maker-friendly, off-the-shelf microcontroller platform for wiring up anything with a 12V battery and opinions about fuel. Five ESP32 nodes ride a shared CAN bus, with ESP-NOW as extra sensory perception when the wire gives up. Out of the box it handles a switch panel, a 6-relay fuse box, a Viper 5305V alarm bridge, a dual-mode fuel controller, and a CAN-to-WiFi bridge that ties the whole bus into your home network.
 
-Each node hosts its own browser-based web console for tuning AFR targets, editing rules, or watching raw CAN frames scroll by. The whole thing builds from one unified Arduino sketch — just pick a config header and flash.
+Each node hosts its own browser-based web console for tuning AFR targets, editing rules, or watching raw CAN frames scroll by. The whole thing builds from one unified Arduino sketch — pick a config header, flash once via USB, and update wirelessly from then on.
 
 All nodes compile from the same unified sketch (`firmware/accessory_node/`). Features are controlled entirely by a per-node config header in `firmware/configs/`.
 
@@ -29,7 +29,7 @@ All nodes compile from the same unified sketch (`firmware/accessory_node/`). Fea
 | Guide | Contents |
 |-------|----------|
 | [Wiring](docs/wiring.md) | Bill of materials, pinouts for all nodes, CAN bus backbone, power distribution |
-| [Build & Flash](docs/build.md) | Prerequisites, compiling, uploading, first-boot checklist |
+| [Build & Flash](docs/build.md) | Prerequisites, compiling, USB upload, WiFi OTA, first-boot checklist |
 | [Web Console](docs/web-console.md) | Browser UI, command line, tabs, alias commands |
 | [LCD Menu](docs/lcd-menu.md) | Menu navigation, layout, relay labels and custom icons |
 | [CAN Bus Reference](docs/can-bus-reference.md) | Frame table, config protocol, rules engine, runtime examples |

@@ -636,6 +636,22 @@ function buildSettingsPanel() {
   h += '</div>';
   h += '</div>';
 
+  h += '<div class="ctrl-section">';
+  h += '<div class="ctrl-head">Firmware Update</div>';
+  h += `<div style="font-size:11px;color:#808a95;margin-bottom:10px">Upload a compiled <b>.bin</b> for this node type (<b>${statusData ? statusData.name : 'unknown'}</b>). The node restarts automatically after flashing.</div>`;
+  h += '<div style="font-size:11px;color:#f29900;margin-bottom:10px"><b>First use requires one USB flash</b> to install the OTA partition table (reflash with <code>make upload-*</code>). After that, all updates can be done wirelessly.</div>';
+  h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+  h += '  <input type="file" id="ota-file" accept=".bin" style="color:#cfe2b0;font-size:12px">';
+  h += '  <button class="ctrl-btn" id="ota-btn" onclick="uploadFirmware()">&#128736; Flash Firmware</button>';
+  h += '</div>';
+  h += '<div id="ota-progress" style="margin-top:10px;display:none">';
+  h += '  <div style="background:#1a2a3a;border-radius:4px;height:8px;overflow:hidden">';
+  h += '    <div id="ota-bar" style="background:#9bd770;height:100%;width:0%;transition:width 0.2s"></div>';
+  h += '  </div>';
+  h += '  <div id="ota-status" style="margin-top:6px;font-size:11px;color:#808a95"></div>';
+  h += '</div>';
+  h += '</div>';
+
   document.getElementById('settings-panel').innerHTML = h;
   loadWifiCreds();
 }
@@ -691,6 +707,50 @@ async function saveWifiCreds(broadcast) {
 async function rebootAll() {
   if (!confirm('Reboot all nodes now?')) return;
   await sendFrame(0x0F5, [0xFF]);
+}
+
+function uploadFirmware() {
+  const fileInput = document.getElementById('ota-file');
+  const progressDiv = document.getElementById('ota-progress');
+  const bar = document.getElementById('ota-bar');
+  const status = document.getElementById('ota-status');
+  const btn = document.getElementById('ota-btn');
+  if (!fileInput.files.length) { alert('Select a .bin file first.'); return; }
+  const file = fileInput.files[0];
+  if (!file.name.endsWith('.bin')) { alert('File must be a .bin firmware image.'); return; }
+  const sizeKB = (file.size / 1024).toFixed(1);
+  if (!confirm(`Flash "${file.name}" (${sizeKB} KB) to this node?\nThe node will restart after flashing.`)) return;
+  btn.disabled = true;
+  progressDiv.style.display = 'block';
+  bar.style.background = '#9bd770';
+  bar.style.width = '0%';
+  status.textContent = 'Uploading…';
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/ota');
+  xhr.timeout = 120000;
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round(e.loaded / e.total * 100);
+    bar.style.width = pct + '%';
+    status.textContent = `Uploading: ${pct}% (${(e.loaded/1024).toFixed(0)} / ${(e.total/1024).toFixed(0)} KB)`;
+  };
+  xhr.onload = () => {
+    if (xhr.status === 200 && xhr.responseText === 'OK') {
+      bar.style.width = '100%';
+      status.textContent = 'Flashed! Node is restarting… Reconnect to the AP and reload.';
+    } else {
+      bar.style.background = '#ff6b6b';
+      status.textContent = 'Failed: ' + (xhr.responseText || xhr.status);
+      btn.disabled = false;
+    }
+  };
+  xhr.onerror = xhr.ontimeout = () => {
+    bar.style.width = '100%';
+    status.textContent = 'Node is restarting… Reconnect to the AP and reload.';
+  };
+  const fd = new FormData();
+  fd.append('firmware', file, file.name);
+  xhr.send(fd);
 }
 
 function toggleLed(idx, targetNode) {

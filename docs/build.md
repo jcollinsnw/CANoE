@@ -8,9 +8,10 @@ Compiling firmware, flashing nodes, and verifying a successful first boot.
 
 1. [Prerequisites](#1-prerequisites)
 2. [Configure the Target Node](#2-configure-the-target-node)
-3. [Compile and Upload](#3-compile-and-upload)
-4. [Monitor Serial Output](#4-monitor-serial-output)
-5. [First Boot Checklist](#5-first-boot-checklist)
+3. [Compile and Upload (USB)](#3-compile-and-upload-usb)
+4. [OTA Updates (WiFi Flash)](#4-ota-updates-wifi-flash)
+5. [Monitor Serial Output](#5-monitor-serial-output)
+6. [First Boot Checklist](#6-first-boot-checklist)
 
 ---
 
@@ -24,11 +25,17 @@ Compiling firmware, flashing nodes, and verifying a successful first boot.
 arduino-cli core install esp32:esp32
 ```
 
+**M5Stack Cardputer (ESP32-S3) only:** Add the M5Stack board manager URL and install:
+```bash
+arduino-cli config add board_manager.additional_urls https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
+arduino-cli core install m5stack:esp32
+```
+
 **Arduino IDE setup:** File → Preferences → Additional boards manager URLs → add:
 ```
 https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 ```
-Then Tools → Board → Boards Manager → search "esp32" → install.
+Then Tools → Board → Boards Manager → search "esp32" → install. For Cardputer support, also add the M5Stack URL above and install "M5Stack".
 
 **MQTT bridge only:** Install the PubSubClient library if flashing the bridge node with `MQTT_BROKER` defined:
 ```bash
@@ -59,7 +66,7 @@ For the bridge node, also set your home WiFi credentials in `firmware/configs/br
 
 ---
 
-## 3. Compile and Upload
+## 3. Compile and Upload (USB)
 
 The Makefile copies the right config header and compiles the single unified sketch. Find your serial ports first:
 
@@ -79,6 +86,7 @@ make upload-switch  PORT=/dev/cu.usbserial-YYYY
 make upload-viper   PORT=/dev/cu.usbserial-ZZZZ
 make upload-ecu     PORT=/dev/cu.usbserial-WWWW
 make upload-bridge  PORT=/dev/cu.usbserial-VVVV
+make upload-cardputer PORT=/dev/cu.usbserial-CCCC
 ```
 
 **Compile only (no upload):**
@@ -88,7 +96,10 @@ make switch
 make viper
 make ecu
 make bridge
+make cardputer
 ```
+
+Compiled binaries land in `build/<node>/accessory_node.ino.bin` for use with OTA or the browser upload. The Cardputer target uses the M5Stack FQBN (`m5stack:esp32:m5stack_cardputer`) and does not produce a web UI — it has no SoftAP.
 
 **Arduino IDE (manual):** Copy the config before opening the sketch:
 ```bash
@@ -98,7 +109,41 @@ Then open `firmware/accessory_node/accessory_node.ino`, select Tools → Board �
 
 ---
 
-## 4. Monitor Serial Output
+## 4. OTA Updates (WiFi Flash)
+
+After the first USB flash, all subsequent updates can be done wirelessly over the node's SoftAP — no cable required.
+
+### One-time USB requirement
+
+The firmware uses the `min_spiffs` partition scheme, which reserves two app slots for OTA. The partition table is written during the **first USB flash**. Every node must be flashed at least once via USB before OTA will work. After that first flash, USB is optional.
+
+### From the terminal
+
+Connect your Mac to the node's AP (`AccessoryBus`), then run the matching `ota-*` target. It recompiles and uploads in one step:
+
+```bash
+make ota-relay
+make ota-switch
+make ota-viper
+make ota-ecu
+make ota-bridge
+```
+
+`OTA_IP` defaults to `192.168.4.1`. Override it if the node is reachable at a different address (e.g. the bridge node via your home network):
+
+```bash
+make ota-bridge OTA_IP=192.168.1.42
+```
+
+### From the browser
+
+Connect to the node's AP, open `http://192.168.4.1`, go to **Settings → Firmware Update**. Select `build/<node>/accessory_node.ino.bin` and click **Flash Firmware**. A progress bar tracks the upload; the node reboots automatically when done.
+
+> **Select the correct binary for the node you are connected to.** The Settings panel shows the current node name as a reminder. Flashing the wrong binary (e.g. `relay_controller` firmware onto the `switch_panel`) produces a live but misconfigured node — fix it with another OTA or USB flash of the correct binary.
+
+---
+
+## 5. Monitor Serial Output
 
 All nodes log to serial at **115200 baud**.
 
@@ -121,7 +166,7 @@ Nodes with WiFi also expose serial output in the web UI's **Serial** tab via `wl
 
 ---
 
-## 5. First Boot Checklist
+## 6. First Boot Checklist
 
 Work through this after flashing all nodes for the first time.
 
@@ -135,6 +180,7 @@ Work through this after flashing all nodes for the first time.
    - Viper interface: `[boot] viper interface ready`
    - ECU node: `[ecu] base_pw=XXXX us  disp/cyl=XXX cc  n_inj=N`
    - Bridge node: `[wifi] STA connected, IP=192.168.x.x`
+   - Cardputer: `[boot] ESP-NOW only mode` (TFT shows relay status bar + CLI prompt)
 
 4. **LCD** — switch panel prints `[LCD] init OK`. If the display stays blank, try the alternate I2C address (`LCD_I2C_ADDR 0x3F`).
 

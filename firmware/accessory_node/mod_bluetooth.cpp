@@ -21,6 +21,7 @@
 #include <BLEServer.h>
 #include <BLECharacteristic.h>
 #include <BLE2902.h>
+#include <Preferences.h>
 
 #include "can_protocol.h"
 #include "bus.h"
@@ -57,10 +58,11 @@ static inline bool rx_empty_unsafe() { return s_rx_head == s_rx_tail; }
 static inline bool rx_full_unsafe()  { return ((s_rx_tail + 1) % BLE_RX_RING) == s_rx_head; }
 
 // ── BLE handles ───────────────────────────────────────────────────────────
-static BLEServer*         s_server  = nullptr;
-static BLECharacteristic* s_tx_char = nullptr;
-static BLECharacteristic* s_rx_char = nullptr;
-static bool               s_connected = false;
+static BLEServer*         s_server     = nullptr;
+static BLECharacteristic* s_tx_char    = nullptr;
+static BLECharacteristic* s_rx_char    = nullptr;
+static bool               s_connected  = false;
+static bool               s_advertising = false;  // true while actively advertising
 
 // ── Callbacks ─────────────────────────────────────────────────────────────
 class BtServerCallbacks : public BLEServerCallbacks {
@@ -70,8 +72,12 @@ class BtServerCallbacks : public BLEServerCallbacks {
     }
     void onDisconnect(BLEServer*) override {
         s_connected = false;
-        wlogln("[bt] phone disconnected — restarting advertising");
-        BLEDevice::startAdvertising();
+        if (s_advertising) {
+            wlogln("[bt] phone disconnected — restarting advertising");
+            BLEDevice::startAdvertising();
+        } else {
+            wlogln("[bt] phone disconnected — advertising suppressed");
+        }
     }
 };
 
@@ -90,6 +96,16 @@ class BtRxCallbacks : public BLECharacteristicCallbacks {
 
 // ── Public API ────────────────────────────────────────────────────────────
 void bluetooth_setup() {
+    // Check NVS power flag — allows menu to disable BLE entirely (saves ~80 KB heap).
+    {
+        Preferences p; p.begin(NVS_NAMESPACE, true);
+        bool en = p.getBool("bt_en", true);
+        p.end();
+        if (!en) {
+            wlogln("[bt] disabled by config");
+            return;
+        }
+    }
 #ifndef BLE_DEVICE_NAME
 #  define BLE_DEVICE_NAME NODE_NAME
 #endif
@@ -119,8 +135,22 @@ void bluetooth_setup() {
     adv->addServiceUUID(BLE_SERVICE_UUID);
     adv->setScanResponse(true);
     BLEDevice::startAdvertising();
+    s_advertising = true;
 
     wlog("[bt] advertising as \"%s\"\n", BLE_DEVICE_NAME);
+}
+
+bool bluetooth_is_advertising() { return s_advertising; }
+
+void bluetooth_set_advertising(bool en) {
+    s_advertising = en;
+    if (en) {
+        BLEDevice::startAdvertising();
+        wlogln("[bt] advertising started");
+    } else {
+        BLEDevice::stopAdvertising();
+        wlogln("[bt] advertising stopped");
+    }
 }
 
 void bluetooth_loop() {

@@ -132,3 +132,15 @@
 #define ECU_NTC_PULLUP_OHMS       10000   // pull-up resistor value
 #define ECU_NTC_BETA              3540    // thermistor Beta coefficient
 #define ECU_NTC_R0                2590    // Ω at T0 (25°C)
+
+// ---- Channel capabilities ----
+// Advertises all channels this node publishes in response to CHAN_CAP_REQ (0x320).
+// Temps are encoded as uint8 (°C + 40); int_offset = -40 restores the real °C value.
+#define CHAN_CAPS_INIT { \
+    CHAN_DEF(CHAN_ID_RPM,   CAN_ID_ENGINE_DATA, 0, CHAN_ENC_U16LE|CHAN_SCALE_1,                   0,   0x00), \
+    CHAN_DEF(CHAN_ID_AFR,   CAN_ID_WBO2_DATA,   0, CHAN_ENC_U16LE|CHAN_SCALE_100,                 0,   0x00), \
+    CHAN_DEF(CHAN_ID_MAP,   CAN_ID_ECU_DATA,    1, CHAN_ENC_U8|CHAN_SCALE_1,                      0,   0x00), \
+    CHAN_DEF(CHAN_ID_TPS,   CAN_ID_ECU_DATA,    2, CHAN_ENC_U8|CHAN_SCALE_1,                      0,   0x00), \
+    CHAN_DEF(CHAN_ID_CLT,   CAN_ID_ECU_DATA,    3, CHAN_ENC_U8|CHAN_SCALE_1|CHAN_HAS_OFFSET,    -40,   0x00), \
+    CHAN_DEF(CHAN_ID_IAT,   CAN_ID_ECU_DATA,    4, CHAN_ENC_U8|CHAN_SCALE_1|CHAN_HAS_OFFSET,    -40,   0x00), \
+}

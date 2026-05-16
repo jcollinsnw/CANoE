@@ -18,6 +18,7 @@
 #include "index_html.h"
 #include "mod_wifi_creds.h"
 #include "mod_blob.h"
+#include <Update.h>
 #ifdef ENABLE_RULES
 #include "mod_rules.h"
 #endif
@@ -84,6 +85,7 @@ static uint8_t     g_node_id = 0;
 static uint32_t    g_boot_ms = 0;
 static uint8_t     g_ap_clients = 0;
 static void (*g_ap_client_cb)(uint8_t, uint8_t) = nullptr;
+static bool        g_ota_error = false;
 
 // --------------------------------------------------------------
 // Node capability cache — populated from CAN_ID_NODE_CAP (0x0F2) frames.
@@ -556,6 +558,49 @@ static void handle_wifi_creds_reset() {
   g_http.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handle_ota_upload() {
+  HTTPUpload& upload = g_http.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    g_ota_error = false;
+    wlog("[ota] start: %s\n", upload.filename.c_str());
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+      g_ota_error = true;
+      Update.printError(Serial);
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (!g_ota_error) {
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        g_ota_error = true;
+        Update.printError(Serial);
+      }
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (!g_ota_error) {
+      if (Update.end(true)) {
+        wlog("[ota] success: %u bytes\n", upload.totalSize);
+      } else {
+        g_ota_error = true;
+        Update.printError(Serial);
+      }
+    }
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    g_ota_error = true;
+    Update.abort();
+    wlog("[ota] aborted\n");
+  }
+}
+
+static void handle_ota() {
+  g_http.sendHeader("Connection", "close");
+  if (g_ota_error) {
+    g_http.send(500, "text/plain", "FAIL");
+  } else {
+    g_http.send(200, "text/plain", "OK");
+    delay(100);
+    ESP.restart();
+  }
+}
+
 static void handle_not_found() {
   // Captive portal: any unknown host → redirect to our root
   g_http.sendHeader("Location", String("http://") + AP_IP.toString() + "/", true);
@@ -617,6 +662,8 @@ void webui_init(const char* node_name, uint8_t node_id) {
   g_http.on("/api/wifi_creds",       HTTP_GET,  handle_wifi_creds_get);
   g_http.on("/api/wifi_creds",       HTTP_POST, handle_wifi_creds_post);
   g_http.on("/api/wifi_creds/reset", HTTP_POST, handle_wifi_creds_reset);
+
+  g_http.on("/api/ota", HTTP_POST, handle_ota, handle_ota_upload);
 
   // Common captive-portal probe paths — just bounce them to our root
   g_http.on("/generate_204",         HTTP_GET, handle_not_found);

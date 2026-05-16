@@ -64,6 +64,10 @@ Each submenu is compiled in independently via `MENU_HAS_*` flags in the node con
 | `MENU_HAS_BUS` | Live TWAI health counters |
 | `MENU_HAS_DISPLAY` | LCD backlight toggle |
 | `MENU_HAS_WIFI` | Per-node WiFi enable/disable |
+| `MENU_HAS_TX_MODE` | CAN/WiFi transport mode selector |
+| `MENU_HAS_BEEP` | Buzzer mute + startup sound toggles |
+| `MENU_HAS_REBOOT` | Reboot any node by ID |
+| `MENU_HAS_BLUETOOTH` | BLE advertising (discoverability) + power toggle |
 
 ---
 

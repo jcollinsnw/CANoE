@@ -11,8 +11,9 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     // Published state
     @Published var isRunning   = false
     @Published var authDenied  = false
-    @Published var speedMph: Double?    // nil until first valid fix
-    @Published var headingDeg: Double?  // nil until first valid heading
+    @Published var speedMph: Double?                    // nil until first valid fix
+    @Published var headingDeg: Double?                  // nil until first valid heading
+    @Published var coordinate: CLLocationCoordinate2D?  // nil until first fix
 
     /// Latest 5-byte GPS_DATA payload: [spd_lo, spd_hi, hdg_lo, hdg_hi, flags]
     /// Matches CAN_ID_GPS_DATA (0x305) format from the hardware GPS module.
@@ -78,6 +79,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
         speedMph   = spdMph
         headingDeg = hdgDeg
+        coordinate = loc.coordinate
 
         buildAndPublish(speed: spdMph, heading: hdgDeg)
     }

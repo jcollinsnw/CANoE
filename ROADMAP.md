@@ -87,5 +87,16 @@ A full off-device tuning platform built as a Quasar/Vue app that talks to the ex
 
 ## Unorganized
 
-- LCD Menu for Bluetooth discoverability/power
 - Switch wiring to regular rotary encoder
+
+---
+
+## iOS Tuner App
+
+- **Engine data logging** — record sessions to CSV on the phone: parse all sensor data including `ENGINE_DATA (0x304)`, `ECU_DATA (0x307)`, `WBO2_DATA (0x306)`, `TELEMETRY (0x300)`, and weather data frames into timestamped rows. Display rolling time-series graphs per channel with a configurable time window. Export via the iOS share sheet. The UI should be customizable with the ability to add a graph, add multiple data series's to that graph (telemetry, engine data, etc). Implement standard data logging functions that are common with OBD2 scanners.
+
+---
+
+## Done
+
+- ~~LCD menu Bluetooth submenu~~ — `MENU_HAS_BLUETOOTH`; Advertise toggle (runtime) + BT Power toggle (NVS + restart)

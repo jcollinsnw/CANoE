@@ -16,6 +16,7 @@
 #include "mod_lcd.h"
 #include "mod_relay.h"
 #include "mod_buzzer.h"
+#include "mod_bluetooth.h"
 
 #if USE_WIFI
 #include "webui.h"
@@ -37,6 +38,7 @@
 #define MENU_ID_TX_MODE 6
 #define MENU_ID_BEEP    7
 #define MENU_ID_REBOOT  8
+#define MENU_ID_BLUETOOTH 9
 
 struct MenuItem {
   uint8_t     id;
@@ -58,13 +60,16 @@ static bool g_node_wifi[3] = { true, false, true };
 #ifdef MENU_HAS_BEEP
 static bool g_startup_snd = true;  // NVS pref; loaded in menu_setup()
 #endif
+#ifdef MENU_HAS_BLUETOOTH
+static bool g_bt_en = true;        // NVS pref; loaded in menu_setup()
+#endif
 
 #ifdef MENU_HAS_REBOOT
 static const char* const REBOOT_LABELS[]  = { "Self", "Relay Ctrl", "Viper Ifc", "ECU Node ", "All Nodes" };
 static const uint8_t     REBOOT_TARGETS[] = { NODE_ID, 0x02, 0x03, 0x04, 0xFF };
 #endif
 
-static MenuItem g_items[10];  // max 9 sections + spare
+static MenuItem g_items[12];  // max 11 sections + spare
 static uint8_t  g_item_count = 0;
 
 static uint8_t  g_level    = 0;
@@ -208,6 +213,18 @@ static void menu_draw() {
         break;
 #endif
 
+#ifdef MENU_HAS_BLUETOOTH
+      case MENU_ID_BLUETOOTH:
+        snprintf(r0, sizeof(r0), "Bluetooth");
+        if (is_back)
+          snprintf(r1, sizeof(r1), "\x7F Back");
+        else if (g_sub_sel == 0)
+          snprintf(r1, sizeof(r1), "\x7E Advertise %s", bluetooth_is_advertising() ? "ON " : "OFF");
+        else
+          snprintf(r1, sizeof(r1), "\x7E BT Power  %s", g_bt_en ? "ON " : "OFF");
+        break;
+#endif
+
 #ifdef MENU_HAS_REBOOT
       case MENU_ID_REBOOT:
         if (is_back) {
@@ -267,6 +284,14 @@ void menu_setup() {
 #endif
 #ifdef MENU_HAS_REBOOT
   g_items[g_item_count++] = { MENU_ID_REBOOT, "Reboot",    6 };  // 5 targets + Back
+#endif
+#ifdef MENU_HAS_BLUETOOTH
+  g_items[g_item_count++] = { MENU_ID_BLUETOOTH, "Bluetooth", 3 };  // Advertise + BT Power + Back
+  {
+    Preferences p; p.begin(NVS_NAMESPACE, true);
+    g_bt_en = p.getBool("bt_en", true);
+    p.end();
+  }
 #endif
   g_items[g_item_count++] = { MENU_ID_EXIT,    "\x7F Exit",  0 };  // always last
 }
@@ -437,6 +462,26 @@ void menu_action() {
       menu_draw();
       break;
     }
+#endif
+
+#ifdef MENU_HAS_BLUETOOTH
+    case MENU_ID_BLUETOOTH:
+      if (idx == 0) {
+        // Toggle advertising (discoverability) — runtime only, no restart.
+        bluetooth_set_advertising(!bluetooth_is_advertising());
+        wlog("[menu] bt advertise=%u\n", bluetooth_is_advertising());
+      } else {
+        // Toggle BT power — persisted to NVS, requires restart to take effect.
+        g_bt_en = !g_bt_en;
+        Preferences p; p.begin(NVS_NAMESPACE, false);
+        p.putBool("bt_en", g_bt_en);
+        p.end();
+        wlog("[menu] bt_en=%u -> restart\n", g_bt_en);
+        delay(100);
+        ESP.restart();
+      }
+      menu_draw();
+      break;
 #endif
 
     default: break;

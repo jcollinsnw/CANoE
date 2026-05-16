@@ -39,6 +39,7 @@ private struct WebErrorView: View {
 // Coordinator directly. Only the `make*View` / `update*View` methods and the
 // pull-to-refresh setup are platform-specific.
 
+@MainActor
 struct NodeWebView {
     let url: URL
     /// Called once after the WKWebView is created so callers can retain the

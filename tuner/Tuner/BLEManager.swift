@@ -54,6 +54,8 @@ final class BLEManager: NSObject, ObservableObject,
     @Published var peripheralName: String = ""
     @Published var frames: [CANFrame] = []
 
+    let framePublisher = PassthroughSubject<CANFrame, Never>()
+
     var isReady: Bool { connectionState == .ready }
 
     // ── Private ───────────────────────────────────────────────────────────
@@ -108,6 +110,27 @@ final class BLEManager: NSObject, ObservableObject,
 
     func clearFrames() {
         frames = []
+    }
+
+    func exportFramesCSV() -> URL? {
+        guard !frames.isEmpty else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var csv = "Timestamp,Direction,CAN_ID,DLC,D0,D1,D2,D3,D4,D5,D6,D7\n"
+        for frame in frames {
+            let ts    = iso.string(from: frame.timestamp)
+            let dir   = frame.isOutbound ? "TX" : "RX"
+            let id    = String(format: "0x%03X", frame.canID)
+            let bytes = (0..<8).map { i in
+                i < Int(frame.dlc) ? String(format: "%02X", frame.data[i]) : ""
+            }
+            csv += ([ts, dir, id, String(frame.dlc)] + bytes).joined(separator: ",") + "\n"
+        }
+        let name = "CANFrames_\(iso.string(from: Date())).csv"
+            .replacingOccurrences(of: ":", with: "-")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        try? csv.write(to: url, atomically: true, encoding: .utf8)
+        return url
     }
 
     /// Inject a CAN frame from the phone onto the ESP32 bus.
@@ -253,8 +276,13 @@ final class BLEManager: NSObject, ObservableObject,
 
     private func appendFrame(_ frame: CANFrame) {
         frames.append(frame)
+        framePublisher.send(frame)
         if frames.count > maxFrames {
             frames.removeFirst(frames.count - maxFrames)
         }
+    }
+
+    func injectFrame(_ frame: CANFrame) {
+        appendFrame(frame)
     }
 }

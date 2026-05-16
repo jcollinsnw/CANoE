@@ -13,6 +13,12 @@
 		AA0000000000000000000018 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000014 /* Assets.xcassets */; };
 		AA0000000000000000000025 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000026 /* LocationManager.swift */; };
 		AA0000000000000000000027 /* BLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000028 /* BLEManager.swift */; };
+		AA0000000000000000000029 /* WeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000030 /* WeatherService.swift */; };
+		AA0000000000000000000031 /* AltimeterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000032 /* AltimeterManager.swift */; };
+		FE18F95A2FB86691001C73B1 /* errors.txt in Resources */ = {isa = PBXBuildFile; fileRef = FE18F9592FB8668B001C73B1 /* errors.txt */; };
+		AA0000000000000000000034 /* DataLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000033 /* DataLogger.swift */; };
+		AA0000000000000000000036 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000035 /* LogView.swift */; };
+		AA0000000000000000000038 /* SimulatorDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000037 /* SimulatorDriver.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,10 +26,16 @@
 		AA0000000000000000000012 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000013 /* NodeWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeWebView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		AA0000000000000000000026 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
-		AA0000000000000000000028 /* BLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEManager.swift; sourceTree = "<group>"; };
 		AA0000000000000000000022 /* Tuner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tuner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA0000000000000000000026 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		AA0000000000000000000028 /* BLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEManager.swift; sourceTree = "<group>"; };
+		AA0000000000000000000030 /* WeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000032 /* AltimeterManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AltimeterManager.swift; sourceTree = "<group>"; };
+		FE18F9592FB8668B001C73B1 /* errors.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = errors.txt; sourceTree = "<group>"; };
+		AA0000000000000000000033 /* DataLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataLogger.swift; sourceTree = "<group>"; };
+		AA0000000000000000000035 /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000037 /* SimulatorDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorDriver.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,7 +49,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		AA0000000000000000000009 /* = */ = {
+		AA0000000000000000000009 = {
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000023 /* Tuner */,
@@ -58,9 +70,15 @@
 			children = (
 				AA0000000000000000000011 /* TunerApp.swift */,
 				AA0000000000000000000012 /* ContentView.swift */,
+				FE18F9592FB8668B001C73B1 /* errors.txt */,
 				AA0000000000000000000013 /* NodeWebView.swift */,
 				AA0000000000000000000026 /* LocationManager.swift */,
 				AA0000000000000000000028 /* BLEManager.swift */,
+				AA0000000000000000000030 /* WeatherService.swift */,
+				AA0000000000000000000032 /* AltimeterManager.swift */,
+				AA0000000000000000000033 /* DataLogger.swift */,
+				AA0000000000000000000035 /* LogView.swift */,
+				AA0000000000000000000037 /* SimulatorDriver.swift */,
 				AA0000000000000000000014 /* Assets.xcassets */,
 				AA0000000000000000000024 /* Info.plist */,
 			);
@@ -126,6 +144,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000000000000000000018 /* Assets.xcassets in Resources */,
+				FE18F95A2FB86691001C73B1 /* errors.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -141,6 +160,11 @@
 				AA0000000000000000000017 /* NodeWebView.swift in Sources */,
 				AA0000000000000000000025 /* LocationManager.swift in Sources */,
 				AA0000000000000000000027 /* BLEManager.swift in Sources */,
+				AA0000000000000000000029 /* WeatherService.swift in Sources */,
+				AA0000000000000000000031 /* AltimeterManager.swift in Sources */,
+				AA0000000000000000000034 /* DataLogger.swift in Sources */,
+				AA0000000000000000000036 /* LogView.swift in Sources */,
+				AA0000000000000000000038 /* SimulatorDriver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -150,6 +174,7 @@
 		AA0000000000000000000005 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -198,13 +223,12 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator";
-				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -213,6 +237,7 @@
 		AA0000000000000000000006 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -255,11 +280,10 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator";
-				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -268,15 +292,14 @@
 		AA0000000000000000000007 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 62LL8YN8KX;
 				INFOPLIST_FILE = Tuner/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator";
-				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -284,6 +307,8 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.accessorybus.tuner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -293,15 +318,14 @@
 		AA0000000000000000000008 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 62LL8YN8KX;
 				INFOPLIST_FILE = Tuner/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator";
-				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -309,6 +333,8 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.accessorybus.tuner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

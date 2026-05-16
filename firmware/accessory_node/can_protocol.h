@@ -127,6 +127,60 @@
 #define CAN_ID_VIPER_CMD         0x510  // Any node -> viper_interface: data[0] = VIPER_CMD_*
 #define CAN_ID_VIPER_STATUS      0x511  // viper_interface -> everyone: data[0..4] = raw 5-byte alarm packet
 
+// Channel capability advertisement — OBD2-style query/response.
+// Any node (or app) sends CHAN_CAP_REQ; nodes that have CHAN_CAPS_INIT respond
+// with one CHAN_CAP frame per channel they publish.
+//
+// CHAN_CAP_REQ [0]=target_node_id (0xFF = all)
+// CHAN_CAP     [0]=node_id [1]=chan_id [2]=src_can_id_lo [3]=src_can_id_hi
+//              [4]=byte_offset [5]=encoding [6]=int_offset (int8) [7]=valid_spec
+#define CAN_ID_CHAN_CAP_REQ      0x320
+#define CAN_ID_CHAN_CAP          0x321
+
+// Standard channel IDs (CHAN_CAP data[1]) — identifies the physical quantity.
+// These are stable across firmware versions; new sensors get new IDs.
+#define CHAN_ID_RPM              0x01   // engine RPM (rpm)
+#define CHAN_ID_TPS              0x02   // throttle position (%)
+#define CHAN_ID_MAP              0x03   // manifold absolute pressure (kPa)
+#define CHAN_ID_CLT              0x04   // coolant temperature (°C)
+#define CHAN_ID_IAT              0x05   // intake air temperature (°C)
+#define CHAN_ID_AFR              0x06   // air/fuel ratio (:1)
+#define CHAN_ID_SPEED            0x07   // vehicle speed (mph)
+#define CHAN_ID_VBAT             0x08   // main battery voltage (V)
+#define CHAN_ID_VBAT2            0x09   // auxiliary battery voltage (V)
+
+// Encoding byte (CHAN_CAP data[5]) — packed field describing how to decode the raw bytes.
+//   bits [7:6] — data type
+#define CHAN_ENC_U8              0x00   // uint8, single byte at byte_offset
+#define CHAN_ENC_U16LE           0x40   // uint16 little-endian, two bytes at byte_offset
+#define CHAN_ENC_I8              0x80   // int8, single byte
+#define CHAN_ENC_I16LE           0xC0   // int16 little-endian
+//   bits [5:4] — scale divisor applied after raw → double conversion
+#define CHAN_SCALE_1             0x00   // value / 1
+#define CHAN_SCALE_10            0x10   // value / 10
+#define CHAN_SCALE_100           0x20   // value / 100
+#define CHAN_SCALE_1000          0x30   // value / 1000
+//   modifier bits
+#define CHAN_HAS_OFFSET          0x08   // add int_offset (data[6], int8) to scaled result
+#define CHAN_HAS_VALID           0x04   // check a specific bit before accepting value
+                                        //   data[7] valid_spec: bits[7:4]=byte_idx, bits[3:0]=bit_idx
+#define CHAN_SKIP_ZERO           0x02   // treat decoded value of 0.0 as "not available" (return nil)
+
+// Compact channel definition — one row per channel a node publishes.
+// Stored as a static const array (CHAN_CAPS_INIT) in each node config.
+struct CanChanDef {
+    uint8_t  chan_id;      // CHAN_ID_* above
+    uint16_t src_can_id;   // CAN ID of the frame that carries this channel
+    uint8_t  byte_offset;  // first byte index within that frame (0-7)
+    uint8_t  encoding;     // CHAN_ENC_* | CHAN_SCALE_* | modifier flags
+    int8_t   int_offset;   // signed offset added after scaling (0 if !CHAN_HAS_OFFSET)
+    uint8_t  valid_spec;   // (byte_idx<<4)|bit_idx for valid-bit check (0 if !CHAN_HAS_VALID)
+};
+
+// Usage: CHAN_DEF(CHAN_ID_RPM, CAN_ID_ENGINE_DATA, 0, CHAN_ENC_U16LE|CHAN_SCALE_1, 0, 0)
+#define CHAN_DEF(chan, src, off, enc, ioff, vspec) \
+    { (chan), (src), (off), (enc), (ioff), (vspec) }
+
 // Viper command codes for CAN_ID_VIPER_CMD data[0]
 #define VIPER_CMD_LOCK           0x01   // Arm / lock doors
 #define VIPER_CMD_UNLOCK         0x02   // Disarm / unlock doors
