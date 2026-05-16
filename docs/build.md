@@ -86,7 +86,7 @@ make upload-switch  PORT=/dev/cu.usbserial-YYYY
 make upload-viper   PORT=/dev/cu.usbserial-ZZZZ
 make upload-ecu     PORT=/dev/cu.usbserial-WWWW
 make upload-bridge  PORT=/dev/cu.usbserial-VVVV
-make upload-cardputer PORT=/dev/cu.usbserial-CCCC
+make upload-cardputer                              # copies to /Volumes/CARDPUTER/CANoE/ then unmounts
 ```
 
 **Compile only (no upload):**
@@ -99,7 +99,13 @@ make bridge
 make cardputer
 ```
 
-Compiled binaries land in `build/<node>/accessory_node.ino.bin` for use with OTA or the browser upload. The Cardputer target uses the M5Stack FQBN (`m5stack:esp32:m5stack_cardputer`) and does not produce a web UI — it has no SoftAP.
+Compiled binaries land in `build/<node>/accessory_node.ino.bin` for use with OTA or the browser upload. The Cardputer binary is also copied to `build/cardputer/m5canoe.bin`. The Cardputer target uses the M5Stack FQBN (`m5stack:esp32:m5stack_cardputer`) and does not produce a web UI — it has no SoftAP.
+
+**Cardputer upload (UF2 / mass storage):** `make upload-cardputer` copies `m5canoe.bin` to the Cardputer's mass-storage volume and unmounts it. The Cardputer must be in UF2 mode first — hold the G0 key while plugging in USB until it mounts as a drive. Volume path and subdirectory are configurable:
+```bash
+make upload-cardputer                                              # default: /Volumes/CARDPUTER/CANoE/
+make upload-cardputer CARDPUTER_VOLUME=/Volumes/MYCARD CARDPUTER_DIR=firmware
+```
 
 **Arduino IDE (manual):** Copy the config before opening the sketch:
 ```bash

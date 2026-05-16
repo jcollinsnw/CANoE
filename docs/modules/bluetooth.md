@@ -75,6 +75,26 @@ When the node loses power (ignition off), `BLEManager` leaves a pending `connect
 | `ENABLE_BLUETOOTH` | — | Compile-in the module |
 | `BLE_DEVICE_NAME` | `"Crustang Switch"` | BLE advertised name. Defaults to `NODE_NAME`. |
 
+### Runtime control via CAN
+
+Both commands use `CONFIG_WRITE (0x400)` — see [CAN Bus Reference: Runtime Configuration](../can-bus-reference.md#runtime-configuration) for the full frame layout.
+
+| Key | Constant | Effect |
+|-----|----------|--------|
+| `0x33` | `CFG_KEY_BT_ENABLED` | `arg=1` enable / `arg=0` disable BLE. Saves `bt_en` to NVS and restarts the node. |
+| `0x34` | `CFG_KEY_BT_ADVERTISING` | `arg=1` start / `arg=0` stop advertising. Runtime only — no restart, no NVS write. |
+
+```
+# Disable BLE on relay_controller (0x02), persists across reboots
+400 02 33 00 00 00 00 00 00
+
+# Stop advertising without rebooting (blocks new connections; existing one stays)
+400 02 34 00 00 00 00 00 00
+
+# Resume advertising
+400 02 34 00 00 01 00 00 00
+```
+
 ---
 
 ## Typical node config

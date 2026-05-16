@@ -17,6 +17,7 @@ This document covers how to use the accessory bus at runtime — sending command
 | viper_interface | 0x03 |
 | ecu_node | 0x04 |
 | bridge | 0x05 |
+| cardputer | 0x06 |
 
 ---
 
@@ -675,6 +676,37 @@ Enable or disable only the ESP-NOW radio. Node restarts to apply.
 
 # Re-enable
 400 03 32 00 00 01 00 00 00
+```
+
+### Bluetooth enable / disable — key `0x33`
+
+Enable or disable the BLE radio. Saves `bt_en` to NVS and restarts the node to apply. No-op on nodes compiled without `ENABLE_BLUETOOTH`.
+
+`arg` (data[4]): `0` = disable, `1` = enable.
+
+```
+# Disable BLE on relay_controller (0x02)
+400 02 33 00 00 00 00 00 00
+
+# Enable BLE on relay_controller
+400 02 33 00 00 01 00 00 00
+
+# Disable BLE on all nodes
+400 FF 33 00 00 00 00 00 00
+```
+
+### Bluetooth advertising control — key `0x34`
+
+Start or stop BLE advertising at runtime without restarting the node. An already-connected phone is unaffected; stopping advertising just prevents new connections.
+
+`arg` (data[4]): `0` = stop advertising, `1` = start advertising.
+
+```
+# Stop advertising on relay_controller (prevent new BLE connections)
+400 02 34 00 00 00 00 00 00
+
+# Resume advertising
+400 02 34 00 00 01 00 00 00
 ```
 
 ---
