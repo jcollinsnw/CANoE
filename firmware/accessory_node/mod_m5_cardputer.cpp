@@ -37,15 +37,18 @@
 // Brand blue (#006DAC) in RGB565: ((0&0xF8)<<8)|((0x6D&0xFC)<<3)|(0xAC>>3) = 0x0375
 #define ACAPULCO_BLUE      0x0375
 
-// --- Scroll buffer ---
+// --- Scroll buffers ---
 struct LogLine { char text[LINE_BUF_SZ]; uint16_t color; };
-static LogLine  g_lines[MAX_LINES];
-static uint8_t  g_line_head  = 0;
-static uint8_t  g_line_count = 0;
+static LogLine  g_can_lines[MAX_LINES];
+static uint8_t  g_can_head  = 0;
+static uint8_t  g_can_count = 0;
+static LogLine  g_feed_lines[MAX_LINES];
+static uint8_t  g_feed_head  = 0;
+static uint8_t  g_feed_count = 0;
 
 // --- Screen state ---
-enum class M5Screen { FEED, MENU };
-static M5Screen g_screen      = M5Screen::FEED;
+enum class M5Screen { CAN, FEED, MENU };
+static M5Screen g_screen      = M5Screen::CAN;
 static uint8_t  g_last_mirror = 0xFF;
 static int32_t  g_batt_pct   = -1;
 static uint32_t g_batt_last  = 0;
@@ -69,6 +72,14 @@ static uint8_t g_hist_count = 0;   // number of valid entries
 static int8_t  g_hist_pos   = -1;  // -1 = not browsing; 0 = newest, 1 = older…
 static String  g_cli_draft;        // saved input before history browse began
 
+// --- Status bar selection state ---
+#define SB_ITEMS         7   // 6 relays (0-5) + FEED/MENU label (6)
+#define SB_ITEM_FEEDMENU 6
+static bool   g_sb_sel_active = false;
+static int8_t g_sb_sel        = 0;   // 0-5 = relay index, 6 = FEED/MENU
+static bool   g_sb_dropdown   = false;
+static int8_t g_sb_dd_sel     = 0;
+
 // --- Menu state ---
 enum ArgType : uint8_t { ARG_NONE, ARG_RELAY_ON, ARG_RELAY_OFF, ARG_HEX };
 
@@ -76,6 +87,9 @@ struct MenuItem {
     const char* label;
     ArgType      arg;
 };
+
+static const char* SB_DROPDOWN_ITEMS[] = {"CAN", "FEED", "MENU"};
+static const int   SB_DD_COUNT = 3;
 
 static const MenuItem MENU_ITEMS[] = {
     {"All Relays OFF",   ARG_NONE},
@@ -99,13 +113,19 @@ static String g_menu_arg;
 
 // --- Forward declarations ---
 static void draw_status_bar();
+static void draw_sb_dropdown();
 static void draw_cli_bar();
+static void redraw_can();
 static void redraw_feed();
+static void enter_can();
 static void enter_feed();
 static void enter_menu();
 static void draw_menu();
-static void print_log(const String& text, uint16_t color = WHITE);
+static void print_can(const String& text, uint16_t color = WHITE);
+static void print_feed(const String& text, uint16_t color = WHITE);
+static bool decode_frame(const BusFrame& f, char* buf, size_t sz);
 static void execute_menu_item(int sel, const String& arg);
+static void handle_sb_sel_keys(const Keyboard_Class::KeysState& ks);
 static void handle_feed_keys(const Keyboard_Class::KeysState& ks);
 static void handle_menu_keys(const Keyboard_Class::KeysState& ks);
 static void inject_frame(const String& cmd);
@@ -137,9 +157,45 @@ void m5_setup() {
     draw_cli_bar();
 
     M5Cardputer.Display.setCursor(0, STATUS_BAR_H + 5);
-    print_log("=== CANoE Cardputer [0x06] ===",   GREEN);
-    print_log("125kbps | WiFi Ch6 | ESP-NOW",       DARKGREY);
-    print_log("1-6: relay | fn: menu | ctrl: cli",  YELLOW);
+    print_can("=== CANoE Cardputer [0x06] ===",    GREEN);
+    print_can("125kbps | WiFi Ch6 | ESP-NOW",        DARKGREY);
+    print_can("1-6: relay | fn: menu | opt: statusbar", YELLOW);
+}
+
+void m5_beep_startup() {
+    M5Cardputer.Speaker.setVolume(80);
+    M5Cardputer.Speaker.tone(440, 80);  delay(90);
+    M5Cardputer.Speaker.tone(660, 80);  delay(90);
+    M5Cardputer.Speaker.tone(880, 180); delay(190);
+}
+
+void m5_beep_alert() {
+    M5Cardputer.Speaker.setVolume(200);
+    for (int i = 0; i < 3; i++) {
+        M5Cardputer.Speaker.tone(1047, 100); delay(200);
+    }
+}
+
+void m5_beep_can_up() {
+    M5Cardputer.Speaker.setVolume(80);
+    M5Cardputer.Speaker.tone(660, 80);  delay(90);
+    M5Cardputer.Speaker.tone(880, 120); delay(130);
+}
+
+void m5_beep_can_down() {
+    M5Cardputer.Speaker.setVolume(80);
+    M5Cardputer.Speaker.tone(880, 80);  delay(90);
+    M5Cardputer.Speaker.tone(440, 120); delay(130);
+}
+
+void m5_beep_peer(uint8_t count) {
+    M5Cardputer.Speaker.setVolume(60);
+    M5Cardputer.Speaker.tone(count > 0 ? 880 : 440, 80); delay(90);
+}
+
+static void m5_ui_click() {
+    M5Cardputer.Speaker.setVolume(80);
+    M5Cardputer.Speaker.tone(4200, 30);
 }
 
 void m5_loop() {
@@ -159,30 +215,57 @@ void m5_loop() {
     if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
         Keyboard_Class::KeysState ks = M5Cardputer.Keyboard.keysState();
 
-        // fn always toggles feed/menu (closes CLI if open)
+        // fn toggles between content screens and menu
         if (ks.fn) {
+            m5_ui_click();
             if (g_cli_active) { g_cli_active = false; g_cli_input = ""; }
-            if (g_screen == M5Screen::FEED) enter_menu();
-            else                            enter_feed();
+            g_sb_sel_active = false;
+            g_sb_dropdown   = false;
+            if (g_screen == M5Screen::MENU) enter_can();
+            else                            enter_menu();
             return;
         }
 
-        // ctrl alone toggles CLI bar (feed mode only)
-        if (ks.ctrl && ks.word.empty() && g_screen == M5Screen::FEED) {
+        // opt toggles status bar selection mode
+        if (ks.opt) {
+            if (g_sb_sel_active) {
+                bool was_dropdown = g_sb_dropdown;
+                g_sb_sel_active   = false;
+                g_sb_dropdown     = false;
+                draw_status_bar();
+                if (was_dropdown) {
+                    if      (g_screen == M5Screen::MENU) draw_menu();
+                    else if (g_screen == M5Screen::FEED) redraw_feed();
+                    else                                 redraw_can();
+                }
+            } else {
+                if (g_cli_active) { g_cli_active = false; draw_cli_bar(); }
+                g_sb_sel_active = true;
+                g_sb_sel        = 0;
+                draw_status_bar();
+            }
+            return;
+        }
+
+        // ctrl alone toggles CLI bar (CAN/FEED screens only, not in status bar selection)
+        if (ks.ctrl && ks.word.empty() && g_screen != M5Screen::MENU && !g_sb_sel_active) {
+            m5_ui_click();
             g_cli_active = !g_cli_active;
             g_cli_input  = "";
             draw_cli_bar();
             return;
         }
 
-        if (g_screen == M5Screen::FEED) handle_feed_keys(ks);
-        else                            handle_menu_keys(ks);
+        if (g_sb_sel_active) { handle_sb_sel_keys(ks); return; }
+
+        if (g_screen == M5Screen::MENU) handle_menu_keys(ks);
+        else                            handle_feed_keys(ks);
     }
 
     if (g_relay_mirror != g_last_mirror) {
         g_last_mirror = g_relay_mirror;
         draw_status_bar();
-        if (g_screen == M5Screen::MENU) draw_menu();
+        if (g_screen == M5Screen::MENU && !g_sb_dropdown) draw_menu();
     }
 }
 
@@ -217,20 +300,31 @@ void m5_handle_frame(const BusFrame& f) {
     }
 #endif
 
-    if (g_screen != M5Screen::FEED) return;
-
     uint16_t color = LIGHTGREY;
     if      (strcmp(f.source, "wifi") == 0) color = GREEN;
     else if (strcmp(f.source, "self") == 0) color = CYAN;
 
+    // Raw hex → CAN screen
     char buf[64];
     int pos = snprintf(buf, sizeof(buf), "[%s] %03X", f.source, f.id);
     for (uint8_t i = 0; i < f.dlc && i < 8; i++)
         pos += snprintf(buf + pos, sizeof(buf) - pos, " %02X", f.data[i]);
-    print_log(String(buf), color);
+    print_can(String(buf), color);
+
+    // Human-readable → FEED screen
+    char hbuf[LINE_BUF_SZ];
+    if (decode_frame(f, hbuf, sizeof(hbuf)))
+        print_feed(String(hbuf), color);
 }
 
 // --- Screen transitions ---
+
+static void enter_can() {
+    g_screen = M5Screen::CAN;
+    draw_status_bar();
+    redraw_can();
+    draw_cli_bar();
+}
 
 static void enter_feed() {
     g_screen = M5Screen::FEED;
@@ -257,25 +351,36 @@ static void draw_status_bar() {
     M5Cardputer.Display.fillRect(0, 0, SCREEN_W, STATUS_BAR_H, ACAPULCO_BLUE);
     M5Cardputer.Display.drawFastHLine(0, STATUS_BAR_H, SCREEN_W, DARKGREY);
 
+    bool feedmenu_sel = g_sb_sel_active && (g_sb_sel == SB_ITEM_FEEDMENU);
+    if (feedmenu_sel) {
+        M5Cardputer.Display.fillRect(2, 4, 34, 14, DARKGREY);
+        M5Cardputer.Display.drawRect(2, 4, 34, 14, WHITE);
+    }
     M5Cardputer.Display.setCursor(5, (STATUS_BAR_H - 8) / 2);
     M5Cardputer.Display.setTextColor(WHITE);
-    M5Cardputer.Display.print(g_screen == M5Screen::MENU ? "MENU" : "FEED");
+    M5Cardputer.Display.print(g_screen == M5Screen::MENU ? "MENU" :
+                              g_screen == M5Screen::FEED ? "FEED" : "CAN");
 
     int startX = 55, boxW = 18, spacing = 20;
     for (int i = 0; i < 6; i++) {
-        bool on = (g_relay_mirror >> i) & 1;
-        int  x  = startX + i * spacing;
-        M5Cardputer.Display.fillRect(x, 4, boxW, 14, on ? GREEN : DARKGREY);
+        bool     on  = (g_relay_mirror >> i) & 1;
+        bool     sel = g_sb_sel_active && (g_sb_sel == i);
+        int      x   = startX + i * spacing;
+        uint16_t bg  = sel ? (uint16_t)DARKGREY :
+                       on  ? (uint16_t)GREEN :
+                       g_sb_sel_active ? (uint16_t)ACAPULCO_BLUE : (uint16_t)DARKGREY;
+        M5Cardputer.Display.fillRect(x, 4, boxW, 14, bg);
         M5Cardputer.Display.drawRect(x, 4, boxW, 14, WHITE);
         M5Cardputer.Display.setCursor(x + 6, 7);
-        M5Cardputer.Display.setTextColor(on ? BLACK : WHITE);
+        M5Cardputer.Display.setTextColor(sel ? WHITE : (on ? BLACK : WHITE));
         M5Cardputer.Display.print(String(i + 1));
     }
 
     // Battery
     if (g_batt_pct >= 0) {
         int bx = 182, by = 4, bw = 30, bh = 14;
-        uint16_t col = g_batt_pct > 20 ? GREEN : (g_batt_pct > 10 ? YELLOW : RED);
+        // 0x0400 ≈ #008200 — dark green with enough contrast for white text
+        uint16_t col = g_batt_pct > 20 ? (uint16_t)0x0400 : (g_batt_pct > 10 ? (uint16_t)YELLOW : (uint16_t)RED);
         M5Cardputer.Display.drawRect(bx, by, bw, bh, WHITE);
         M5Cardputer.Display.fillRect(bx + bw, by + 4, 2, bh - 8, WHITE);
         int fill = (bw - 2) * g_batt_pct / 100;
@@ -296,12 +401,16 @@ static void draw_status_bar() {
         M5Cardputer.Display.print("REC");
     }
 
-    // Peer count
+    // Peer count pill
     uint8_t peers = bus_peer_count();
-    M5Cardputer.Display.setCursor(218, 7);
-    M5Cardputer.Display.setTextColor(peers > 0 ? GREEN : RED);
     char nbuf[4];
-    snprintf(nbuf, sizeof(nbuf), "P%d", peers);
+    snprintf(nbuf, sizeof(nbuf), "%d", peers);
+    int pw = strlen(nbuf) * 6 + 4;
+    int px = SCREEN_W - pw - 2;
+    M5Cardputer.Display.fillRoundRect(px, 4, pw, 14, 7, peers > 0 ? (uint16_t)0x0400 : (uint16_t)RED);
+    M5Cardputer.Display.drawRoundRect(px, 4, pw, 14, 7, WHITE);
+    M5Cardputer.Display.setCursor(px + 2, 7);
+    M5Cardputer.Display.setTextColor(WHITE);
     M5Cardputer.Display.print(nbuf);
 
     M5Cardputer.Display.setCursor(cx, cy);
@@ -328,6 +437,23 @@ static void draw_cli_bar() {
     } else {
         M5Cardputer.Display.setTextColor(DARKGREY);
         M5Cardputer.Display.print("[ctrl] cli");
+    }
+}
+
+// --- Status bar dropdown ---
+
+static void draw_sb_dropdown() {
+    const int dx = 2, dy = STATUS_BAR_H + 1, dw = 40, dih = 12;
+    int dh = SB_DD_COUNT * dih + 2;
+    M5Cardputer.Display.fillRect(dx, dy, dw, dh, BLACK);
+    M5Cardputer.Display.drawRect(dx, dy, dw, dh, DARKGREY);
+    for (int i = 0; i < SB_DD_COUNT; i++) {
+        int  iy  = dy + 1 + i * dih;
+        bool sel = (i == g_sb_dd_sel);
+        if (sel) M5Cardputer.Display.fillRect(dx + 1, iy, dw - 2, dih, DARKGREY);
+        M5Cardputer.Display.setCursor(dx + 4, iy + 2);
+        M5Cardputer.Display.setTextColor(sel ? YELLOW : WHITE);
+        M5Cardputer.Display.print(SB_DROPDOWN_ITEMS[i]);
     }
 }
 
@@ -386,27 +512,187 @@ static void draw_menu() {
     }
 }
 
-// --- Feed screen ---
+// --- CAN screen (raw hex log) ---
 
-static void redraw_feed() {
+static void redraw_can() {
     M5Cardputer.Display.fillRect(0, FEED_Y, SCREEN_W, FEED_H, BLACK);
-    uint8_t start = (g_line_count < MAX_LINES) ? 0 : g_line_head;
-    uint8_t n     = (g_line_count < MAX_LINES) ? g_line_count : MAX_LINES;
+    uint8_t start = (g_can_count < MAX_LINES) ? 0 : g_can_head;
+    uint8_t n     = (g_can_count < MAX_LINES) ? g_can_count : MAX_LINES;
     for (uint8_t i = 0; i < n; i++) {
         uint8_t idx = (start + i) % MAX_LINES;
         M5Cardputer.Display.setCursor(1, FEED_Y + i * LINE_H + 1);
-        M5Cardputer.Display.setTextColor(g_lines[idx].color);
-        M5Cardputer.Display.print(g_lines[idx].text);
+        M5Cardputer.Display.setTextColor(g_can_lines[idx].color);
+        M5Cardputer.Display.print(g_can_lines[idx].text);
     }
 }
 
-static void print_log(const String& text, uint16_t color) {
-    LogLine& line = g_lines[g_line_head];
+static void print_can(const String& text, uint16_t color) {
+    LogLine& line = g_can_lines[g_can_head];
     strncpy(line.text, text.c_str(), LINE_BUF_SZ - 1);
     line.text[LINE_BUF_SZ - 1] = '\0';
-    line.color     = color;
-    g_line_head    = (g_line_head + 1) % MAX_LINES;
-    if (g_line_count < MAX_LINES) g_line_count++;
+    line.color  = color;
+    g_can_head  = (g_can_head + 1) % MAX_LINES;
+    if (g_can_count < MAX_LINES) g_can_count++;
+    if (g_screen == M5Screen::CAN) redraw_can();
+}
+
+// --- FEED screen (human-readable log) ---
+
+static bool decode_frame(const BusFrame& f, char* buf, size_t sz) {
+    switch (f.id) {
+        case CAN_ID_NODE_ANNOUNCE:
+            if (f.dlc >= 1) {
+                snprintf(buf, sz, "Node 0x%02X online (%d peers)", f.data[0], f.dlc >= 2 ? f.data[1] : 0);
+                return true;
+            }
+            break;
+        case CAN_ID_BOOT_EVENT:
+            if (f.dlc >= 1) { snprintf(buf, sz, "Node 0x%02X booted", f.data[0]); return true; }
+            break;
+        case CAN_ID_BUS_ERROR:
+            if (f.dlc >= 2) {
+                const char* err = f.data[1] == 0 ? "recovered" :
+                                  f.data[1] == 1 ? "BUS_OFF" :
+                                  f.data[1] == 2 ? "ERROR_PASSIVE" :
+                                  f.data[1] == 3 ? "TX_FAIL" : "RX_OVERFLOW";
+                snprintf(buf, sz, "CAN 0x%02X %s", f.data[0], err);
+                return true;
+            }
+            break;
+        case CAN_ID_REBOOT_CMD:
+            if (f.dlc >= 1) {
+                if (f.data[0] == 0xFF) snprintf(buf, sz, "Reboot: all nodes");
+                else                   snprintf(buf, sz, "Reboot: node 0x%02X", f.data[0]);
+                return true;
+            }
+            break;
+        case CAN_ID_RELAY_CMD:
+            if (f.dlc >= 2) {
+                uint8_t mask = f.data[0], state = f.data[1];
+                if (mask == 0x3F && state == 0x00) {
+                    snprintf(buf, sz, "All relays OFF");
+                } else {
+                    int n = 0;
+                    for (int i = 0; i < 6; i++)
+                        if (mask & (1u << i))
+                            n += snprintf(buf + n, sz - n, "%sR%d %s",
+                                          n ? " " : "", i + 1, (state & (1u << i)) ? "ON" : "OFF");
+                }
+                return true;
+            }
+            break;
+        case CAN_ID_RELAY_STATUS:
+            if (f.dlc >= 1) {
+                uint8_t bm = f.data[0];
+                if (bm == 0) { snprintf(buf, sz, "Relays: all OFF"); }
+                else {
+                    int n = snprintf(buf, sz, "Relays ON:");
+                    for (int i = 0; i < 6; i++)
+                        if (bm & (1u << i))
+                            n += snprintf(buf + n, sz - n, " R%d", i + 1);
+                }
+                return true;
+            }
+            break;
+        case CAN_ID_SWITCH_EVENT:
+            if (f.dlc >= 2) {
+                const char* ev = f.data[1] == 1 ? "pressed" :
+                                 f.data[1] == 2 ? "long press" :
+                                 f.data[1] == 3 ? "double tap" : "released";
+                snprintf(buf, sz, "SW%d %s", f.data[0] + 1, ev);
+                return true;
+            }
+            break;
+        case CAN_ID_ENCODER_EVENT:
+            if (f.dlc >= 1) {
+                const char* ev = f.data[0] == 0 ? "CW" :
+                                 f.data[0] == 1 ? "CCW" :
+                                 f.data[0] == 2 ? "press" :
+                                 f.data[0] == 3 ? "release" : "long";
+                if (f.data[0] <= 1 && f.dlc >= 2)
+                    snprintf(buf, sz, "Encoder %s x%d", ev, f.data[1]);
+                else
+                    snprintf(buf, sz, "Encoder %s", ev);
+                return true;
+            }
+            break;
+        case CAN_ID_TELEMETRY:
+            if (f.dlc >= 2) {
+                uint16_t cv = f.data[0] | ((uint16_t)f.data[1] << 8);
+                int n = snprintf(buf, sz, "Batt: %d.%02dV", cv / 100, cv % 100);
+                if (f.dlc >= 6) {
+                    uint16_t cv2 = f.data[4] | ((uint16_t)f.data[5] << 8);
+                    snprintf(buf + n, sz - n, " / %d.%02dV", cv2 / 100, cv2 % 100);
+                }
+                return true;
+            }
+            break;
+        case CAN_ID_ENGINE_DATA:
+            if (f.dlc >= 2) {
+                uint16_t rpm = f.data[0] | ((uint16_t)f.data[1] << 8);
+                snprintf(buf, sz, "RPM: %u", rpm);
+                return true;
+            }
+            break;
+        case CAN_ID_GPS_DATA:
+            if (f.dlc >= 4) {
+                uint16_t spd = f.data[0] | ((uint16_t)f.data[1] << 8);
+                uint16_t hdg = f.data[2] | ((uint16_t)f.data[3] << 8);
+                snprintf(buf, sz, "GPS %d.%d mph %d.%d\xB0", spd / 10, spd % 10, hdg / 10, hdg % 10);
+                return true;
+            }
+            break;
+        case CAN_ID_WBO2_DATA:
+            if (f.dlc >= 2) {
+                uint16_t a = f.data[0] | ((uint16_t)f.data[1] << 8);
+                snprintf(buf, sz, "AFR: %d.%02d", a / 100, a % 100);
+                return true;
+            }
+            break;
+        case CAN_ID_ECU_DATA:
+            if (f.dlc >= 3) {
+                snprintf(buf, sz, "ECU MAP:%dkPa TPS:%d%%", f.data[1], f.data[2]);
+                return true;
+            }
+            break;
+        case CAN_ID_VIPER_CMD:
+            if (f.dlc >= 1) {
+                const char* cmd = f.data[0] == 1 ? "Lock" :
+                                  f.data[0] == 2 ? "Unlock" : "Remote Start";
+                snprintf(buf, sz, "Viper: %s", cmd);
+                return true;
+            }
+            break;
+        case CAN_ID_CONFIG_WRITE:
+            if (f.dlc >= 5) {
+                snprintf(buf, sz, "Config 0x%02X key=0x%02X val=%u",
+                         f.data[0], f.data[1], f.data[4]);
+                return true;
+            }
+            break;
+    }
+    return false;
+}
+
+static void redraw_feed() {
+    M5Cardputer.Display.fillRect(0, FEED_Y, SCREEN_W, FEED_H, BLACK);
+    uint8_t start = (g_feed_count < MAX_LINES) ? 0 : g_feed_head;
+    uint8_t n     = (g_feed_count < MAX_LINES) ? g_feed_count : MAX_LINES;
+    for (uint8_t i = 0; i < n; i++) {
+        uint8_t idx = (start + i) % MAX_LINES;
+        M5Cardputer.Display.setCursor(1, FEED_Y + i * LINE_H + 1);
+        M5Cardputer.Display.setTextColor(g_feed_lines[idx].color);
+        M5Cardputer.Display.print(g_feed_lines[idx].text);
+    }
+}
+
+static void print_feed(const String& text, uint16_t color) {
+    LogLine& line = g_feed_lines[g_feed_head];
+    strncpy(line.text, text.c_str(), LINE_BUF_SZ - 1);
+    line.text[LINE_BUF_SZ - 1] = '\0';
+    line.color   = color;
+    g_feed_head  = (g_feed_head + 1) % MAX_LINES;
+    if (g_feed_count < MAX_LINES) g_feed_count++;
     if (g_screen == M5Screen::FEED) redraw_feed();
 }
 
@@ -445,6 +731,65 @@ static void history_down() {
     draw_cli_bar();
 }
 
+// --- Status bar selection key handling ---
+
+static void handle_sb_sel_keys(const Keyboard_Class::KeysState& ks) {
+    if (g_sb_dropdown) {
+        if (ks.del) {
+            g_sb_dropdown = false;
+            if      (g_screen == M5Screen::MENU) draw_menu();
+            else if (g_screen == M5Screen::FEED) redraw_feed();
+            else                                 redraw_can();
+            return;
+        }
+        if (!ks.word.empty()) {
+            char c = ks.word[0];
+            if (c == ';') { m5_ui_click(); g_sb_dd_sel = (int8_t)((g_sb_dd_sel - 1 + SB_DD_COUNT) % SB_DD_COUNT); draw_sb_dropdown(); return; }
+            if (c == '.') { m5_ui_click(); g_sb_dd_sel = (int8_t)((g_sb_dd_sel + 1) % SB_DD_COUNT); draw_sb_dropdown(); return; }
+        }
+        if (ks.enter) {
+            m5_ui_click();
+            g_sb_dropdown   = false;
+            g_sb_sel_active = false;
+            if      (g_sb_dd_sel == 2) enter_menu();
+            else if (g_sb_dd_sel == 1) enter_feed();
+            else                       enter_can();
+        }
+        return;
+    }
+
+    // Navigate between status bar items
+    if (!ks.word.empty()) {
+        char c = ks.word[0];
+        if (c == ';') { m5_ui_click(); g_sb_sel = (int8_t)((g_sb_sel - 1 + SB_ITEMS) % SB_ITEMS); draw_status_bar(); return; }
+        if (c == '.') { m5_ui_click(); g_sb_sel = (int8_t)((g_sb_sel + 1) % SB_ITEMS);             draw_status_bar(); return; }
+    }
+
+    if (ks.del) {
+        g_sb_sel_active = false;
+        draw_status_bar();
+        return;
+    }
+
+    bool activate = ks.enter || (!ks.word.empty() && ks.word[0] == ' ');
+    if (activate) {
+        if (g_sb_sel < SB_ITEM_FEEDMENU) {
+            m5_ui_click();
+            uint8_t relay = (uint8_t)g_sb_sel;
+            bool    on    = (g_relay_mirror >> relay) & 1;
+            uint8_t mask  = 1u << relay;
+            uint8_t d[2]  = {mask, on ? (uint8_t)0x00 : mask};
+            bus_tx(CAN_ID_RELAY_CMD, d, 2);
+            print_can("[relay " + String(relay + 1) + (on ? " OFF]" : " ON]"), ORANGE);
+        } else {
+            g_sb_dropdown = true;
+            g_sb_dd_sel   = g_screen == M5Screen::MENU ? 2 :
+                            g_screen == M5Screen::FEED ? 1 : 0;
+            draw_sb_dropdown();
+        }
+    }
+}
+
 // --- Feed key handling ---
 
 static void handle_feed_keys(const Keyboard_Class::KeysState& ks) {
@@ -456,9 +801,11 @@ static void handle_feed_keys(const Keyboard_Class::KeysState& ks) {
             g_cli_input = "";
             g_hist_pos  = -1;
             if (cmd == "cls") {
-                g_line_head  = 0;
-                g_line_count = 0;
-                redraw_feed();
+                if (g_screen == M5Screen::FEED) {
+                    g_feed_head = 0; g_feed_count = 0; redraw_feed();
+                } else {
+                    g_can_head = 0; g_can_count = 0; redraw_can();
+                }
             } else if (cmd.length() > 0) {
                 history_push(cmd);
                 inject_frame(cmd);
@@ -489,12 +836,13 @@ static void handle_feed_keys(const Keyboard_Class::KeysState& ks) {
     char c = ks.word[0];
     if (c < '1' || c > '6') return;
 
+    m5_ui_click();
     uint8_t relay = c - '1';
     bool    on    = (g_relay_mirror >> relay) & 1;
     uint8_t mask  = 1 << relay;
     uint8_t d[2]  = {mask, on ? (uint8_t)0x00 : mask};
     bus_tx(CAN_ID_RELAY_CMD, d, 2);
-    print_log("[relay " + String(relay + 1) + (on ? " OFF]" : " ON]"), ORANGE);
+    print_can("[relay " + String(relay + 1) + (on ? " OFF]" : " ON]"), ORANGE);
 }
 
 // --- CLI frame injection ---
@@ -517,7 +865,7 @@ static void inject_frame(const String& cmd) {
         }
     }
 
-    if (!id_parsed) { print_log("[cli] bad frame", RED); return; }
+    if (!id_parsed) { print_can("[cli] bad frame", RED); return; }
     bus_tx(can_id, data, dlc);
 }
 
@@ -597,12 +945,13 @@ static void handle_menu_keys(const Keyboard_Class::KeysState& ks) {
     }
 
     // Browsing
-    if (ks.del) { enter_feed(); return; }
+    if (ks.del) { enter_can(); return; }
 
     if (!ks.word.empty()) {
         char c = ks.word[0];
 
         if (c == ';') {  // up arrow
+            m5_ui_click();
             g_menu_sel = (g_menu_sel - 1 + MENU_COUNT) % MENU_COUNT;
             if (g_menu_sel < g_menu_scroll)
                 g_menu_scroll = g_menu_sel;
@@ -612,6 +961,7 @@ static void handle_menu_keys(const Keyboard_Class::KeysState& ks) {
             return;
         }
         if (c == '.') {  // down arrow
+            m5_ui_click();
             g_menu_sel = (g_menu_sel + 1) % MENU_COUNT;
             if (g_menu_sel >= g_menu_scroll + VISIBLE_MENU_ITEMS)
                 g_menu_scroll = g_menu_sel - VISIBLE_MENU_ITEMS + 1;
@@ -622,6 +972,7 @@ static void handle_menu_keys(const Keyboard_Class::KeysState& ks) {
         }
         // Relay hotkeys work from menu too (CLI is closed while in menu)
         if (c >= '1' && c <= '6') {
+            m5_ui_click();
             uint8_t relay = c - '1';
             bool    on    = (g_relay_mirror >> relay) & 1;
             uint8_t mask  = 1 << relay;
@@ -632,6 +983,7 @@ static void handle_menu_keys(const Keyboard_Class::KeysState& ks) {
     }
 
     if (ks.enter) {
+        m5_ui_click();
         if (MENU_ITEMS[g_menu_sel].arg == ARG_NONE) {
             execute_menu_item(g_menu_sel, "");
         } else {
@@ -647,7 +999,7 @@ static void handle_menu_keys(const Keyboard_Class::KeysState& ks) {
 #ifdef ENABLE_SD_LOG
 static void log_start() {
     if (g_logging) return;
-    if (!SD.begin(SS, SPI, 25000000)) { print_log("[SD] mount failed", RED); return; }
+    if (!SD.begin(SS, SPI, 25000000)) { print_can("[SD] mount failed", RED); return; }
 
     char path[24];
     for (int i = 1; i <= 999; i++) {
@@ -656,11 +1008,11 @@ static void log_start() {
     }
 
     g_log_file = SD.open(path, FILE_WRITE);
-    if (!g_log_file) { print_log("[SD] open failed", RED); return; }
+    if (!g_log_file) { print_can("[SD] open failed", RED); return; }
 
     g_log_file.println("ms,source,id,dlc,d0,d1,d2,d3,d4,d5,d6,d7");
     g_logging = true;
-    print_log(String("[SD] ") + path, GREEN);
+    print_can(String("[SD] ") + path, GREEN);
     draw_status_bar();
 }
 
@@ -669,11 +1021,11 @@ static void log_stop() {
     g_log_file.flush();
     g_log_file.close();
     g_logging = false;
-    print_log("[SD] log stopped", YELLOW);
+    print_can("[SD] log stopped", YELLOW);
     draw_status_bar();
 }
 #else
-static void log_start() { print_log("[SD] add ENABLE_SD_LOG to enable", RED); }
+static void log_start() { print_can("[SD] add ENABLE_SD_LOG to enable", RED); }
 static void log_stop()  {}
 #endif
 

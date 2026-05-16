@@ -53,21 +53,26 @@ struct GraphConfig: Identifiable, Codable {
     var channels:      [String]  = []
     var windowSeconds: Double    = 30
     var graphType:     GraphType = .line
+    var chartHeight:   Double    = 130
 
-    // Custom init so callers can omit graphType (defaults to .line).
+    static let heightPresets: [(label: String, value: Double)] = [
+        ("S", 80), ("M", 130), ("L", 200), ("XL", 300)
+    ]
+
     init(id: UUID = UUID(), title: String = "Graph",
          channels: [String] = [], windowSeconds: Double = 30,
-         graphType: GraphType = .line) {
+         graphType: GraphType = .line, chartHeight: Double = 130) {
         self.id            = id
         self.title         = title
         self.channels      = channels
         self.windowSeconds = windowSeconds
         self.graphType     = graphType
+        self.chartHeight   = chartHeight
     }
 
-    // Backward-compatible decoding: old saved configs lack "graphType" → default .line.
+    // Backward-compatible decoding: old saved configs lack "graphType"/"chartHeight".
     private enum CodingKeys: String, CodingKey {
-        case id, title, channels, windowSeconds, graphType
+        case id, title, channels, windowSeconds, graphType, chartHeight
     }
     init(from decoder: Decoder) throws {
         let c      = try decoder.container(keyedBy: CodingKeys.self)
@@ -75,7 +80,8 @@ struct GraphConfig: Identifiable, Codable {
         title         = try c.decode(String.self,   forKey: .title)
         channels      = try c.decode([String].self, forKey: .channels)
         windowSeconds = try c.decode(Double.self,   forKey: .windowSeconds)
-        graphType     = try c.decodeIfPresent(GraphType.self, forKey: .graphType) ?? .line
+        graphType     = try c.decodeIfPresent(GraphType.self,   forKey: .graphType)   ?? .line
+        chartHeight   = try c.decodeIfPresent(Double.self,      forKey: .chartHeight) ?? 130
     }
 }
 
@@ -96,7 +102,7 @@ final class DataLogger: ObservableObject {
     @Published var channels:  [String: ChannelDescriptor] = [:]
 
     // Live current values, keyed by channel ID.
-    // Not @Published — updated on every frame; views refresh via the 10 Hz uiRefreshTimer.
+    // Not @Published — panels read these directly via TimelineView at their own rate.
     var current:   [String: Double] = [:]
 
     // Rolling history per channel (up to historyWindow seconds), keyed by channel ID.
@@ -146,8 +152,10 @@ final class DataLogger: ObservableObject {
     private var sessionStart:       Date?
     private var cancellables        = Set<AnyCancellable>()
     private var timerCancel:        AnyCancellable?
-    private var uiRefreshCancel:    AnyCancellable?
     private var lastHistoryWrite:   [String: Date]   = [:]
+    // Raw accumulators updated per-frame; published to sessionMin/Max/Avg at 1 Hz.
+    private var sessionMinRaw:      [String: Double] = [:]
+    private var sessionMaxRaw:      [String: Double] = [:]
     // Minimum seconds between history writes; controls max stored resolution.
     // 1.0 → at most 3600 pts/channel over a 1-hour window.
     private static let historyHz:   TimeInterval = 1.0
@@ -239,13 +247,6 @@ final class DataLogger: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.ingest($0) }
             .store(in: &cancellables)
-
-        // Drive view updates at a fixed 10 Hz instead of on every incoming frame.
-        // current and history are updated at full frame rate; views read fresh values
-        // each time the timer fires.
-        uiRefreshCancel = Timer.publish(every: 0.1, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     // MARK: - Frame ingestion
@@ -370,13 +371,12 @@ final class DataLogger: ObservableObject {
         guard isRecording else { return }
 
         sessionLog.append((ts: now, id: id, val: value))
-        sessionMin[id] = sessionMin[id].map { min($0, value) } ?? value
-        sessionMax[id] = sessionMax[id].map { max($0, value) } ?? value
-        let sum          = (sessionSum[id] ?? 0) + value
-        let cnt          = (sessionCount[id] ?? 0) + 1
-        sessionSum[id]   = sum
-        sessionCount[id] = cnt
-        sessionAvg[id]   = sum / Double(cnt)
+        sessionMinRaw[id] = sessionMinRaw[id].map { min($0, value) } ?? value
+        sessionMaxRaw[id] = sessionMaxRaw[id].map { max($0, value) } ?? value
+        let sum           = (sessionSum[id] ?? 0) + value
+        let cnt           = (sessionCount[id] ?? 0) + 1
+        sessionSum[id]    = sum
+        sessionCount[id]  = cnt
     }
 
     // MARK: - Recording
@@ -387,6 +387,8 @@ final class DataLogger: ObservableObject {
         sessionLog      = []
         sessionMin      = [:]
         sessionMax      = [:]
+        sessionMinRaw   = [:]
+        sessionMaxRaw   = [:]
         sessionSum      = [:]
         sessionCount    = [:]
         sessionAvg      = [:]
@@ -397,10 +399,26 @@ final class DataLogger: ObservableObject {
             .sink { [weak self] _ in
                 guard let self, let start = self.sessionStart else { return }
                 self.sessionDuration = Date().timeIntervalSince(start)
+                // Publish accumulated stats at 1 Hz rather than on every ingested frame.
+                self.sessionMin = self.sessionMinRaw
+                self.sessionMax = self.sessionMaxRaw
+                for id in self.sessionCount.keys {
+                    if let cnt = self.sessionCount[id], cnt > 0 {
+                        self.sessionAvg[id] = (self.sessionSum[id] ?? 0) / Double(cnt)
+                    }
+                }
             }
     }
 
     func stopRecording() {
+        // Final publish so stats reflect the last partial second.
+        sessionMin = sessionMinRaw
+        sessionMax = sessionMaxRaw
+        for id in sessionCount.keys {
+            if let cnt = sessionCount[id], cnt > 0 {
+                sessionAvg[id] = (sessionSum[id] ?? 0) / Double(cnt)
+            }
+        }
         isRecording = false
         timerCancel = nil
     }

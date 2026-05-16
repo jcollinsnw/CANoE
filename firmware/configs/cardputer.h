@@ -11,7 +11,6 @@
 //   - External CAN transceiver (e.g. M5 CAN Unit / TJA1051) on GPIO 1/2
 
 #pragma once
-
 #define NODE_NAME           "cardputer"
 #define NODE_ID             0x06
 #define USE_CAN_TRANSCEIVER 1

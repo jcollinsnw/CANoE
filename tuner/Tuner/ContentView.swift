@@ -110,7 +110,7 @@ struct ConnectView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .tint(.blue)
+                .tint(.acapulcoBlue)
                 .disabled([.connecting, .discovering].contains(ble.connectionState))
 
                 Text("Bluetooth auto-connects to the nearest node advertising the CAN bus service.")
@@ -165,8 +165,8 @@ struct ConnectView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .buttonStyle(.bordered)
+                .tint(.acapulcoBlue)
 
                 Text("Generates realistic engine data for testing without hardware.")
                     .font(.caption)
@@ -186,7 +186,7 @@ struct ConnectView: View {
                     .padding(.vertical, 14)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.green)
+            .tint(.acapulcoBlue)
             .padding(.horizontal)
             .disabled(nodeIP.trimmingCharacters(in: .whitespaces).isEmpty)
 
@@ -212,6 +212,7 @@ struct NativeDashboardView: View {
     @State private var selectedTab     = 0
     @State private var framesCSVURL:   URL?   = nil
     @State private var showFramesShare = false
+    @State private var showAppearance  = false
 
     var body: some View {
         NavigationStack {
@@ -267,7 +268,7 @@ struct NativeDashboardView: View {
                         .tabItem { Label("Logger", systemImage: "chart.xyaxis.line") }
                         .tag(1)
                 }
-                .tint(.green)
+                .tint(.acapulcoBlue)
             }
             .background(Color(.systemBackground).ignoresSafeArea())
             .navigationTitle(navTitle)
@@ -275,6 +276,9 @@ struct NativeDashboardView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading)  { disconnectButton }
                 ToolbarItem(placement: .topBarTrailing) { trailingButtons }
+            }
+            .sheet(isPresented: $showAppearance) {
+                AppearanceSheet()
             }
         }
         .onReceive(location.$latestFrame.compactMap { $0 }) { frame in
@@ -358,6 +362,12 @@ struct NativeDashboardView: View {
                 Image(systemName: "trash")
             }
             .tint(.secondary)
+            Button {
+                showAppearance = true
+            } label: {
+                Image(systemName: "textformat.size")
+            }
+            .tint(.acapulcoBlue)
 #if os(iOS)
             if !simulator.isRunning {
                 GpsToggleButton(location: location)
@@ -412,6 +422,7 @@ private struct FrameLogView: View {
 private struct WeatherStrip: View {
     @ObservedObject var weather:   WeatherService
     @ObservedObject var altimeter: AltimeterManager
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         HStack(spacing: 20) {
@@ -427,7 +438,7 @@ private struct WeatherStrip: View {
 
     private func item(_ icon: String, _ label: String) -> some View {
         Label(label, systemImage: icon)
-            .font(.system(size: 11, design: .monospaced))
+            .font(settings.captionFont())
             .foregroundStyle(.secondary)
     }
 }
@@ -437,11 +448,12 @@ private struct WeatherStrip: View {
 private struct CANFrameRow: View {
     let frame:     CANFrame
     let formatter: DateFormatter
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         Text(line)
-            .font(.system(size: 12, design: .monospaced))
-            .foregroundStyle(frame.isOutbound ? Color.green : Color.blue)
+            .font(settings.dataFont())
+            .foregroundStyle(frame.isOutbound ? Color.acapulcoBlue : Color.secondary)
             .lineLimit(1)
     }
 
@@ -524,7 +536,7 @@ struct GpsToggleButton: View {
                 location.isRunning ? "GPS On" : "Phone GPS",
                 systemImage: location.isRunning ? "location.fill" : "location"
             )
-            .foregroundStyle(location.isRunning ? .green : .secondary)
+            .foregroundStyle(location.isRunning ? Color.acapulcoBlue : .secondary)
         }
     }
 }

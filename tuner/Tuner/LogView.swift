@@ -87,7 +87,7 @@ struct LogView: View {
                 .padding(.vertical, 10)
         }
         .buttonStyle(.bordered)
-        .tint(.secondary)
+        .tint(.acapulcoBlue)
     }
 
     private func prepareExport() {
@@ -102,6 +102,7 @@ struct LogView: View {
 private struct RecordBar: View {
     @ObservedObject var logger: DataLogger
     let onExport: () -> Void
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         HStack(spacing: 12) {
@@ -113,14 +114,14 @@ private struct RecordBar: View {
                         .font(.title3)
                     if logger.isRecording {
                         Text(formatDuration(logger.sessionDuration))
-                            .font(.system(.body, design: .monospaced))
+                            .font(settings.dataFont())
                         Text("REC")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(.red.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
                     } else {
                         Text("Record Session")
-                            .font(.system(.subheadline, design: .monospaced))
+                            .font(settings.labelFont())
                     }
                 }
             }
@@ -131,8 +132,8 @@ private struct RecordBar: View {
 
             Button("Export Data CSV", systemImage: "square.and.arrow.up", action: onExport)
                 .buttonStyle(.bordered)
-                .tint(.green)
-                .font(.subheadline)
+                .tint(.acapulcoBlue)
+                .font(settings.labelFont())
                 .disabled(logger.isRecording || logger.sessionMin.isEmpty)
                 .opacity(logger.sessionMin.isEmpty ? 0.4 : 1.0)
         }
@@ -149,12 +150,14 @@ private struct RecordBar: View {
 // Only shows channels that have received at least one frame — auto-populates on discovery.
 
 private struct LiveGaugeGrid: View {
-    @ObservedObject var logger: DataLogger
+    let logger: DataLogger
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
-            ForEach(logger.channels.values.sorted { $0.label < $1.label }) { desc in
-                GaugeTile(descriptor: desc, value: logger.current[desc.id])
+        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
+                ForEach(logger.channels.values.sorted { $0.label < $1.label }) { desc in
+                    GaugeTile(descriptor: desc, value: logger.current[desc.id])
+                }
             }
         }
     }
@@ -163,25 +166,26 @@ private struct LiveGaugeGrid: View {
 private struct GaugeTile: View {
     let descriptor: ChannelDescriptor
     let value:      Double?
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         VStack(spacing: 2) {
             Text(descriptor.label)
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(settings.captionFont())
                 .foregroundStyle(.secondary)
             Group {
                 if let v = value {
                     Text(String(format: descriptor.format, v))
-                        .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                        .font(settings.gaugeFont())
                         .foregroundStyle(descriptor.color)
                 } else {
                     Text("—")
-                        .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                        .font(settings.gaugeFont())
                         .foregroundStyle(.tertiary)
                 }
             }
             Text(descriptor.unit)
-                .font(.system(size: 9, design: .monospaced))
+                .font(settings.captionFont())
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
@@ -194,9 +198,10 @@ private struct GaugeTile: View {
 
 private struct GraphPanel: View {
     @Binding var graph:  GraphConfig
-    @ObservedObject var logger: DataLogger
+    let logger: DataLogger
     let onEdit:   () -> Void
     let onDelete: () -> Void
+    @EnvironmentObject private var settings: AppSettings
 
     @State private var frozenAt:     Date?
     @State private var cursorDate:   Date?
@@ -210,21 +215,48 @@ private struct GraphPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            headerRow
-            if cursorDate != nil { cursorRow }
+        // Snapshot all binding-sourced values into local constants. The TimelineView
+        // closure captures these value-type copies, so it never touches the @Binding
+        // after body returns — safe even if the panel is removed from the tree before
+        // the next TimelineView tick arrives.
+        let channels    = resolvedChannels
+        let windowSecs  = graph.windowSeconds
+        let title       = graph.title
+        let chartHeight = graph.chartHeight
 
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                ChannelChart(
-                    channels:   resolvedChannels,
-                    history:    logger.history,
-                    windowSecs: graph.windowSeconds,
-                    now:        frozenAt ?? ctx.date,
-                    cursorDate: cursorDate,
-                    onDrag:     handleDrag,
-                    onDragEnd:  { }
-                )
-                .frame(height: 130)
+        VStack(alignment: .leading, spacing: 8) {
+            TimelineView(.periodic(from: .now, by: 0.1)) { ctx in
+                VStack(alignment: .leading, spacing: 8) {
+                    // Header row inline so it uses the snapshotted values.
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.system(size: settings.labelPt(), weight: .bold, design: .monospaced))
+                        if isPaused {
+                            Text("PAUSED")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 4).padding(.vertical, 2)
+                                .background(.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+                        }
+                        Spacer()
+                        ForEach(channels) { desc in valueBadge(desc) }
+                        Button(action: onEdit) {
+                            Image(systemName: "slider.horizontal.3").font(.caption)
+                        }
+                        .tint(.secondary)
+                    }
+                    if cursorDate != nil { cursorRow }
+                    ChannelChart(
+                        channels:   channels,
+                        history:    logger.history,
+                        windowSecs: windowSecs,
+                        now:        frozenAt ?? ctx.date,
+                        cursorDate: cursorDate,
+                        onDrag:     handleDrag,
+                        onDragEnd:  { }
+                    )
+                    .frame(height: chartHeight)
+                }
             }
 
             footerRow
@@ -234,30 +266,6 @@ private struct GraphPanel: View {
     }
 
     // MARK: Sub-rows
-
-    @ViewBuilder private var headerRow: some View {
-        HStack(spacing: 8) {
-            Text(graph.title)
-                .font(.system(.subheadline, design: .monospaced).bold())
-
-            if isPaused {
-                Text("PAUSED")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 4).padding(.vertical, 2)
-                    .background(.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
-            }
-
-            Spacer()
-
-            ForEach(resolvedChannels) { desc in valueBadge(desc) }
-
-            Button(action: onEdit) {
-                Image(systemName: "slider.horizontal.3").font(.caption)
-            }
-            .tint(.secondary)
-        }
-    }
 
     private static let cursorFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -295,7 +303,7 @@ private struct GraphPanel: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .font(.system(size: 10, design: .monospaced))
+        .font(settings.captionFont())
         .padding(.horizontal, 8).padding(.vertical, 5)
         .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 6))
     }
@@ -306,7 +314,7 @@ private struct GraphPanel: View {
                 Button(action: goLive) {
                     Label("Live", systemImage: "play.circle.fill")
                 }
-                .buttonStyle(.bordered).tint(.green)
+                .buttonStyle(.bordered).tint(.acapulcoBlue)
             } else {
                 Button(action: pause) {
                     Label("Pause", systemImage: "pause.circle")
@@ -317,10 +325,10 @@ private struct GraphPanel: View {
             Spacer()
 
             Text("\(Int(graph.windowSeconds))s")
-                .font(.system(size: 9, design: .monospaced))
+                .font(settings.axisFont())
                 .foregroundStyle(.tertiary)
         }
-        .font(.system(size: 11, design: .monospaced))
+        .font(settings.axisFont())
     }
 
     private func valueBadge(_ desc: ChannelDescriptor) -> some View {
@@ -333,7 +341,7 @@ private struct GraphPanel: View {
                     Text("—").foregroundStyle(.tertiary)
                 }
             }
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .font(settings.captionFont())
         }
     }
 
@@ -369,19 +377,24 @@ private struct GraphPanel: View {
 
 private struct BraunGaugePanel: View {
     @Binding var graph: GraphConfig
-    @ObservedObject var logger: DataLogger
+    let logger: DataLogger
     let onEdit:   () -> Void
     let onDelete: () -> Void
+    @EnvironmentObject private var settings: AppSettings
 
     private var channels: [ChannelDescriptor] {
         graph.channels.compactMap { logger.descriptor(for: $0) }
     }
 
     var body: some View {
+        // Snapshot before TimelineView for the same reason as GraphPanel.
+        let snapshotChannels = channels
+        let snapshotTitle    = graph.title
+
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(graph.title)
-                    .font(.system(.subheadline, design: .monospaced).bold())
+                Text(snapshotTitle)
+                    .font(.system(size: settings.labelPt(), weight: .bold, design: .monospaced))
                 Spacer()
                 Button(action: onEdit) {
                     Image(systemName: "slider.horizontal.3").font(.caption)
@@ -389,16 +402,23 @@ private struct BraunGaugePanel: View {
                 .tint(.secondary)
             }
 
-            if channels.isEmpty {
-                Text("No channel selected")
-                    .font(.system(.subheadline, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-            } else {
-                HStack(spacing: 8) {
-                    ForEach(channels) { ch in
-                        BraunGaugeView(channel: ch, value: logger.current[ch.id])
+            TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                if snapshotChannels.isEmpty {
+                    Text("No channel selected")
+                        .font(.system(.subheadline, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                } else {
+                    HStack(spacing: 8) {
+                        ForEach(snapshotChannels) { ch in
+                            BraunGaugeView(
+                                channel:   ch,
+                                value:     logger.current[ch.id],
+                                fontScale: CGFloat(settings.gaugeScale),
+                                axisScale: CGFloat(settings.axisScale)
+                            )
+                        }
                     }
                 }
             }
@@ -415,8 +435,10 @@ private struct BraunGaugePanel: View {
 // leaving a 90° gap at 6 o'clock where the value readout lives.
 
 private struct BraunGaugeView: View {
-    let channel: ChannelDescriptor
-    let value:   Double?
+    let channel:   ChannelDescriptor
+    let value:     Double?
+    var fontScale: CGFloat = 1.0   // gauge/caption scale for value, label, unit
+    var axisScale: CGFloat = 1.0   // axis scale for tick labels
 
     // Arc geometry (angles in SwiftUI Canvas convention: 0° = east, clockwise)
     private static let startDeg: Double = 135   // 7:30 position (lower-left)
@@ -474,7 +496,7 @@ private struct BraunGaugeView: View {
                     let lR  = outerR - tLen - r * 0.13
                     let lPt = CGPoint(x: c.x + lR * cosA, y: c.y + lR * sinA)
                     let lbl = ctx.resolve(Text(lStr)
-                        .font(.system(size: r * 0.10, weight: .light))
+                        .font(.system(size: r * 0.10 * axisScale, weight: .light))
                         .foregroundStyle(Color.primary.opacity(0.55)))
                     ctx.draw(lbl, at: lPt)
                 }
@@ -519,23 +541,23 @@ private struct BraunGaugeView: View {
             // ── Value readout in the lower-center gap (6 o'clock area) ───────
             let gapCenterY = c.y + r * 0.48
             let chLbl = ctx.resolve(Text(channel.label)
-                .font(.system(size: r * 0.09, weight: .medium))
+                .font(.system(size: r * 0.09 * fontScale, weight: .medium))
                 .foregroundStyle(Color.secondary))
             ctx.draw(chLbl, at: CGPoint(x: c.x, y: gapCenterY - r * 0.16))
 
             if let v = value {
                 let valLbl = ctx.resolve(Text(String(format: channel.format, v))
-                    .font(.system(size: r * 0.20, weight: .light))
+                    .font(.system(size: r * 0.20 * fontScale, weight: .light))
                     .foregroundStyle(Color.primary))
                 ctx.draw(valLbl, at: CGPoint(x: c.x, y: gapCenterY + r * 0.06))
 
                 let unitLbl = ctx.resolve(Text(channel.unit)
-                    .font(.system(size: r * 0.09, weight: .regular))
+                    .font(.system(size: r * 0.09 * fontScale, weight: .regular))
                     .foregroundStyle(.secondary))
                 ctx.draw(unitLbl, at: CGPoint(x: c.x, y: gapCenterY + r * 0.25))
             } else {
                 let dash = ctx.resolve(Text("—")
-                    .font(.system(size: r * 0.20, weight: .light))
+                    .font(.system(size: r * 0.20 * fontScale, weight: .light))
                     .foregroundStyle(.tertiary))
                 ctx.draw(dash, at: CGPoint(x: c.x, y: gapCenterY + r * 0.06))
             }
@@ -554,6 +576,7 @@ private struct ChannelChart: View {
     let cursorDate: Date?
     let onDrag:     (Date) -> Void
     let onDragEnd:  () -> Void
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         let windowStart = now.addingTimeInterval(-windowSecs)
@@ -596,7 +619,7 @@ private struct ChannelChart: View {
                                 .hour(.twoDigits(amPM: .omitted))
                                 .minute()
                                 .second())
-                                .font(.system(size: 9, design: .monospaced))
+                                .font(settings.axisFont())
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -652,6 +675,7 @@ private struct ChannelChart: View {
 private struct YAxisColumn: View {
     let channel: ChannelDescriptor
     let anchor:  HorizontalAlignment
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         VStack(alignment: anchor, spacing: 0) {
@@ -661,7 +685,7 @@ private struct YAxisColumn: View {
             Spacer()
             Text(tick(channel.yRange.lowerBound))
         }
-        .font(.system(size: 7, weight: .medium, design: .monospaced))
+        .font(settings.axisFont())
         .foregroundStyle(channel.color.opacity(0.9))
         .padding(.horizontal, 2)
     }
@@ -733,6 +757,15 @@ struct GraphEditorSheet: View {
                         }
                         .pickerStyle(.segmented)
                     }
+
+                    Section("Chart Height") {
+                        Picker("Height", selection: $graph.chartHeight) {
+                            ForEach(GraphConfig.heightPresets, id: \.value) { preset in
+                                Text(preset.label).tag(preset.value)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
                 }
 
                 Section {
@@ -760,6 +793,7 @@ struct GraphEditorSheet: View {
 
 private struct SessionStatsView: View {
     @ObservedObject var logger: DataLogger
+    @EnvironmentObject private var settings: AppSettings
 
     private var activeChannels: [ChannelDescriptor] {
         logger.sessionMin.keys
@@ -770,17 +804,17 @@ private struct SessionStatsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Session Stats")
-                .font(.system(.subheadline, design: .monospaced).bold())
+                .font(.system(size: settings.labelPt(), weight: .bold, design: .monospaced))
                 .foregroundStyle(.secondary)
 
             ForEach(activeChannels) { desc in
                 HStack(spacing: 4) {
                     Circle().fill(desc.color).frame(width: 7, height: 7)
                     Text(desc.label)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(settings.captionFont())
                         .frame(width: 56, alignment: .leading)
                     Spacer()
-                    if let v = logger.sessionMin[desc.id] { statCell("min", desc.format, v, .blue) }
+                    if let v = logger.sessionMin[desc.id] { statCell("min", desc.format, v, .acapulcoBlue) }
                     if let v = logger.sessionMax[desc.id] { statCell("max", desc.format, v, .red) }
                     if let v = logger.sessionAvg[desc.id] { statCell("avg", desc.format, v, .green) }
                 }
@@ -793,10 +827,10 @@ private struct SessionStatsView: View {
     private func statCell(_ label: String, _ fmt: String, _ val: Double, _ color: Color) -> some View {
         VStack(spacing: 1) {
             Text(label)
-                .font(.system(size: 7, design: .monospaced))
+                .font(settings.captionFont())
                 .foregroundStyle(.tertiary)
             Text(String(format: fmt, val))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(settings.dataFont())
                 .foregroundStyle(color)
         }
         .frame(width: 50)

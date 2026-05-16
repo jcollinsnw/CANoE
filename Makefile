@@ -71,7 +71,7 @@ CARDPUTER_BUILD := $(SKETCH)/build/m5stack.esp32.m5stack_cardputer
 
 cardputer:
 	cp $(CONFIGS)/cardputer.h $(SKETCH)/node_config.h
-	arduino-cli compile --jobs 1 --fqbn $(FQBN_S3) --export-binaries $(SKETCH)
+	arduino-cli compile --jobs $(JOBS) --fqbn $(FQBN_S3) --export-binaries $(SKETCH)
 	mkdir -p $(BUILD_DIR)/cardputer
 	cp $(CARDPUTER_BUILD)/$(SKETCH_NAME).ino.bin $(BUILD_DIR)/cardputer/m5canoe.bin
 

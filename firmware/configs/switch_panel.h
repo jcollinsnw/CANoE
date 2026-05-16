@@ -23,6 +23,7 @@
 #define ENABLE_BUZZER     // passive piezo on BUZZER_PIN
 #define ENABLE_LEDS       // CAN-controllable status LEDs
 #define ENABLE_RULES      // CAN-frame-triggered rules engine
+#define ENABLE_BLUETOOTH  // BLE GATT CAN bus mirror (phone connectivity)
 
 // ---- Piezo buzzer ----
 #define BUZZER_PIN        16    // passive piezo positive leg; other leg to GND

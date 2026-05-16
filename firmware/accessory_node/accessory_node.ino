@@ -68,7 +68,7 @@ bool    g_menu_active  = false;
 // Fires buzzer_alert() if RELAY_STATUS doesn't arrive within the
 // deadline after any RELAY_CMD is observed on the bus.
 // --------------------------------------------------------------
-#if defined(ENABLE_BUZZER) && !defined(ENABLE_RELAY)
+#if (defined(ENABLE_BUZZER) || defined(ENABLE_M5_CARDPUTER)) && !defined(ENABLE_RELAY)
 static uint32_t g_relay_cmd_deadline = 0;  // 0 = inactive
 static const uint16_t RELAY_CONFIRM_MS = 500;
 #endif
@@ -350,6 +350,7 @@ void setup() {
 #ifdef ENABLE_BUZZER
   buzzer_startup();
 #endif
+  m5_beep_startup();
   lcd_set_event("Ready");
   m5_set_event("Ready");
 }
@@ -397,12 +398,15 @@ void loop() {
 #endif
 #ifdef ENABLE_BUZZER
   buzzer_tick();
-#if !defined(ENABLE_RELAY)
+#endif
+#if (defined(ENABLE_BUZZER) || defined(ENABLE_M5_CARDPUTER)) && !defined(ENABLE_RELAY)
   if (g_relay_cmd_deadline && millis() >= g_relay_cmd_deadline) {
     g_relay_cmd_deadline = 0;
+#ifdef ENABLE_BUZZER
     buzzer_alert();
-  }
 #endif
+    m5_beep_alert();
+  }
 #endif
 #ifdef ENABLE_LEDS
   led_tick();
@@ -446,7 +450,7 @@ void loop() {
     // assumptions from self-echoed commands.
     if (f.id == CAN_ID_RELAY_STATUS && f.dlc >= 1) {
       g_relay_mirror = f.data[0];
-#if defined(ENABLE_BUZZER) && !defined(ENABLE_RELAY)
+#if (defined(ENABLE_BUZZER) || defined(ENABLE_M5_CARDPUTER)) && !defined(ENABLE_RELAY)
       g_relay_cmd_deadline = 0;
 #endif
     }
@@ -456,7 +460,7 @@ void loop() {
       // Relay controller can update immediately — it IS the executor.
       g_relay_mirror = (g_relay_mirror & ~mask) | (state & mask);
 #endif
-#if defined(ENABLE_BUZZER) && !defined(ENABLE_RELAY)
+#if (defined(ENABLE_BUZZER) || defined(ENABLE_M5_CARDPUTER)) && !defined(ENABLE_RELAY)
       g_relay_cmd_deadline = millis() + RELAY_CONFIRM_MS;
 #endif
       {
@@ -593,6 +597,10 @@ void loop() {
       if (can_up) buzzer_can_up();
       else        buzzer_can_down();
 #endif
+#ifdef ENABLE_M5_CARDPUTER
+      if (can_up) m5_beep_can_up();
+      else        m5_beep_can_down();
+#endif
     }
   }
 
@@ -632,6 +640,9 @@ void loop() {
       }
 #ifdef ENABLE_BUZZER
       buzzer_peer_count(pc);
+#endif
+#ifdef ENABLE_M5_CARDPUTER
+      m5_beep_peer(pc);
 #endif
     }
   }

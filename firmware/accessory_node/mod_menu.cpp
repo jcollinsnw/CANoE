@@ -16,6 +16,7 @@
 #include "mod_lcd.h"
 #include "mod_relay.h"
 #include "mod_buzzer.h"
+#include "mod_switches.h"
 #include "mod_bluetooth.h"
 
 #if USE_WIFI
@@ -86,7 +87,9 @@ static void relay_toggle(uint8_t relay_idx) {
   uint8_t want = (g_relay_mirror & mask) ? 0 : mask;
   uint8_t d[2] = { mask, want };
   bus_tx(CAN_ID_RELAY_CMD, d, 2);
-  g_relay_mirror = (g_relay_mirror & ~mask) | want;  // update immediately for menu_draw()
+#ifdef ENABLE_RELAY
+  g_relay_mirror = (g_relay_mirror & ~mask) | want;
+#endif
 }
 
 // \x7E = → (right arrow, HD44780 ROM A00) — selection cursor
@@ -313,6 +316,7 @@ void menu_enter() {
   g_top_sel     = 0;
   g_sub_sel     = 0;
   g_last_act    = millis();
+  switches_clear_pending();
   menu_draw();
   buzzer_menu_enter();
   wlogln("[menu] enter");

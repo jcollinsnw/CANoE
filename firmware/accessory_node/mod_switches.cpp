@@ -17,6 +17,7 @@
 #include "can_protocol.h"
 #include "bus.h"
 #include "mod_buzzer.h"
+#include "node_state.h"
 
 #if USE_WIFI
 #include "webui.h"
@@ -64,7 +65,9 @@ static void send_sw_event(uint8_t id, uint8_t ev) {
   uint8_t d[2] = { id, ev };
   bus_tx(CAN_ID_SWITCH_EVENT, d, 2);
   wlog("[sw%u] event=%u\n", id, ev);
-  // Register for ACK retry — find a free slot.
+  // Only register for ACK if the menu is not active — menu actions are local
+  // and don't need relay controller confirmation.
+  if (g_menu_active) return;
   for (uint8_t i = 0; i < SW_PENDING_MAX; i++) {
     if (!g_pending[i].active) {
       g_pending[i] = { true, id, ev, SW_MAX_RETRIES, millis() + SW_RETRY_MS };
@@ -183,6 +186,11 @@ void switches_handle_ack(const BusFrame& f) {
       break;
     }
   }
+}
+
+void switches_clear_pending() {
+  for (uint8_t i = 0; i < SW_PENDING_MAX; i++)
+    g_pending[i].active = false;
 }
 
 #endif // ENABLE_SWITCHES

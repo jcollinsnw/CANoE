@@ -19,6 +19,7 @@
 		AA0000000000000000000034 /* DataLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000033 /* DataLogger.swift */; };
 		AA0000000000000000000036 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000035 /* LogView.swift */; };
 		AA0000000000000000000038 /* SimulatorDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000037 /* SimulatorDriver.swift */; };
+		AA000000000000000000003A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000039 /* Theme.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +37,7 @@
 		AA0000000000000000000033 /* DataLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataLogger.swift; sourceTree = "<group>"; };
 		AA0000000000000000000035 /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000037 /* SimulatorDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorDriver.swift; sourceTree = "<group>"; };
+		AA0000000000000000000039 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -79,6 +81,7 @@
 				AA0000000000000000000033 /* DataLogger.swift */,
 				AA0000000000000000000035 /* LogView.swift */,
 				AA0000000000000000000037 /* SimulatorDriver.swift */,
+				AA0000000000000000000039 /* Theme.swift */,
 				AA0000000000000000000014 /* Assets.xcassets */,
 				AA0000000000000000000024 /* Info.plist */,
 			);
@@ -165,6 +168,7 @@
 				AA0000000000000000000034 /* DataLogger.swift in Sources */,
 				AA0000000000000000000036 /* LogView.swift in Sources */,
 				AA0000000000000000000038 /* SimulatorDriver.swift in Sources */,
+				AA000000000000000000003A /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

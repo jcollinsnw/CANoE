@@ -5,9 +5,11 @@
 #include "bus.h"
 
 void switches_setup();
-void switches_loop();                      // call every loop(); polls inputs + advances retry timers
-void switches_handle_ack(const BusFrame&); // call on CAN_ID_SWITCH_ACK frames to clear pending retries
+void switches_loop();
+void switches_handle_ack(const BusFrame&);
+void switches_clear_pending();
 
 #else
 inline void switches_handle_ack(const BusFrame&) {}
+inline void switches_clear_pending() {}
 #endif // ENABLE_SWITCHES

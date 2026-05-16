@@ -173,11 +173,19 @@ void buzzer_set_muted(bool muted) { g_muted = muted; if (muted) noTone(BUZZER_PI
 bool buzzer_is_muted()            { return g_muted; }
 
 void buzzer_handle_frame(const BusFrame& f) {
-  if (f.id == CAN_ID_RELAY_CMD && f.dlc >= 2) {
-    uint8_t mask = f.data[0], state = f.data[1];
-    if (mask == 0x3F && state == 0)   buzzer_all_off();
-    else if (state & mask)            buzzer_relay_on();
-    else                              buzzer_relay_off();
+  // Relay feedback sounds on confirmed state change (RELAY_STATUS), not on
+  // the command itself — so we stay silent when the relay controller is offline.
+  if (f.id == CAN_ID_RELAY_STATUS && f.dlc >= 1) {
+    static uint8_t s_last_status = 0;
+    uint8_t cur = f.data[0];
+    if (cur != s_last_status) {
+      uint8_t changed = cur ^ s_last_status;
+      uint8_t turned_on = changed & cur;
+      s_last_status = cur;
+      if (cur == 0 && changed == 0x3F)  buzzer_all_off();
+      else if (turned_on)               buzzer_relay_on();
+      else                              buzzer_relay_off();
+    }
     return;
   }
 

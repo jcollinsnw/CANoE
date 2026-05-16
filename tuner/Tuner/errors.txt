@@ -1,0 +1,5 @@
+
+/Users/jacobcollins/Projects/canbus/tuner/Tuner/SimulatorDriver.swift:149:22 Static member 'max' cannot be used on instance of type 'UInt8'
+/Users/jacobcollins/Projects/canbus/tuner/Tuner/SimulatorDriver.swift:149:22 Cannot call value of non-function type 'UInt8'
+/Users/jacobcollins/Projects/canbus/tuner/Tuner/SimulatorDriver.swift:149:29 Static member 'min' cannot be used on instance of type 'UInt8'
+/Users/jacobcollins/Projects/canbus/tuner/Tuner/SimulatorDriver.swift:149:29 Cannot call value of non-function type 'UInt8'

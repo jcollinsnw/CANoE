@@ -44,12 +44,37 @@ Connects to the node's SoftAP (`Crustang`) and opens the built-in web console in
 
 | File | Description |
 |------|-------------|
-| `TunerApp.swift` | `@main` entry point |
-| `ContentView.swift` | Root view — BLE dashboard, web console, and connect screen |
+| `TunerApp.swift` | `@main` entry point; injects `AppSettings` as `@EnvironmentObject` |
+| `Theme.swift` | `Color.acapulcoBlue` (#006DAC), `AppSettings` font-scale system, `AppearanceSheet` |
+| `ContentView.swift` | Root view — `ConnectView`, `NativeDashboardView`, `NodeBrowserView`, `FrameLogView` |
+| `LogView.swift` | Logger tab — live gauge grid, line graph panels, Braun analog dials, session stats |
+| `DataLogger.swift` | Session recording, CSV export, `ChannelDescriptor` registry, `CHAN_CAP` decoder |
 | `BLEManager.swift` | CoreBluetooth central manager; auto-reconnect, frame log, `sendFrame()` |
 | `LocationManager.swift` | CoreLocation wrapper; publishes `GPS_DATA (0x305)` payloads |
 | `NodeWebView.swift` | WKWebView with pull-to-refresh and JavaScript GPS bridge |
-| `Info.plist` | App permissions and transport security settings |
+| `SimulatorDriver.swift` | Synthetic engine data for testing without hardware |
+| `WeatherService.swift` | Ambient weather fetch → `ENV_DATA (0x301)` |
+| `AltimeterManager.swift` | Barometric pressure from `CMAltimeter` |
+
+---
+
+## Appearance
+
+All accent colors use **Acapulco Blue (#006DAC)**, set as the app's `AccentColor` asset so it applies automatically to native controls (tab bar, pickers, toggles). `Color.acapulcoBlue` is available as a Swift extension for explicit tinting.
+
+Font sizes are configured per category in the **Appearance sheet** (toolbar `textformat.size` icon):
+
+| Category | Used for | Base size |
+|----------|----------|-----------|
+| Gauge Values | Dial and tile readouts | 20 pt |
+| Panel Labels | Graph panel headers, channel names | 14 pt |
+| Data Stream | CAN frame log, live readouts | 13 pt |
+| Chart Axis | Tick labels on graphs and Y-axes | 9 pt |
+| Captions | Units, secondary labels | 10 pt |
+
+Each category has an independent 0.7×–1.8× slider with a live preview. Settings persist in `UserDefaults` via `@AppStorage`. `AppSettings` is an `ObservableObject`; views access it via `@EnvironmentObject`.
+
+**Adding a new source file:** register it in `project.pbxproj` in four places — `PBXBuildFile`, `PBXFileReference`, the Tuner group children list, and the `Sources` build phase.
 
 ---
 
