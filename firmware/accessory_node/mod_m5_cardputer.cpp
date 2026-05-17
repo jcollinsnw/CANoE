@@ -215,8 +215,17 @@ void m5_beep_can_down() {
 }
 
 void m5_beep_peer(uint8_t count) {
-    M5Cardputer.Speaker.setVolume(60);
-    M5Cardputer.Speaker.tone(count > 0 ? 880 : 440, 80); delay(90);
+    static uint8_t prev = 0;
+    bool joined = count > prev;
+    prev = count;
+    M5Cardputer.Speaker.setVolume(180);
+    if (joined) {
+        M5Cardputer.Speaker.tone(660, 100); delay(115);
+        M5Cardputer.Speaker.tone(990, 150); delay(165);
+    } else {
+        M5Cardputer.Speaker.tone(990, 100); delay(115);
+        M5Cardputer.Speaker.tone(440, 180); delay(195);
+    }
 }
 
 static void m5_ui_click() {
