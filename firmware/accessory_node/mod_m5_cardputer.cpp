@@ -278,9 +278,17 @@ void m5_loop() {
                 }
             } else {
                 if (g_cli_active) { g_cli_active = false; draw_cli_bar(); }
+                // Open the screen-switch dropdown immediately — that's almost
+                // always what opt is for. Press del to dismiss the dropdown
+                // without leaving selection mode; ;/. then navigate relay tiles.
                 g_sb_sel_active = true;
                 g_sb_sel        = SB_ITEM_FEEDMENU;
+                g_sb_dropdown   = true;
+                g_sb_dd_sel     = g_screen == M5Screen::SETTINGS ? 3 :
+                                  g_screen == M5Screen::MENU     ? 2 :
+                                  g_screen == M5Screen::FEED     ? 1 : 0;
                 draw_status_bar();
+                draw_sb_dropdown();
             }
             return;
         }
@@ -694,7 +702,11 @@ static void print_can(const String& text, uint16_t color) {
     line.color  = color;
     g_can_head  = (g_can_head + 1) % MAX_LINES;
     if (g_can_count < MAX_LINES) g_can_count++;
-    if (g_screen == M5Screen::CAN) redraw_can();
+    // Skip the repaint while the screen-switch dropdown is up — redraw_can()
+    // fills the same region the dropdown sits in (y=23..73). On a busy bus the
+    // dropdown was getting wiped within milliseconds of opening, before the
+    // user could pick anything.
+    if (g_screen == M5Screen::CAN && !g_sb_dropdown) redraw_can();
 }
 
 // --- FEED screen (human-readable log) ---
@@ -854,7 +866,7 @@ static void print_feed(const String& text, uint16_t color) {
     line.color   = color;
     g_feed_head  = (g_feed_head + 1) % MAX_LINES;
     if (g_feed_count < MAX_LINES) g_feed_count++;
-    if (g_screen == M5Screen::FEED) redraw_feed();
+    if (g_screen == M5Screen::FEED && !g_sb_dropdown) redraw_feed();
 }
 
 // --- CLI history helpers ---
