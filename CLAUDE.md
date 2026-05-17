@@ -93,7 +93,7 @@ Multiple ESP32 nodes (ESP32-WROOM-32 and ESP32-S3), each running up to four thin
 
 | Node             | NODE_ID | Config file                      | Features                                                                    |
 |------------------|---------|----------------------------------|-----------------------------------------------------------------------------|
-| switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_RULES, ENABLE_LCD, ENABLE_MENU, ENABLE_BUZZER, ENABLE_LEDS, ENABLE_BATTERY |
+| switch_panel     | 0x01    | configs/switch_panel.h           | ENABLE_SWITCHES, ENABLE_RULES, ENABLE_LCD, ENABLE_MENU, ENABLE_BUZZER, ENABLE_LEDS, ENABLE_BATTERY, ENABLE_BLUETOOTH |
 | relay_controller | 0x02    | configs/relay_controller.h       | ENABLE_RELAY, ENABLE_RULES, ENABLE_BATTERY, ENABLE_BLUETOOTH                |
 | viper_interface  | 0x03    | configs/viper_interface.h        | ENABLE_VIPER, ENABLE_LCD, ENABLE_MPU6050                                    |
 | ecu_node         | 0x04    | configs/ecu_node.h               | ENABLE_RPM, ENABLE_WBO2, ENABLE_ECU (MAP, TPS, CLT, IAT, carb solenoid, dual injectors) |
@@ -121,7 +121,7 @@ Multiple ESP32 nodes (ESP32-WROOM-32 and ESP32-S3), each running up to four thin
 | `BRIDGE_MODE`     | (webui + mod_mqtt)  | Bridge node: SoftAP + wired CAN + WiFi STA to home router. No ESP-NOW. Web UI shows aggregated control panel built from NODE_CAP discovery. Enables `/api/nodecaps` endpoint. Requires `STA_SSID`/`STA_PASSWORD`. |
 | `MQTT_BROKER`     | mod_mqtt            | Enable MQTT publishing on the bridge. Set to broker IP/hostname. Requires PubSubClient library. Publishes all CAN frames to `{MQTT_TOPIC_PREFIX}/frames`; subscribes to `{MQTT_TOPIC_PREFIX}/send` for injection. |
 | `ENABLE_BATTERY`  | mod_battery         | Dual-channel battery voltage ADC; broadcasts CAN_ID_TELEMETRY (0x300). Requires `VBAT_ADC_PIN` and/or `VBAT2_ADC_PIN`. |
-| `ENABLE_BLUETOOTH` | mod_bluetooth      | BLE GATT CAN bus mirror. Notifies a connected phone of every frame (TX characteristic) and injects frames written by the phone (RX characteristic). NVS key `"bt_en"` in `NVS_NAMESPACE` enables/disables at boot. Controllable via `CFG_KEY_BT_ENABLED` (0x33) and `CFG_KEY_BT_ADVERTISING` (0x34) config writes. Wire format: `[id_lo, id_hi, dlc, d0..d7]` (11 bytes, matches iOS Tuner `BLEManager.swift`). |
+| `ENABLE_BLUETOOTH` | mod_bluetooth      | BLE GATT CAN bus mirror, **NimBLE-Arduino backend** (light-weight; ~30 KB RAM vs ~70 KB for Bluedroid, much better WiFi+BLE coexist — required to run alongside SoftAP/ESP-NOW/CAN on a WROOM). Notifies a connected phone of every frame (TX characteristic) and injects frames written by the phone (RX characteristic). NVS key `"bt_en"` in `NVS_NAMESPACE` enables/disables at boot. Controllable via `CFG_KEY_BT_ENABLED` (0x33) and `CFG_KEY_BT_ADVERTISING` (0x34) config writes; the switch panel menu broadcasts both keys with `CFG_TARGET_BROADCAST` so every BT-capable node flips together. Wire format: `[id_lo, id_hi, dlc, d0..d7]` (11 bytes, matches iOS Tuner `BLEManager.swift`). |
 | `ENABLE_M5_CARDPUTER` | mod_m5_cardputer | M5Stack Cardputer TFT display + keyboard CLI; relay status bar (#006DAC). Four screens: **CAN** (raw hex frame log), **FEED** (human-readable decoded frames), **COMMANDS** (action macros, internally `M5Screen::MENU`), **SETTINGS** (BT enable, WiFi enable, speaker volume). `fn` toggles CAN↔COMMANDS (also returns to CAN from SETTINGS). `opt` enters status bar selection mode with the screen-label item selected first: `;`/`.` navigate relays and the screen label; Enter/Space toggles a relay or opens a dropdown (CAN / FEED / COMMANDS / SETTINGS); Del or Opt exits. Status bar shows relay boxes (green=ON, grey=OFF; in selection mode selected=grey, unselected-OFF=acapulco-blue), battery gauge (dark green/yellow/red), peer count pill (green/red). CLI bar shows status events when CLI is closed. `;`/`.` scroll 8-entry command history in the CLI. Requires M5Cardputer library. |
 | `ESPNOW_ONLY`    | (accessory_node.ino) | Skip SoftAP and web server; init ESP-NOW via `bus_init_no_ap()` only. Used by headless nodes like the Cardputer. |
 
@@ -313,6 +313,7 @@ Everything is in the Arduino-ESP32 core except the bridge node's MQTT module and
 - `WebServer.h` / `DNSServer.h` — HTTP + captive portal
 - `Preferences.h` — NVS persistence
 - `PubSubClient` — MQTT client (bridge only, when `MQTT_BROKER` is defined); install with `arduino-cli lib install "PubSubClient"`
+- `NimBLE-Arduino` — BLE stack used by `mod_bluetooth` (any node with `ENABLE_BLUETOOTH`). Install with `arduino-cli lib install "NimBLE-Arduino"`. Do NOT install or use the Arduino-ESP32 `BLEDevice` library — it is the heavy Bluedroid stack that broke WiFi coexist before; the Makefile's BLE-capable build paths assume NimBLE.
 - `M5Cardputer` — M5Stack Cardputer display + keyboard (cardputer node only); requires M5Stack board package URL in arduino-cli config
 
 **Board packages:**

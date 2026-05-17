@@ -21,7 +21,7 @@
 
 FQBN    := esp32:esp32:esp32:PartitionScheme=min_spiffs
 FQBN_S3 := m5stack:esp32:m5stack_cardputer
-JOBS    := 8
+JOBS    := 16
 BAUD    := 115200
 UPLOAD_SPEED ?= 115200 # 921600
 PORT    ?= /dev/cu.SLAB_USBtoUART   # switch panel
@@ -42,7 +42,7 @@ CARDPUTER_DIR    ?= CANoE
 # ---- preflight checks ----
 # These give a one-line "do this to fix it" message instead of letting the
 # compiler emit a cryptic "fatal error: secrets.h: No such file" or similar.
-.PHONY: check-secrets check-lib-m5cardputer check-lib-pubsub
+.PHONY: check-secrets check-lib-m5cardputer check-lib-pubsub check-lib-nimble
 
 check-secrets:
 	@if [ ! -f $(SKETCH)/secrets.h ]; then \
@@ -68,15 +68,22 @@ check-lib-pubsub:
 	  exit 1; \
 	fi
 
+check-lib-nimble:
+	@if ! arduino-cli lib list NimBLE-Arduino 2>/dev/null | grep -q NimBLE-Arduino; then \
+	  echo "!! NimBLE-Arduino library not installed (required by mod_bluetooth)."; \
+	  echo "   Fix: arduino-cli lib install \"NimBLE-Arduino\""; \
+	  exit 1; \
+	fi
+
 # ---- select node config ----
 .PHONY: relay switch viper ecu bridge cardputer
 
-relay: check-secrets
+relay: check-secrets check-lib-nimble
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/relay_controller.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) --output-dir $(BUILD_DIR)/relay $(SKETCH)
 
-switch: check-secrets
+switch: check-secrets check-lib-nimble
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/switch_panel.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) --output-dir $(BUILD_DIR)/switch $(SKETCH)
@@ -109,7 +116,7 @@ cardputer: check-secrets check-lib-m5cardputer
 
 # ---- compile all ----
 .PHONY: all
-all: relay switch viper ecu bridge
+all: relay switch viper ecu bridge cardputer
 
 # ---- upload ----
 .PHONY: upload-relay upload-switch upload-viper upload-ecu upload-bridge upload-cardputer

@@ -1,4 +1,4 @@
-// mod_bluetooth.cpp — BLE GATT CAN bus mirror.
+// mod_bluetooth.cpp — BLE GATT CAN bus mirror (NimBLE-Arduino 2.x).
 //
 // Exposes one GATT service with two characteristics:
 //   TX (notify):  notifies the connected phone of every CAN frame seen by this node.
@@ -6,16 +6,17 @@
 //
 // Frame wire format (11 bytes, fixed length): [id_lo, id_hi, dlc, d0..d7]
 // Unused data bytes beyond dlc are zero-padded.
+//
+// NimBLE chosen over the Arduino-ESP32 BLEDevice (Bluedroid) stack: ~50% less
+// flash, ~100 KB less RAM, and meaningfully better WiFi+BLE coexist. Same wire
+// format and UUIDs, so the iOS Tuner needs no changes.
 
 #include <Arduino.h>
 #include "node_config.h"
 
 #ifdef ENABLE_BLUETOOTH
 
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLECharacteristic.h>
-#include <BLE2902.h>
+#include <NimBLEDevice.h>
 #include <Preferences.h>
 
 #include "can_protocol.h"
@@ -53,50 +54,40 @@ static inline bool rx_empty_unsafe() { return s_rx_head == s_rx_tail; }
 static inline bool rx_full_unsafe()  { return ((s_rx_tail + 1) % BLE_RX_RING) == s_rx_head; }
 
 // ── BLE handles ───────────────────────────────────────────────────────────
-static BLEServer*         s_server     = nullptr;
-static BLECharacteristic* s_tx_char    = nullptr;
-static BLECharacteristic* s_rx_char    = nullptr;
-static bool               s_connected  = false;
-static bool               s_advertising = false;
+static NimBLEServer*         s_server      = nullptr;
+static NimBLECharacteristic* s_tx_char     = nullptr;
+static NimBLECharacteristic* s_rx_char     = nullptr;
+static bool                  s_connected   = false;
+static bool                  s_advertising = false;
 
 // ── Callbacks ─────────────────────────────────────────────────────────────
-class BtServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer*) override {
+class BtServerCallbacks : public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer*, NimBLEConnInfo&) override {
         s_connected = true;
         wlogln("[bt] phone connected");
     }
-    void onDisconnect(BLEServer*) override {
+    void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int reason) override {
         s_connected = false;
         if (s_advertising) {
-            wlogln("[bt] phone disconnected — restarting advertising");
-            BLEDevice::startAdvertising();
+            wlog("[bt] phone disconnected (reason=%d) — restarting advertising\n", reason);
+            NimBLEDevice::startAdvertising();
         } else {
             wlogln("[bt] phone disconnected — advertising suppressed");
         }
     }
-#if defined(CONFIG_BLUEDROID_ENABLED)
-    void onConnect(BLEServer* s, esp_ble_gatts_cb_param_t*) override    { onConnect(s); }
-    void onDisconnect(BLEServer* s, esp_ble_gatts_cb_param_t*) override { onDisconnect(s); }
-    void onMtuChanged(BLEServer*, esp_ble_gatts_cb_param_t*) override   {}
-    void onConnParamsUpdate(esp_bd_addr_t, uint16_t, uint16_t, uint16_t, esp_bt_status_t) override {}
-#endif
 };
 
-class BtRxCallbacks : public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic* c) override {
-        String v = c->getValue();
-        if ((int)v.length() < BLE_FRAME_LEN) return;
+class BtRxCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+        std::string v = c->getValue();
+        if (v.size() < (size_t)BLE_FRAME_LEN) return;
         portENTER_CRITICAL(&s_rx_mux);
         if (!rx_full_unsafe()) {
-            memcpy(s_rx_buf[s_rx_tail], (const uint8_t*)v.c_str(), BLE_FRAME_LEN);
+            memcpy(s_rx_buf[s_rx_tail], (const uint8_t*)v.data(), BLE_FRAME_LEN);
             s_rx_tail = (s_rx_tail + 1) % BLE_RX_RING;
         }
         portEXIT_CRITICAL(&s_rx_mux);
     }
-#if defined(CONFIG_BLUEDROID_ENABLED)
-    void onRead(BLECharacteristic*, esp_ble_gatts_cb_param_t*) override {}
-    void onWrite(BLECharacteristic* c, esp_ble_gatts_cb_param_t*) override { onWrite(c); }
-#endif
 };
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -113,30 +104,32 @@ void bluetooth_setup() {
 #ifndef BLE_DEVICE_NAME
 #  define BLE_DEVICE_NAME NODE_NAME
 #endif
-    BLEDevice::init(BLE_DEVICE_NAME);
-    s_server = BLEDevice::createServer();
+    NimBLEDevice::init(BLE_DEVICE_NAME);
+    NimBLEDevice::setPower(3);  // +3 dBm — modest TX power, good WiFi coexist headroom
+
+    s_server = NimBLEDevice::createServer();
     s_server->setCallbacks(new BtServerCallbacks());
 
-    BLEService* svc = s_server->createService(BLE_SERVICE_UUID);
+    NimBLEService* svc = s_server->createService(BLE_SERVICE_UUID);
 
     s_tx_char = svc->createCharacteristic(
         BLE_TX_CHAR_UUID,
-        BLECharacteristic::PROPERTY_NOTIFY
+        NIMBLE_PROPERTY::NOTIFY
     );
-    s_tx_char->addDescriptor(new BLE2902());
+    // NimBLE adds the 0x2902 CCCD descriptor automatically for NOTIFY characteristics.
 
     s_rx_char = svc->createCharacteristic(
         BLE_RX_CHAR_UUID,
-        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
     s_rx_char->setCallbacks(new BtRxCallbacks());
 
     svc->start();
 
-    BLEAdvertising* adv = BLEDevice::getAdvertising();
+    NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
     adv->addServiceUUID(BLE_SERVICE_UUID);
-    adv->setScanResponse(true);
-    BLEDevice::startAdvertising();
+    adv->enableScanResponse(true);
+    NimBLEDevice::startAdvertising();
     s_advertising = true;
 
     wlog("[bt] advertising as \"%s\"\n", BLE_DEVICE_NAME);
@@ -147,10 +140,10 @@ bool bluetooth_is_advertising() { return s_advertising; }
 void bluetooth_set_advertising(bool en) {
     s_advertising = en;
     if (en) {
-        BLEDevice::startAdvertising();
+        NimBLEDevice::startAdvertising();
         wlogln("[bt] advertising started");
     } else {
-        BLEDevice::stopAdvertising();
+        NimBLEDevice::stopAdvertising();
         wlogln("[bt] advertising stopped");
     }
 }

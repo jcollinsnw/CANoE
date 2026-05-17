@@ -471,18 +471,29 @@ void menu_action() {
 #ifdef MENU_HAS_BLUETOOTH
     case MENU_ID_BLUETOOTH:
       if (idx == 0) {
-        // Toggle advertising (discoverability) — runtime only, no restart.
-        bluetooth_set_advertising(!bluetooth_is_advertising());
-        wlog("[menu] bt advertise=%u\n", bluetooth_is_advertising());
+        // Toggle advertising (discoverability). Broadcast over CAN so every
+        // BT-capable node flips together; the self-echo lands in
+        // bluetooth_handle_frame() and updates this node's local state too.
+        bool new_state = !bluetooth_is_advertising();
+        uint8_t d[8] = {
+          CFG_TARGET_BROADCAST, CFG_KEY_BT_ADVERTISING, 0, 0,
+          (uint8_t)(new_state ? 1 : 0), 0, 0, 0
+        };
+        bus_tx(CAN_ID_CONFIG_WRITE, d, 8);
+        wlog("[menu] bt advertise=%u (broadcast)\n", new_state);
       } else {
         // Toggle BT power — persisted to NVS, requires restart to take effect.
-        g_bt_en = !g_bt_en;
-        Preferences p; p.begin(NVS_NAMESPACE, false);
-        p.putBool("bt_en", g_bt_en);
-        p.end();
-        wlog("[menu] bt_en=%u -> restart\n", g_bt_en);
-        delay(100);
-        ESP.restart();
+        // Broadcast so all BT-capable nodes restart with the new setting; the
+        // self-echo path in mod_bluetooth handles local NVS save + ESP.restart().
+        bool new_state = !g_bt_en;
+        g_bt_en = new_state;
+        uint8_t d[8] = {
+          CFG_TARGET_BROADCAST, CFG_KEY_BT_ENABLED, 0, 0,
+          (uint8_t)(new_state ? 1 : 0), 0, 0, 0
+        };
+        bus_tx(CAN_ID_CONFIG_WRITE, d, 8);
+        wlog("[menu] bt_en=%u (broadcast) -> restart\n", new_state);
+        // Self-echo will restart us; no explicit ESP.restart() needed here.
       }
       menu_draw();
       break;
