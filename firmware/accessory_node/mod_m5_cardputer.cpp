@@ -10,6 +10,7 @@
 
 #include <M5Cardputer.h>
 #include <Arduino.h>
+#include <Preferences.h>
 #ifdef ENABLE_SD_LOG
 #include <SD.h>
 #include <FS.h>
@@ -47,11 +48,27 @@ static uint8_t  g_feed_head  = 0;
 static uint8_t  g_feed_count = 0;
 
 // --- Screen state ---
-enum class M5Screen { CAN, FEED, MENU };
+enum class M5Screen { CAN, FEED, MENU, SETTINGS };
 static M5Screen g_screen      = M5Screen::CAN;
 static uint8_t  g_last_mirror = 0xFF;
 static int32_t  g_batt_pct   = -1;
 static uint32_t g_batt_last  = 0;
+
+// --- Settings state ---
+// Speaker volume is persisted locally; BT/WiFi toggles broadcast and track last-sent state.
+static const uint8_t SPK_VOL_TABLE[]  = {0, 40, 80, 160, 240};
+static const char*   SPK_VOL_LABELS[] = {"MUTE", "LOW", "MED", "HIGH", "MAX"};
+static const int     SPK_VOL_COUNT    = sizeof(SPK_VOL_TABLE) / sizeof(SPK_VOL_TABLE[0]);
+static uint8_t g_spk_vol_idx   = 2;     // MED
+static bool    g_bt_enabled    = true;  // assume relay_controller boots with BT on
+static bool    g_wifi_enabled  = true;
+static Preferences g_prefs;
+
+#define SET_ITEM_BT    0
+#define SET_ITEM_WIFI  1
+#define SET_ITEM_SPK   2
+#define SET_COUNT      3
+static int g_set_sel = 0;
 
 // --- SD logging state ---
 static bool g_logging = false;
@@ -88,8 +105,8 @@ struct MenuItem {
     ArgType      arg;
 };
 
-static const char* SB_DROPDOWN_ITEMS[] = {"CAN", "FEED", "MENU"};
-static const int   SB_DD_COUNT = 3;
+static const char* SB_DROPDOWN_ITEMS[] = {"CAN", "FEED", "COMMANDS", "SETTINGS"};
+static const int   SB_DD_COUNT = 4;
 
 static const MenuItem MENU_ITEMS[] = {
     {"All Relays OFF",   ARG_NONE},
@@ -120,7 +137,11 @@ static void redraw_feed();
 static void enter_can();
 static void enter_feed();
 static void enter_menu();
+static void enter_settings();
 static void draw_menu();
+static void draw_settings();
+static void handle_settings_keys(const Keyboard_Class::KeysState& ks);
+static void apply_setting(int item);
 static void print_can(const String& text, uint16_t color = WHITE);
 static void print_feed(const String& text, uint16_t color = WHITE);
 static bool decode_frame(const BusFrame& f, char* buf, size_t sz);
@@ -153,13 +174,18 @@ void m5_setup() {
     M5Cardputer.Display.setTextSize(1);
     M5Cardputer.Display.fillScreen(BLACK);
 
+    g_prefs.begin("m5card", true);
+    g_spk_vol_idx = g_prefs.getUChar("spk_vol", 2);
+    g_prefs.end();
+    if (g_spk_vol_idx >= SPK_VOL_COUNT) g_spk_vol_idx = 2;
+
     draw_status_bar();
     draw_cli_bar();
 
     M5Cardputer.Display.setCursor(0, STATUS_BAR_H + 5);
     print_can("=== CANoE Cardputer [0x06] ===",    GREEN);
     print_can("125kbps | WiFi Ch6 | ESP-NOW",        DARKGREY);
-    print_can("1-6: relay | fn: menu | opt: statusbar", YELLOW);
+    print_can("1-6: relay | fn: cmds | opt: statusbar", YELLOW);
 }
 
 void m5_beep_startup() {
@@ -194,7 +220,9 @@ void m5_beep_peer(uint8_t count) {
 }
 
 static void m5_ui_click() {
-    M5Cardputer.Speaker.setVolume(80);
+    uint8_t v = SPK_VOL_TABLE[g_spk_vol_idx];
+    if (v == 0) return;
+    M5Cardputer.Speaker.setVolume(v);
     M5Cardputer.Speaker.tone(4200, 30);
 }
 
@@ -215,14 +243,14 @@ void m5_loop() {
     if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
         Keyboard_Class::KeysState ks = M5Cardputer.Keyboard.keysState();
 
-        // fn toggles between content screens and menu
+        // fn toggles between content screens and the COMMANDS screen
         if (ks.fn) {
             m5_ui_click();
             if (g_cli_active) { g_cli_active = false; g_cli_input = ""; }
             g_sb_sel_active = false;
             g_sb_dropdown   = false;
-            if (g_screen == M5Screen::MENU) enter_can();
-            else                            enter_menu();
+            if (g_screen == M5Screen::MENU || g_screen == M5Screen::SETTINGS) enter_can();
+            else                                                              enter_menu();
             return;
         }
 
@@ -234,21 +262,22 @@ void m5_loop() {
                 g_sb_dropdown     = false;
                 draw_status_bar();
                 if (was_dropdown) {
-                    if      (g_screen == M5Screen::MENU) draw_menu();
-                    else if (g_screen == M5Screen::FEED) redraw_feed();
-                    else                                 redraw_can();
+                    if      (g_screen == M5Screen::SETTINGS) draw_settings();
+                    else if (g_screen == M5Screen::MENU)     draw_menu();
+                    else if (g_screen == M5Screen::FEED)     redraw_feed();
+                    else                                     redraw_can();
                 }
             } else {
                 if (g_cli_active) { g_cli_active = false; draw_cli_bar(); }
                 g_sb_sel_active = true;
-                g_sb_sel        = 0;
+                g_sb_sel        = SB_ITEM_FEEDMENU;
                 draw_status_bar();
             }
             return;
         }
 
         // ctrl alone toggles CLI bar (CAN/FEED screens only, not in status bar selection)
-        if (ks.ctrl && ks.word.empty() && g_screen != M5Screen::MENU && !g_sb_sel_active) {
+        if (ks.ctrl && ks.word.empty() && g_screen != M5Screen::MENU && g_screen != M5Screen::SETTINGS && !g_sb_sel_active) {
             m5_ui_click();
             g_cli_active = !g_cli_active;
             g_cli_input  = "";
@@ -258,14 +287,18 @@ void m5_loop() {
 
         if (g_sb_sel_active) { handle_sb_sel_keys(ks); return; }
 
-        if (g_screen == M5Screen::MENU) handle_menu_keys(ks);
-        else                            handle_feed_keys(ks);
+        if      (g_screen == M5Screen::SETTINGS) handle_settings_keys(ks);
+        else if (g_screen == M5Screen::MENU)     handle_menu_keys(ks);
+        else                                     handle_feed_keys(ks);
     }
 
     if (g_relay_mirror != g_last_mirror) {
         g_last_mirror = g_relay_mirror;
         draw_status_bar();
-        if (g_screen == M5Screen::MENU && !g_sb_dropdown) draw_menu();
+        if (!g_sb_dropdown) {
+            if      (g_screen == M5Screen::MENU)     draw_menu();
+            else if (g_screen == M5Screen::SETTINGS) draw_settings();
+        }
     }
 }
 
@@ -342,6 +375,13 @@ static void enter_menu() {
     draw_cli_bar();
 }
 
+static void enter_settings() {
+    g_screen = M5Screen::SETTINGS;
+    draw_status_bar();
+    draw_settings();
+    draw_cli_bar();
+}
+
 // --- Status bar ---
 
 static void draw_status_bar() {
@@ -351,17 +391,22 @@ static void draw_status_bar() {
     M5Cardputer.Display.fillRect(0, 0, SCREEN_W, STATUS_BAR_H, ACAPULCO_BLUE);
     M5Cardputer.Display.drawFastHLine(0, STATUS_BAR_H, SCREEN_W, DARKGREY);
 
+    const int LABEL_W = 56;
     bool feedmenu_sel = g_sb_sel_active && (g_sb_sel == SB_ITEM_FEEDMENU);
     if (feedmenu_sel) {
-        M5Cardputer.Display.fillRect(2, 4, 34, 14, DARKGREY);
-        M5Cardputer.Display.drawRect(2, 4, 34, 14, WHITE);
+        M5Cardputer.Display.fillRect(2, 4, LABEL_W, 14, DARKGREY);
+        M5Cardputer.Display.drawRect(2, 4, LABEL_W, 14, WHITE);
     }
-    M5Cardputer.Display.setCursor(5, (STATUS_BAR_H - 8) / 2);
+    const char* label =
+        g_screen == M5Screen::SETTINGS ? "SETTINGS" :
+        g_screen == M5Screen::MENU     ? "COMMANDS" :
+        g_screen == M5Screen::FEED     ? "FEED"     : "CAN";
+    int label_px = strlen(label) * 6;
+    M5Cardputer.Display.setCursor(2 + (LABEL_W - label_px) / 2, (STATUS_BAR_H - 8) / 2);
     M5Cardputer.Display.setTextColor(WHITE);
-    M5Cardputer.Display.print(g_screen == M5Screen::MENU ? "MENU" :
-                              g_screen == M5Screen::FEED ? "FEED" : "CAN");
+    M5Cardputer.Display.print(label);
 
-    int startX = 55, boxW = 18, spacing = 20;
+    int startX = 64, boxW = 14, spacing = 16;
     for (int i = 0; i < 6; i++) {
         bool     on  = (g_relay_mirror >> i) & 1;
         bool     sel = g_sb_sel_active && (g_sb_sel == i);
@@ -371,7 +416,7 @@ static void draw_status_bar() {
                        g_sb_sel_active ? (uint16_t)ACAPULCO_BLUE : (uint16_t)DARKGREY;
         M5Cardputer.Display.fillRect(x, 4, boxW, 14, bg);
         M5Cardputer.Display.drawRect(x, 4, boxW, 14, WHITE);
-        M5Cardputer.Display.setCursor(x + 6, 7);
+        M5Cardputer.Display.setCursor(x + (boxW - 6) / 2, 7);
         M5Cardputer.Display.setTextColor(sel ? WHITE : (on ? BLACK : WHITE));
         M5Cardputer.Display.print(String(i + 1));
     }
@@ -444,7 +489,7 @@ static void draw_cli_bar() {
 // --- Status bar dropdown ---
 
 static void draw_sb_dropdown() {
-    const int dx = 2, dy = STATUS_BAR_H + 1, dw = 40, dih = 12;
+    const int dx = 2, dy = STATUS_BAR_H + 1, dw = 60, dih = 12;
     int dh = SB_DD_COUNT * dih + 2;
     M5Cardputer.Display.fillRect(dx, dy, dw, dh, BLACK);
     M5Cardputer.Display.drawRect(dx, dy, dw, dh, DARKGREY);
@@ -510,6 +555,112 @@ static void draw_menu() {
         int thumb_y = MENU_START_Y + track_h * g_menu_scroll / MENU_COUNT;
         M5Cardputer.Display.fillRect(SCREEN_W - 3, MENU_START_Y,    3, track_h,  DARKGREY);
         M5Cardputer.Display.fillRect(SCREEN_W - 3, thumb_y,         3, thumb_h,  WHITE);
+    }
+}
+
+// --- Settings screen ---
+
+static void draw_settings() {
+    M5Cardputer.Display.fillRect(0, STATUS_BAR_H + 1, SCREEN_W,
+                                 CLI_BAR_Y - STATUS_BAR_H - 1, BLACK);
+
+    struct Row { const char* label; const char* val; };
+    char spk[16];
+    snprintf(spk, sizeof(spk), "%s", SPK_VOL_LABELS[g_spk_vol_idx]);
+    Row rows[SET_COUNT] = {
+        {"BT (relay node)", g_bt_enabled   ? "ON"  : "OFF"},
+        {"WiFi (all nodes)", g_wifi_enabled ? "ON"  : "OFF"},
+        {"Speaker volume",  spk},
+    };
+
+    for (int i = 0; i < SET_COUNT; i++) {
+        int  y   = MENU_START_Y + i * (MENU_ITEM_H + 4);
+        bool sel = (i == g_set_sel);
+        if (sel) M5Cardputer.Display.fillRect(0, y, SCREEN_W, MENU_ITEM_H + 2, DARKGREY);
+        M5Cardputer.Display.setCursor(4, y + 2);
+        M5Cardputer.Display.setTextColor(sel ? YELLOW : WHITE);
+        M5Cardputer.Display.print(rows[i].label);
+
+        int vw = strlen(rows[i].val) * 6;
+        M5Cardputer.Display.setCursor(SCREEN_W - vw - 6, y + 2);
+        M5Cardputer.Display.setTextColor(sel ? CYAN : LIGHTGREY);
+        M5Cardputer.Display.print(rows[i].val);
+    }
+
+    int help_y = MENU_START_Y + SET_COUNT * (MENU_ITEM_H + 4) + 4;
+    M5Cardputer.Display.setCursor(4, help_y);
+    M5Cardputer.Display.setTextColor(DARKGREY);
+    M5Cardputer.Display.print(";/.: nav  enter: change  del: back");
+}
+
+static void apply_setting(int item) {
+    uint8_t d[8] = {};
+    switch (item) {
+        case SET_ITEM_BT: {
+            g_bt_enabled = !g_bt_enabled;
+            d[0] = CFG_TARGET_RELAY_CTRL;
+            d[1] = CFG_KEY_BT_ENABLED;
+            d[2] = 0;
+            d[4] = g_bt_enabled ? 1 : 0;
+            bus_tx(CAN_ID_CONFIG_WRITE, d, 8);
+            m5_set_event(g_bt_enabled ? "BT enabled" : "BT disabled");
+            break;
+        }
+        case SET_ITEM_WIFI: {
+            g_wifi_enabled = !g_wifi_enabled;
+            d[0] = CFG_TARGET_BROADCAST;
+            d[1] = CFG_KEY_WIFI_ENABLED;
+            d[2] = 0;
+            d[4] = g_wifi_enabled ? 1 : 0;
+            bus_tx(CAN_ID_CONFIG_WRITE, d, 8);
+            m5_set_event(g_wifi_enabled ? "WiFi enabled" : "WiFi disabled");
+            break;
+        }
+        case SET_ITEM_SPK: {
+            g_spk_vol_idx = (g_spk_vol_idx + 1) % SPK_VOL_COUNT;
+            g_prefs.begin("m5card", false);
+            g_prefs.putUChar("spk_vol", g_spk_vol_idx);
+            g_prefs.end();
+            char buf[24];
+            snprintf(buf, sizeof(buf), "Speaker: %s", SPK_VOL_LABELS[g_spk_vol_idx]);
+            m5_set_event(buf);
+            break;
+        }
+    }
+}
+
+static void handle_settings_keys(const Keyboard_Class::KeysState& ks) {
+    if (ks.del) { enter_can(); return; }
+
+    if (!ks.word.empty()) {
+        char c = ks.word[0];
+        if (c == ';') {
+            m5_ui_click();
+            g_set_sel = (g_set_sel - 1 + SET_COUNT) % SET_COUNT;
+            draw_settings();
+            return;
+        }
+        if (c == '.') {
+            m5_ui_click();
+            g_set_sel = (g_set_sel + 1) % SET_COUNT;
+            draw_settings();
+            return;
+        }
+        if (c >= '1' && c <= '6') {
+            m5_ui_click();
+            uint8_t relay = c - '1';
+            bool    on    = (g_relay_mirror >> relay) & 1;
+            uint8_t mask  = 1 << relay;
+            uint8_t d[2]  = {mask, on ? (uint8_t)0x00 : mask};
+            bus_tx(CAN_ID_RELAY_CMD, d, 2);
+            return;
+        }
+    }
+
+    if (ks.enter) {
+        m5_ui_click();
+        apply_setting(g_set_sel);
+        draw_settings();
     }
 }
 
@@ -752,7 +903,8 @@ static void handle_sb_sel_keys(const Keyboard_Class::KeysState& ks) {
             m5_ui_click();
             g_sb_dropdown   = false;
             g_sb_sel_active = false;
-            if      (g_sb_dd_sel == 2) enter_menu();
+            if      (g_sb_dd_sel == 3) enter_settings();
+            else if (g_sb_dd_sel == 2) enter_menu();
             else if (g_sb_dd_sel == 1) enter_feed();
             else                       enter_can();
         }
@@ -784,8 +936,9 @@ static void handle_sb_sel_keys(const Keyboard_Class::KeysState& ks) {
             print_can("[relay " + String(relay + 1) + (on ? " OFF]" : " ON]"), ORANGE);
         } else {
             g_sb_dropdown = true;
-            g_sb_dd_sel   = g_screen == M5Screen::MENU ? 2 :
-                            g_screen == M5Screen::FEED ? 1 : 0;
+            g_sb_dd_sel   = g_screen == M5Screen::SETTINGS ? 3 :
+                            g_screen == M5Screen::MENU     ? 2 :
+                            g_screen == M5Screen::FEED     ? 1 : 0;
             draw_sb_dropdown();
         }
     }

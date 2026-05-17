@@ -117,47 +117,87 @@ upload-cardputer: cardputer
 	@echo "Done — Cardputer will reboot and load the new firmware"
 
 # ---- OTA upload (connect to node AP first; OTA_IP defaults to 192.168.4.1) ----
-.PHONY: ota-relay ota-switch ota-viper ota-ecu ota-bridge
+# Link-quality preflight: 5 quick pings, abort if any packet is lost or avg RTT
+# exceeds OTA_MAX_RTT_MS. OTA over a marginal WiFi link partially writes the OTA
+# partition, can wedge macOS WiFi supplicant, and has bricked nodes before.
+# Override the gate with OTA_FORCE=1 if you really know what you're doing.
+.PHONY: ota-relay ota-switch ota-viper ota-ecu ota-bridge ota-check
 
-ota-relay: relay
-	@echo ">>> Press enter to OTA flash: relay_controller → http://$(OTA_IP)/api/ota"
-	read
-	curl --max-time 60 -f \
-	     -F "firmware=@$(BUILD_DIR)/relay/$(SKETCH_NAME).ino.bin" \
+OTA_MIN_PINGS   ?= 5
+OTA_MAX_RTT_MS  ?= 30
+OTA_FORCE       ?= 0
+
+ota-check:
+	@if [ "$(OTA_FORCE)" = "1" ]; then \
+	  echo ">>> OTA_FORCE=1, skipping link-quality preflight"; \
+	else \
+	  echo ">>> Link-quality preflight: pinging $(OTA_IP) x$(OTA_MIN_PINGS) ..."; \
+	  out=$$(ping -c $(OTA_MIN_PINGS) -W 1000 -i 0.2 $(OTA_IP) 2>&1); \
+	  echo "$$out" | tail -2; \
+	  loss=$$(echo "$$out" | awk -F',' '/packet loss/ {gsub("%","",$$3); gsub(" ","",$$3); print $$3+0}'); \
+	  rtt=$$(echo "$$out"  | awk -F'/' '/min\/avg\/max/ {print int($$5+0.5)}'); \
+	  if [ -z "$$rtt" ]; then \
+	    echo "!! Preflight failed: no ping reply from $(OTA_IP)."; \
+	    echo "   Connect to the node AP, or set OTA_IP=<addr>."; \
+	    echo "   Bypass with: make <target> OTA_FORCE=1"; exit 1; \
+	  fi; \
+	  if [ "$$loss" != "0" ]; then \
+	    echo "!! Preflight failed: $${loss}% packet loss to $(OTA_IP)."; \
+	    echo "   Move closer to the node and retry."; \
+	    echo "   Bypass with: make <target> OTA_FORCE=1"; exit 1; \
+	  fi; \
+	  if [ "$$rtt" -gt "$(OTA_MAX_RTT_MS)" ]; then \
+	    echo "!! Preflight failed: avg RTT $${rtt} ms exceeds OTA_MAX_RTT_MS=$(OTA_MAX_RTT_MS) ms."; \
+	    echo "   Link is too slow for reliable OTA; move closer and retry."; \
+	    echo "   Bypass with: make <target> OTA_FORCE=1"; exit 1; \
+	  fi; \
+	  echo ">>> Preflight OK ($${loss}% loss, avg $${rtt} ms RTT)"; \
+	fi
+
+# Per-target OTA label + bin path. Recipes share an identical shell snippet.
+ota-relay:  OTA_LABEL := relay_controller
+ota-relay:  OTA_BIN   := $(BUILD_DIR)/relay/$(SKETCH_NAME).ino.bin
+ota-switch: OTA_LABEL := switch_panel
+ota-switch: OTA_BIN   := $(BUILD_DIR)/switch/$(SKETCH_NAME).ino.bin
+ota-viper:  OTA_LABEL := viper_interface
+ota-viper:  OTA_BIN   := $(BUILD_DIR)/viper/$(SKETCH_NAME).ino.bin
+ota-ecu:    OTA_LABEL := ecu_node
+ota-ecu:    OTA_BIN   := $(BUILD_DIR)/ecu/$(SKETCH_NAME).ino.bin
+ota-bridge: OTA_LABEL := bridge
+ota-bridge: OTA_BIN   := $(BUILD_DIR)/bridge/$(SKETCH_NAME).ino.bin
+
+ota-relay:  relay  ota-check ota-push
+ota-switch: switch ota-check ota-push
+ota-viper:  viper  ota-check ota-push
+ota-ecu:    ecu    ota-check ota-push
+ota-bridge: bridge ota-check ota-push
+
+.PHONY: ota-push
+ota-push:
+	@echo ">>> Press enter to OTA flash: $(OTA_LABEL) → http://$(OTA_IP)/api/ota"
+	@read _
+	curl --max-time 120 --connect-timeout 5 -f --progress-bar \
+	     -F "firmware=@$(OTA_BIN)" \
 	     http://$(OTA_IP)/api/ota
 	@echo "Done — node is rebooting"
 
-ota-switch: switch
-	@echo ">>> Press enter to OTA flash: switch_panel → http://$(OTA_IP)/api/ota"
-	read
-	curl --max-time 60 -f \
-	     -F "firmware=@$(BUILD_DIR)/switch/$(SKETCH_NAME).ino.bin" \
-	     http://$(OTA_IP)/api/ota
-	@echo "Done — node is rebooting"
+# ---- flash erase (wipe NVS + app + everything) ----
+# A plain `make upload-*` only rewrites the app partition — NVS survives, so
+# bad WiFi creds, stale node IDs, and saved rules persist across reflashes.
+# Use this when you need a clean slate. Always re-upload firmware afterwards
+# (the chip will boot into the ROM bootloader otherwise).
+ESPTOOL ?= $(HOME)/Library/Arduino15/packages/esp32/tools/esptool_py/5.2.0/esptool
 
-ota-viper: viper
-	@echo ">>> Press enter to OTA flash: viper_interface → http://$(OTA_IP)/api/ota"
-	read
-	curl --max-time 60 -f \
-	     -F "firmware=@$(BUILD_DIR)/viper/$(SKETCH_NAME).ino.bin" \
-	     http://$(OTA_IP)/api/ota
-	@echo "Done — node is rebooting"
-
-ota-ecu: ecu
-	@echo ">>> Press enter to OTA flash: ecu_node → http://$(OTA_IP)/api/ota"
-	read
-	curl --max-time 60 -f \
-	     -F "firmware=@$(BUILD_DIR)/ecu/$(SKETCH_NAME).ino.bin" \
-	     http://$(OTA_IP)/api/ota
-	@echo "Done — node is rebooting"
-
-ota-bridge: bridge
-	@echo ">>> Press enter to OTA flash: bridge → http://$(OTA_IP)/api/ota"
-	read
-	curl --max-time 60 -f \
-	     -F "firmware=@$(BUILD_DIR)/bridge/$(SKETCH_NAME).ino.bin" \
-	     http://$(OTA_IP)/api/ota
-	@echo "Done — node is rebooting"
+.PHONY: erase-flash
+erase-flash:
+	@if [ ! -x "$(ESPTOOL)" ]; then \
+	  echo "!! esptool not found at $(ESPTOOL)"; \
+	  echo "   Override with: make erase-flash ESPTOOL=/path/to/esptool PORT=..."; \
+	  exit 1; \
+	fi
+	@echo ">>> Erasing entire flash on $(PORT) (NVS will be wiped)"
+	$(ESPTOOL) --chip esp32 --port $(PORT) erase_flash
+	@echo ">>> Done. Now run: make upload-<node> PORT=$(PORT)"
 
 # ---- serial monitor ----
 .PHONY: monitor screen

@@ -23,7 +23,10 @@
 #define ENABLE_BUZZER     // passive piezo on BUZZER_PIN
 #define ENABLE_LEDS       // CAN-controllable status LEDs
 #define ENABLE_RULES      // CAN-frame-triggered rules engine
-#define ENABLE_BLUETOOTH  // BLE GATT CAN bus mirror (phone connectivity)
+// ENABLE_BLUETOOTH intentionally OFF on the switch panel: ESP32-WROOM cannot
+// reliably coexist BLE + WiFi AP + ESP-NOW + CAN + I2C/LCD on this node.
+// BLE belongs on relay_controller (lighter feature load). Re-enabling here
+// caused the AP to flap and macOS WiFi to wedge.
 
 // ---- Piezo buzzer ----
 #define BUZZER_PIN        16    // passive piezo positive leg; other leg to GND

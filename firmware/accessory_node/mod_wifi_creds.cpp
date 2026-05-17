@@ -80,8 +80,16 @@ void wifi_creds_broadcast(uint8_t target, uint8_t flags) {
 }
 
 void wifi_creds_on_blob(uint8_t key, const uint8_t* data, uint16_t len, uint8_t flags) {
+  // Validate before applying. A partial broadcast (lost chunk) or a malformed
+  // sender can otherwise write garbage credentials to NVS — softAP will then
+  // silently fall back to an open AP with a < 8 char password, leaving every
+  // peer in a WPA2 handshake-fail loop until NVS is wiped.
   switch (key) {
     case BLOB_KEY_SSID: {
+      if (len == 0 || len > 32) {
+        wlog("[wcreds] reject SSID len=%u (need 1..32)\n", len);
+        return;
+      }
       char s[WIFI_SSID_MAX] = {};
       size_t n = (len < WIFI_SSID_MAX - 1) ? len : WIFI_SSID_MAX - 1;
       memcpy(s, data, n);
@@ -89,6 +97,14 @@ void wifi_creds_on_blob(uint8_t key, const uint8_t* data, uint16_t len, uint8_t 
       break;
     }
     case BLOB_KEY_PASS: {
+      if (len > 0 && len < 8) {
+        wlog("[wcreds] reject PASS len=%u (need 0 or >=8)\n", len);
+        return;
+      }
+      if (len > 63) {
+        wlog("[wcreds] reject PASS len=%u (max 63)\n", len);
+        return;
+      }
       char s[WIFI_PASS_MAX] = {};
       size_t n = (len < WIFI_PASS_MAX - 1) ? len : WIFI_PASS_MAX - 1;
       memcpy(s, data, n);
@@ -96,14 +112,16 @@ void wifi_creds_on_blob(uint8_t key, const uint8_t* data, uint16_t len, uint8_t 
       break;
     }
     case BLOB_KEY_PMK:
-      if (len == 16) wifi_creds_set_pmk(data);
+      if (len != 16) { wlog("[wcreds] reject PMK len=%u (need 16)\n", len); return; }
+      wifi_creds_set_pmk(data);
       break;
     case BLOB_KEY_LMK:
-      if (len == 16) wifi_creds_set_lmk(data);
+      if (len != 16) { wlog("[wcreds] reject LMK len=%u (need 16)\n", len); return; }
+      wifi_creds_set_lmk(data);
       break;
     default: return;
   }
-  wlog("[wcreds] blob key=0x%02X len=%u\n", key, len);
+  wlog("[wcreds] blob key=0x%02X len=%u accepted\n", key, len);
   if (flags & BLOB_FLAG_PERSIST) wifi_creds_save();
   if (flags & BLOB_FLAG_REBOOT)  { delay(100); ESP.restart(); }
 }
