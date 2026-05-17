@@ -20,7 +20,11 @@
 #   make ota-switch     OTA_IP=192.168.4.1            # OTA_IP defaults to 192.168.4.1
 
 FQBN    := esp32:esp32:esp32:PartitionScheme=min_spiffs
-FQBN_S3 := m5stack:esp32:m5stack_cardputer
+# Cardputer has 8 MB flash + 8 MB PSRAM; the board's default partition table
+# assumes 4 MB and gives only 1.2 MB to the app, wasting half the chip. We
+# don't use OTA on the cardputer (it flashes via UF2 mass-storage), so we pick
+# huge_app for a 3 MB app partition + 1 MB SPIFFS. Goes from 89% → ~37% used.
+FQBN_S3 := m5stack:esp32:m5stack_cardputer:PartitionScheme=huge_app
 JOBS    := 16
 BAUD    := 115200
 UPLOAD_SPEED ?= 115200 # 921600
