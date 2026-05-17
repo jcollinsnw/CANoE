@@ -39,37 +39,69 @@ OTA_IP      ?= 192.168.4.1
 CARDPUTER_VOLUME ?= /Volumes/CARDPUTER
 CARDPUTER_DIR    ?= CANoE
 
+# ---- preflight checks ----
+# These give a one-line "do this to fix it" message instead of letting the
+# compiler emit a cryptic "fatal error: secrets.h: No such file" or similar.
+.PHONY: check-secrets check-lib-m5cardputer check-lib-pubsub
+
+check-secrets:
+	@if [ ! -f $(SKETCH)/secrets.h ]; then \
+	  echo "!! Missing $(SKETCH)/secrets.h (gitignored — each checkout needs its own)."; \
+	  echo "   Fix: cp $(SKETCH)/secrets.h.example $(SKETCH)/secrets.h"; \
+	  echo "   Then edit it with your AP_SSID / AP_PASSWORD / ESP-NOW keys."; \
+	  exit 1; \
+	fi
+
+check-lib-m5cardputer:
+	@if ! arduino-cli lib list M5Cardputer 2>/dev/null | grep -q M5Cardputer; then \
+	  echo "!! M5Cardputer Arduino library not installed."; \
+	  echo "   Fix: arduino-cli lib install M5Cardputer"; \
+	  echo "   (pulls in M5Unified, M5GFX, IRremote, LibSSH-ESP32 automatically)"; \
+	  exit 1; \
+	fi
+
+check-lib-pubsub:
+	@if ! arduino-cli lib list PubSubClient 2>/dev/null | grep -q PubSubClient; then \
+	  echo "!! PubSubClient Arduino library not installed (required by bridge MQTT)."; \
+	  echo "   Fix: arduino-cli lib install \"PubSubClient\""; \
+	  echo "   (only needed if MQTT_BROKER is defined in configs/bridge.h)"; \
+	  exit 1; \
+	fi
+
 # ---- select node config ----
 .PHONY: relay switch viper ecu bridge cardputer
 
-relay:
+relay: check-secrets
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/relay_controller.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) --output-dir $(BUILD_DIR)/relay $(SKETCH)
 
-switch:
+switch: check-secrets
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/switch_panel.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) --output-dir $(BUILD_DIR)/switch $(SKETCH)
 
-viper:
+viper: check-secrets
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/viper_interface.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) --output-dir $(BUILD_DIR)/viper $(SKETCH)
 
-ecu:
+ecu: check-secrets
 	@bash $(MINIFY) $(HTMLDST) || true
 	cp $(CONFIGS)/ecu_node.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) --output-dir $(BUILD_DIR)/ecu $(SKETCH)
 
-bridge:
+bridge: check-secrets
 	@bash $(MINIFY) $(HTMLDST) || true
+	@if grep -q '^[[:space:]]*#define[[:space:]]\+MQTT_BROKER' $(CONFIGS)/bridge.h; then \
+	  $(MAKE) check-lib-pubsub; \
+	fi
 	cp $(CONFIGS)/bridge.h $(SKETCH)/node_config.h
 	arduino-cli compile --clean --jobs $(JOBS) --fqbn $(FQBN) --output-dir $(BUILD_DIR)/bridge $(SKETCH)
 
 CARDPUTER_BUILD := $(SKETCH)/build/m5stack.esp32.m5stack_cardputer
 
-cardputer:
+cardputer: check-secrets check-lib-m5cardputer
 	cp $(CONFIGS)/cardputer.h $(SKETCH)/node_config.h
 	arduino-cli compile --jobs $(JOBS) --fqbn $(FQBN_S3) --export-binaries $(SKETCH)
 	mkdir -p $(BUILD_DIR)/cardputer
