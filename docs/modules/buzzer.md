@@ -43,6 +43,7 @@ Non-blocking passive piezo tone sequencer. Plays distinct sounds for relay chang
 | `BUZZER_SEQ_RELAY_ON` | `0x10` | Rising relay-on chirp | — |
 | `BUZZER_SEQ_RELAY_OFF` | `0x11` | Falling relay-off chirp | — |
 | `BUZZER_SEQ_ALL_OFF` | `0x12` | Descending three-note sweep | — |
+| `BUZZER_SEQ_FUEL_PUMP_OFF` | `0x13` | 4 alternating low/high pulses — fuel pump safety cut (distinct from `BUZZER_SEQ_ALERT`) | — |
 | `BUZZER_CMD_MUTE` | `0x20` | Mute control | `1` = mute, `0` = unmute |
 
 ```
@@ -78,6 +79,7 @@ Non-blocking passive piezo tone sequencer. Plays distinct sounds for relay chang
 | CAN bus down | Falling alert tone |
 | WiFi client connected | Ascending two-note A5→C6 chime (queued, does not interrupt active sequence) |
 | WiFi client disconnected | Descending two-note C6→A5 chime (queued, does not interrupt active sequence) |
+| Fuel pump safety cut | 4 alternating C5/E6 pulses — broadcast by [`mod_fuel_pump`](fuel_pump.md) on stall transitions; also surfaces on the Cardputer |
 
 Menu sounds are triggered by calls from `mod_menu` (`buzzer_menu_enter()`, `buzzer_menu_scroll()`, etc.) rather than CAN frames. WiFi client sounds fire from the `webui_set_ap_client_cb()` callback in `accessory_node.ino` via `buzzer_wifi_connect()` / `buzzer_wifi_disconnect()`.
 

@@ -157,6 +157,16 @@ void buzzer_alert() {
   play_seq(s, 5);
 }
 
+void buzzer_fuel_pump_off() {
+  // Four low/high alternating pulses — fuel pump safety cut. Distinct from
+  // buzzer_alert() so the driver can tell pump-cut from generic faults.
+  static const Note s[] = {
+    {523,100},{0,40},{1319,100},{0,40},
+    {523,100},{0,40},{1319,180}
+  };
+  play_seq(s, 7);
+}
+
 void buzzer_wifi_connect() {
   // Ascending two-note chime: A5 → C6
   static const Note s[] = { {880, 80}, {1047, 130} };
@@ -206,6 +216,7 @@ void buzzer_handle_frame(const BusFrame& f) {
     case BUZZER_SEQ_RELAY_ON:         buzzer_relay_on();        break;
     case BUZZER_SEQ_RELAY_OFF:        buzzer_relay_off();       break;
     case BUZZER_SEQ_ALL_OFF:          buzzer_all_off();         break;
+    case BUZZER_SEQ_FUEL_PUMP_OFF:    buzzer_fuel_pump_off();   break;
     case BUZZER_CMD_MUTE:             buzzer_set_muted(arg0 != 0); break;
   }
 }

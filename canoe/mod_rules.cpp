@@ -27,6 +27,7 @@
 #include "mod_menu.h"
 #endif
 #include "mod_buzzer.h"
+#include "mod_fuel_pump.h"
 
 #if USE_WIFI
 #include "webui.h"
@@ -177,6 +178,10 @@ static void rule_execute(const CanRule& r) {
     case RULE_ACT_BUZZER_PLAY: {
       uint8_t d[3] = { r.arg0, r.arg1, r.arg2 };
       bus_tx(CAN_ID_BUZZER_CMD, d, 3);
+      break;
+    }
+    case RULE_ACT_FUEL_PUMP_SAFETY: {
+      fuel_pump_set_mode(r.arg0);
       break;
     }
     case RULE_ACT_RELAY_TIMED_OFF: {

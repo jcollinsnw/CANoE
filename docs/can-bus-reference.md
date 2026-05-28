@@ -233,6 +233,7 @@ Payload: `[target_node_id, cmd, arg0]`
 | `0x10` | `BUZZER_SEQ_RELAY_ON` | Rising relay-on chirp | — |
 | `0x11` | `BUZZER_SEQ_RELAY_OFF` | Falling relay-off chirp | — |
 | `0x12` | `BUZZER_SEQ_ALL_OFF` | Descending three-note sweep | — |
+| `0x13` | `BUZZER_SEQ_FUEL_PUMP_OFF` | 4 alternating low/high pulses — fuel pump safety cut | — |
 | `0x20` | `BUZZER_CMD_MUTE` | Mute / unmute | `1` = mute, `0` = unmute |
 
 ```
@@ -543,6 +544,8 @@ These frames are broadcast automatically by their respective modules — no quer
 | `0x301` | `ENV_DATA` | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` — 0.1 °C / 0.1 % from DHT22 |
 | `0x302` | `IMU_DATA` | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` — raw accelerometer |
 | `0x303` | `SHAKE_EVENT` | `[magnitude, axis_mask]` — emitted by viper_interface on shake detection |
+| `0x310` | `IGNITION_DATA` | `[coil_cv_lo, coil_cv_hi, ign_on]` — coil + voltage centivolts (int16 LE) + boolean from hysteresis thresholds. From `mod_ignition` on the relay node. Heartbeat every ~1 s + immediate on every on/off edge. |
+| `0x311` | `FUEL_PUMP_STATE` | `[state, mode, reason, gates_ok]` — fuel pump FSM transition events. state: 0=PRIME 1=ARMED 2=RUNNING. mode: FuelPumpMode bitmask (0=OFF, 1=RPM, 2=COIL, 3=BOTH). reason: 0=none 1=boot 2=prime_done 3=gate_pass 4=stall 5=mode_change 6=re_enable. gates_ok: bit 0 = RPM gate currently passing, bit 1 = COIL gate. |
 
 ---
 
@@ -711,6 +714,37 @@ Start or stop BLE advertising at runtime without restarting the node. An already
 
 ---
 
+### Fuel pump safety mode — key `0x61`
+
+Sets the multi-gate fuel pump safety mode at runtime. RAM-only (not persisted) — every reboot restores `FUEL_PUMP_DEFAULT_MODE`. Identical semantics to the `ACT_FUEL_PUMP_SAFETY_*` rule actions; both call `fuel_pump_set_mode()`. Relay-controller only.
+
+`arg` (data[4]) is the `FuelPumpMode` bitmask:
+
+| Value | Name | RPM gate | COIL gate |
+|-------|------|----------|-----------|
+| `0` | `FP_MODE_OFF` | disabled | disabled — pump forced ON, FSM frozen |
+| `1` | `FP_MODE_RPM` | enabled | disabled |
+| `2` | `FP_MODE_COIL` | disabled | enabled |
+| `3` | `FP_MODE_BOTH` | enabled | enabled — default, strictest (AND) |
+
+```
+# Mode BOTH (strictest)
+400 02 61 00 00 03 00 00 00
+
+# Mode COIL only
+400 02 61 00 00 02 00 00 00
+
+# Mode RPM only
+400 02 61 00 00 01 00 00 00
+
+# Disable safety (pump forced on)
+400 02 61 00 00 00 00 00 00
+```
+
+Mode changes emit a `FUEL_PUMP_STATE (0x311)` frame with reason=5 (mode_change). The FSM restarts from PRIME on any non-OFF transition so the carb bowl is primed before the next gate check.
+
+---
+
 ### ECU configuration — keys `0x51`, `0x52`, `0x53`
 
 These can also be set via ECU_CMD (0x308) at runtime; CONFIG_WRITE persists them to NVS.
@@ -791,6 +825,12 @@ Match: (frame.data[c_byte] & c_mask) == (c_val & c_mask)
 | `ACT_BUZZER_PLAY_ARG(node, seq, arg)` | Same with extra arg | arg = e.g. peer count for `BUZZER_SEQ_PEER` |
 | `ACT_RELAY_TIMED_OFF(r, secs)` | Relay on then auto-off after timeout | r = relay index 0–5; secs = delay in seconds (1–255) |
 | `ACT_LED_FLASH(node, led, period_ds)` | Flash an LED | node = target node ID; led = LED index; period_ds = period in 100 ms units |
+| `ACT_FUEL_PUMP_SAFETY(mode)` | Set fuel pump safety mode (relay-controller only) | mode = FuelPumpMode bitmask: 0=OFF, 1=RPM, 2=COIL, 3=BOTH |
+| `ACT_FUEL_PUMP_SAFETY_DISABLE` | Force pump ON, freeze FSM | — |
+| `ACT_FUEL_PUMP_SAFETY_RPM_ONLY` | RPM gate only | — |
+| `ACT_FUEL_PUMP_SAFETY_COIL_ONLY` | COIL gate only | — |
+| `ACT_FUEL_PUMP_SAFETY_BOTH` | RPM AND COIL (strictest) | — |
+| `ACT_FUEL_PUMP_SAFETY_ENABLE` | Alias for RPM_ONLY (back-compat) | — |
 
 ### Example rules (in RULES_DEFAULT_INIT syntax)
 

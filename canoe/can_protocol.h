@@ -48,6 +48,16 @@
                                         //   cmd 0x02: set target AFR×100 (arg1+arg2 = uint16 LE)
                                         //   cmd 0x03: fuel cut   (arg0: 0=off 1=on)
                                         //   cmd 0x04: reset fuel trim
+#define CAN_ID_IGNITION_DATA     0x310  // Ignition node -> everyone:
+                                        //   [0] coil_cv_lo  (uint16 LE centivolts)
+                                        //   [1] coil_cv_hi
+                                        //   [2] ign_on      (1 = coil > on-threshold, 0 = below off-threshold)
+#define CAN_ID_FUEL_PUMP_STATE   0x311  // Fuel pump node -> everyone:
+                                        //   [0] state    (0=PRIME, 1=ARMED, 2=RUNNING)
+                                        //   [1] mode     (FuelPumpMode bitmask)
+                                        //   [2] reason   (0=none, 1=boot, 2=prime_done, 3=gate_pass,
+                                        //                 4=stall, 5=mode_change, 6=re_enable)
+                                        //   [3] gates_ok (bit 0=RPM ok, bit 1=COIL ok)
 
 // Node presence heartbeat — every node broadcasts this every 5 s.
 // data[0]=node_id, data[1]=peer_count, data[2]=can_ok (0/1)
@@ -197,6 +207,7 @@ struct CanChanDef {
 #define BUZZER_SEQ_RELAY_ON       0x10  // relay-on sound
 #define BUZZER_SEQ_RELAY_OFF      0x11  // relay-off sound
 #define BUZZER_SEQ_ALL_OFF        0x12  // all-relays-off sound
+#define BUZZER_SEQ_FUEL_PUMP_OFF  0x13  // fuel pump safety cut — 4 urgent low/high pulses
 #define BUZZER_CMD_MUTE           0x20  // arg0: 1 = mute, 0 = unmute
 
 #define CFG_TARGET_VIPER         0x03
@@ -263,7 +274,20 @@ enum RuleActionKind : uint8_t {
   RULE_ACT_LED_FLASH        = 14,  // arg0 = target node_id, arg1 = led idx, arg2 = period (×50ms half-period)
   RULE_ACT_BUZZER_ALERT     = 15,  // play a 3-beep warning on the local buzzer (no-op without ENABLE_BUZZER)
   RULE_ACT_BUZZER_PLAY      = 16,  // send BUZZER_CMD: arg0=target, arg1=BUZZER_SEQ_*, arg2=seq_arg
+  RULE_ACT_FUEL_PUMP_SAFETY = 17,  // arg0 = FuelPumpMode bitmask:
+                                   //   bit 0 (0x01) = RPM gate
+                                   //   bit 1 (0x02) = COIL gate
+                                   //   (bit 2 reserved for OIL_PRESSURE)
+                                   //   0 = off (pump forced on), 1 = RPM, 2 = COIL, 3 = BOTH (AND)
+                                   // local-only, RAM (resets to FUEL_PUMP_DEFAULT_MODE on reboot)
 };
+
+// Fuel-pump safety mode bitmask. ACT_FUEL_PUMP_SAFETY_* and the
+// CFG_KEY_FUEL_PUMP_SAFETY config-write payload all use these values.
+#define FP_MODE_OFF        0  // both gates disabled, pump forced on
+#define FP_MODE_RPM        1  // RPM gate only
+#define FP_MODE_COIL       2  // COIL gate only
+#define FP_MODE_BOTH       3  // RPM AND COIL (default)
 
 struct CanRule {
   uint16_t trig_id;   // CAN frame ID to watch; 0 = slot disabled
@@ -332,6 +356,14 @@ struct CanRule {
 #define ACT_BUZZER_ALERT()                    RULE_ACT_BUZZER_ALERT, 0, 0, 0
 #define ACT_BUZZER_PLAY(target, seq)          RULE_ACT_BUZZER_PLAY, (target), (seq), 0
 #define ACT_BUZZER_PLAY_ARG(target, seq, arg) RULE_ACT_BUZZER_PLAY, (target), (seq), (arg)
+#define ACT_FUEL_PUMP_SAFETY(mode)     RULE_ACT_FUEL_PUMP_SAFETY, (mode), 0, 0
+#define ACT_FUEL_PUMP_SAFETY_DISABLE   RULE_ACT_FUEL_PUMP_SAFETY, FP_MODE_OFF,  0, 0
+#define ACT_FUEL_PUMP_SAFETY_RPM_ONLY  RULE_ACT_FUEL_PUMP_SAFETY, FP_MODE_RPM,  0, 0
+#define ACT_FUEL_PUMP_SAFETY_COIL_ONLY RULE_ACT_FUEL_PUMP_SAFETY, FP_MODE_COIL, 0, 0
+#define ACT_FUEL_PUMP_SAFETY_BOTH      RULE_ACT_FUEL_PUMP_SAFETY, FP_MODE_BOTH, 0, 0
+// Kept for backwards compatibility — equivalent to RPM-only (the only gate
+// that existed before COIL was added).
+#define ACT_FUEL_PUMP_SAFETY_ENABLE    RULE_ACT_FUEL_PUMP_SAFETY, FP_MODE_RPM,  0, 0
 
 // Convenience: wrap a trigger + action pair into a CanRule initialiser.
 // Usage: RULE(TRIG_SW_PRESS(0), ACT_RELAY_TOGGLE(0))
@@ -354,6 +386,7 @@ struct CanRule {
 #define CFG_KEY_ECU_MODE          0x51   // 0=carb, 1=inject; arg[4]=value, flags bit0=persist
 #define CFG_KEY_ECU_TARGET_AFR    0x52   // target AFR × 100; arg2_lo/hi = uint16
 #define CFG_KEY_ECU_BASE_PW       0x53   // base pulse width μs at 100% VE, 100 kPa; arg2_lo/hi
+#define CFG_KEY_FUEL_PUMP_SAFETY  0x61   // data[4] = FuelPumpMode bitmask (FP_MODE_*); RAM-only, resets to FUEL_PUMP_DEFAULT_MODE on reboot
 //   Any node:
 #define CFG_KEY_WIFI_ENABLED      0x30   // legacy: sets both ap_en and espnow_en; node restarts
 #define CFG_KEY_AP_ENABLED        0x31   // data[4]=0/1 — enable/disable SoftAP + web server; restarts

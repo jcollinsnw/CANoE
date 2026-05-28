@@ -22,6 +22,25 @@
 
 **Relay cuts off unexpectedly**
 - A per-relay `max_on_ms` safety timer is in effect. Default for relay 5 (horn) is 30,000 ms. Check with `:readcfg relay` and adjust with `:cfgrelay <idx> maxon <ms>`.
+- **Fuel pump (R1) cuts off** is more likely the [fuel pump safety FSM](modules/fuel_pump.md), not the relay watchdog. Symptoms: pump goes off, switch panel buzzer plays the `BUZZER_SEQ_FUEL_PUMP_OFF` alarm (4 alternating low/high pulses), Cardputer CLI bar shows "FUEL PUMP CUT". A `FUEL_PUMP_STATE (0x311)` frame with `reason=4 stall` appears in the frame log. See the Fuel Pump Safety section below.
+
+---
+
+## Fuel Pump Safety
+
+**Pump never turns on after boot**
+- Check the current mode. Send `401 02 61 00` (CONFIG_READ_REQ) — the relay node should reply with the current mode in `data[4]`. Default is `3` (BOTH).
+- In `BOTH` mode, both RPM and COIL gates must pass within `FUEL_PUMP_STALL_MS` of each other. If the coil-sense wiring is broken or the RPM optocoupler isn't conducting, the pump won't leave ARMED.
+- Quick diagnosis: switch to `RPM` (mode 1) or `COIL` (mode 2) via `400 02 61 00 00 01 00 00 00` to isolate which gate is failing. Or fully disable with mode 0 if you need to drive the car right now.
+
+**Pump cycles on/off at idle or during cranking**
+- `FUEL_PUMP_STALL_MS` (default 2000) may be too tight given the RPM sample rate or coil-sense hysteresis. Lengthen it in `relay_controller.h` and reflash.
+- RPM gate: confirm `RPM_SAMPLE_MS < FUEL_PUMP_STALL_MS / 2`. The relay node samples at 500 ms by default → comfortable margin.
+- COIL gate: hysteresis (`IGN_COIL_ON_THRESHOLD_CV` / `IGN_COIL_OFF_THRESHOLD_CV`) defaults are 6.00 V / 4.00 V. If the dash ballast drops the voltage further than expected, the on-threshold may never be crossed — measure with a multimeter at the divider input.
+
+**Buzzer keeps alerting every time I turn the key off**
+- Normal behavior. The FSM detects loss of all gates as a stall (it can't distinguish "user turned key off" from "engine quit"). The alarm fires once per RUNNING → ARMED transition.
+- Mute the switch panel buzzer with `104 01 20 01` if it's bothering you (`BUZZER_CMD_MUTE`). Unmute with `104 01 20 00`.
 
 ---
 

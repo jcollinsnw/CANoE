@@ -68,11 +68,13 @@ Hardware setup for all nodes: bill of materials, pinouts, CAN bus backbone, and 
 | 1 | ULN2803A Darlington array IC | Low-side relay driver, 8 channels (only 6 used) |
 | 6 | 12 V relay module (or bare relay + flyback diode) | Coil current ≤ 500 mA per channel |
 | 6 | 10 A automotive fuse + fuse holder | One per relay output |
-| 1 | 10 kΩ resistor | Voltage divider top leg |
-| 1 | 2.2 kΩ resistor | Voltage divider bottom leg (GPIO 34) |
+| 2 | 10 kΩ resistor | Voltage divider top legs (battery on GPIO 34, aux battery on GPIO 36) |
+| 2 | 2.2 kΩ resistor | Voltage divider bottom legs |
 | 1 | PC817C optocoupler | RPM input isolation |
 | 1 | 270 Ω resistor | PC817C LED current limiter |
 | 1 | 10 kΩ resistor | PC817C pull-up to 3.3V (GPIO 35) |
+| 1 | 10 kΩ resistor | Coil-sense voltage divider top leg (GPIO 39) |
+| 1 | 2.2 kΩ resistor | Coil-sense voltage divider bottom leg |
 
 ### Viper Interface Node
 | Qty | Part | Notes |
@@ -282,9 +284,9 @@ ESP32 GPIO ──→ ULN2803 Input ──→ (internal NPN) ──→ Output ─
                    Relay COM ──→ 12 V after fuse
 ```
 
-### 3.4 Battery Voltage Monitor (Optional)
+### 3.4 Battery Voltage Monitor
 
-> **Note:** Battery voltage monitoring has been moved to `mod_battery` and is now configured on the **switch panel** node by default (see §2.9). The relay controller config still supports `ENABLE_BATTERY` with the same pin definitions if needed, but is currently disabled.
+> Both the relay controller and the switch panel can run `mod_battery`. The relay controller's config (`relay_controller.h`) has `ENABLE_BATTERY` defined by default since the relay node also runs `ENABLE_FUEL_PUMP_SAFETY` and the LV cutoff roadmap item depends on battery voltage. The switch panel's `mod_battery` config remains available — both broadcast on `TELEMETRY (0x300)` independently if both are wired.
 
 Two independent dividers — one per battery rail. Both GPIOs are input-only with no pull-up, making them clean ADC inputs.
 
@@ -324,7 +326,26 @@ Coil (–) ──[270Ω]──── PC817C pin 1 (anode)
 
 `RPM_CYLINDERS` in `relay_controller.h` defaults to 8 for a V8 — change to 6 or 4 as needed.
 
-### 3.6 Full Relay Controller Pin Summary
+### 3.6 Ignition Coil Voltage Sense
+
+Reads the ignition coil's + side voltage so the relay node knows whether the key is in the ignition. Used by `mod_fuel_pump` as the COIL gate (paired with the RPM gate above). Tap the coil + line **after** the dash ballast resistor — that's the ~9 V side when the key is in RUN, ~12 V during cranking, 0 V key-out. See [Power architecture in CLAUDE.md](../CLAUDE.md#power-architecture-important-context) for why this matters.
+
+```
+Coil + ──[10 kΩ]──┬──[2.2 kΩ]── GND
+                   └── GPIO 39 (IGN_COIL_ADC_PIN)
+```
+
+| Pin | Signal | Connection |
+|-----|--------|------------|
+| GPIO 39 | Coil voltage ADC | Divider midpoint. ADC1 input-only — no internal pull-up, none needed (divider sets the voltage). |
+
+Divider ratio: 5.545 ((10k + 2.2k) / 2.2k). At 13 V input → 2.34 V at the ADC pin, safely under 3.3 V. Adjust `IGN_COIL_DIVIDER_RATIO` in `relay_controller.h` if you use different resistors.
+
+> **Tap point — coil + NOT coil –:** The coil's negative terminal is the high-voltage switching side used for tachometer signals (and for the PC817C RPM input above). Coil + is the steady supply side fed from the key switch through the dash ballast. They are different signals; do not swap them.
+
+The on/off thresholds (`IGN_COIL_ON_THRESHOLD_CV` = 600, `IGN_COIL_OFF_THRESHOLD_CV` = 400) have hysteresis between them so the boolean state doesn't chatter around the threshold during cranking spikes.
+
+### 3.7 Full Relay Controller Pin Summary
 
 ```
 ESP32 #2 (Relay Controller)
@@ -342,6 +363,7 @@ GPIO 22  Relay 6 ──→ ULN2803 IN6
 GPIO 34  Vbat ADC  ←── voltage divider (10 kΩ / 2.2 kΩ) — primary battery
 GPIO 35  RPM input ←── PC817C collector (10kΩ pull-up to 3V3)
 GPIO 36  Vbat2 ADC ←── voltage divider (10 kΩ / 2.2 kΩ) — auxiliary battery
+GPIO 39  Coil ADC  ←── voltage divider (10 kΩ / 2.2 kΩ) — coil + after ballast resistor
 ```
 
 ---

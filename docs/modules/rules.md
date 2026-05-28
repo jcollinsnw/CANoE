@@ -78,6 +78,11 @@ Match logic: `(frame.data[c_byte] & c_mask) == (c_val & c_mask)`
 | `ACT_BUZZER_PLAY_ARG(node, seq, arg)` | Same with extra arg | arg = e.g. peer count for `BUZZER_SEQ_PEER` |
 | `ACT_RELAY_TIMED_OFF(r, secs)` | Relay on then off after timeout | r = relay index 0–5; secs = delay in seconds (1–255) |
 | `ACT_LED_FLASH(node, led, period_ds)` | Flash an LED | node = target; led = LED index; period_ds = period in 100 ms units |
+| `ACT_FUEL_PUMP_SAFETY(mode)` | Set fuel pump safety mode (relay-controller only) | mode = FuelPumpMode bitmask: 0=OFF, 1=RPM, 2=COIL, 3=BOTH |
+| `ACT_FUEL_PUMP_SAFETY_DISABLE` | Force pump ON, freeze FSM | — |
+| `ACT_FUEL_PUMP_SAFETY_RPM_ONLY` | RPM gate only | — |
+| `ACT_FUEL_PUMP_SAFETY_COIL_ONLY` | COIL gate only | — |
+| `ACT_FUEL_PUMP_SAFETY_BOTH` | RPM AND COIL (strictest) | — |
 
 ---
 

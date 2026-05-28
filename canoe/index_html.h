@@ -10,5 +10,1411 @@
 #include <pgmspace.h>
 
 static const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(<!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>AccBus Console</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;font-family:ui-monospace,"SF Mono",Menlo,monospace;background:#0b0f14;color:#cfe2b0;font-size:13px}header{display:flex;flex-wrap:wrap;gap:10px 18px;padding:10px 14px;background:#0f1a24;border-bottom:1px solid #1e2a38;align-items:center}header b{color:#9bd770}.pill{padding:2px 8px;border-radius:10px;border:1px solid #2a3a4a;font-size:11px;background:#0b131c}.ok{color:#9bd770;border-color:#355e1f}.bad{color:#f29900;border-color:#644100}.warn{color:#ffd166;border-color:#705200}main{display:flex;flex-direction:column;height:calc(100vh - 52px)}#log{flex:1;overflow-y:auto;padding:6px 14px;font-size:12.5px;line-height:1.5}.row{white-space:pre}.row.tx{color:#9bd770}.row.rx{color:#cfe2b0}.row.rxw{color:#1ab4ff}.row.err{color:#ff6b6b}.row.inf{color:#808a95}#bar{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #1e2a38;background:#0f1a24;flex-wrap:wrap}#bar button{background:#1a2a3a;color:#cfe2b0;border:1px solid #2a3a4a;padding:4px 10px;border-radius:4px;font:inherit;cursor:pointer}#bar button:hover{background:#253a52}#input-row{display:flex;padding:8px 14px;border-top:1px solid #1e2a38;background:#0b131c;align-items:center;gap:8px}#prompt{color:#9bd770;font-weight:700}#cmd{flex:1;background:0 0;color:#cfe2b0;border:none;outline:0;font:inherit;padding:4px 0}#help{color:#808a95;font-size:11px;padding:0 14px 6px}.txm-group{display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid #2a3a4a}.txm-btn{background:#0b131c;color:#808a95;border:none;border-right:1px solid #2a3a4a;padding:2px 8px;font:inherit;font-size:11px;cursor:pointer}.txm-btn:last-child{border-right:none}.txm-btn.active{background:#1e3a1e;color:#9bd770}.tabs{display:flex;gap:0;border-bottom:1px solid #1e2a38;background:#0f1a24;position:relative}.tab{padding:6px 18px;cursor:pointer;color:#808a95;border-bottom:2px solid transparent;font:inherit;background:0 0;border-top:none;border-left:none;border-right:none}.tab.active{color:#9bd770;border-bottom-color:#9bd770}.tab:hover{color:#cfe2b0}.tab-more-btn{margin-left:auto;padding:6px 14px;cursor:pointer;color:#808a95;border:none;background:0 0;font:inherit;font-size:16px;border-bottom:2px solid transparent}.tab-more-btn:hover{color:#cfe2b0}.tab-more-btn.active{color:#9bd770;border-bottom-color:#9bd770}.tab-dropdown{display:none;position:absolute;right:0;top:100%;z-index:100;background:#0f1a24;border:1px solid #1e2a38;border-top:none;min-width:130px;box-shadow:0 4px 12px rgba(0,0,0,.5)}.tab-dropdown.open{display:block}.tab-dropdown .tab{display:block;width:100%;text-align:left;border-bottom:none;border-left:3px solid transparent;padding:8px 16px}.tab-dropdown .tab.active{border-left-color:#9bd770;border-bottom:none}.tab-dropdown .tab-action{display:block;width:100%;text-align:left;border:none;border-left:3px solid transparent;padding:8px 16px;background:0 0;font:inherit;color:#808a95;cursor:pointer}.tab-dropdown .tab-action:hover{color:#cfe2b0;background:#0f2030}.tab-dropdown .tab-divider{border:none;border-top:1px solid #1e2a38;margin:4px 0}#serial-log{flex:1;overflow-y:auto;padding:6px 14px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:#a0b0c0;display:none}#control-panel{flex:1;overflow-y:auto;display:none}.ctrl-section{padding:14px 14px;border-bottom:1px solid #1e2a38}.ctrl-head{font-size:10px;font-weight:700;color:#9bd770;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px}.relay-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:10px}.relay-tile{background:#0f1a24;border:1px solid #2a3a4a;border-radius:6px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;gap:5px}.relay-tile.on{border-color:#355e1f;background:#0a180a}.rt-led{width:12px;height:12px;border-radius:50%;background:#1a2a3a;border:2px solid #2a3a4a;flex-shrink:0}.relay-tile.on .rt-led{background:#9bd770;border-color:#6ba840;box-shadow:0 0 8px #4a8020}.rt-name{font-size:10px;color:#808a95;text-align:center;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rt-state{font-size:12px;font-weight:700;color:#2a3a4a}.relay-tile.on .rt-state{color:#9bd770}.rt-btn{background:#1a2a3a;color:#cfe2b0;border:1px solid #2a3a4a;padding:3px 10px;border-radius:4px;font:inherit;font-size:11px;cursor:pointer}.rt-btn:hover{background:#253a52}.ctrl-btns{display:flex;gap:6px;flex-wrap:wrap}.ctrl-btn{background:#1a2a3a;color:#cfe2b0;border:1px solid #2a3a4a;padding:5px 14px;border-radius:4px;font:inherit;font-size:12px;cursor:pointer}.ctrl-btn:hover{background:#253a52}.ctrl-btn.danger{border-color:#644100;color:#f29900}.ctrl-btn.danger:hover{background:#2a1800}.sw-input-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px}.sw-input{background:#0f1a24;border:2px solid #2a3a4a;border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:58px;cursor:pointer}.sw-input:hover{background:#152030}.sw-input.on{border-color:#355e1f;background:#0a180a}.sw-input.on:hover{background:#0f2010}.swi-label{font-size:10px;color:#808a95}.swi-state{font-size:12px;font-weight:700;color:#2a3a4a}.sw-input.on .swi-state{color:#9bd770}.btn-input-grid{display:flex;flex-wrap:wrap;gap:8px}.btn-input{background:#0f1a24;border:2px solid #2a3a4a;border-radius:20px;padding:6px 16px;font:inherit;font-size:12px;color:#808a95;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation}.btn-input:hover{background:#152030}.btn-input.pressed{background:#0a1a2a;border-color:#1ab4ff;color:#1ab4ff}.led-grid{display:flex;gap:16px;flex-wrap:wrap}.led-indicator{display:flex;flex-direction:column;align-items:center;gap:5px}.led-dot{width:18px;height:18px;border-radius:50%;background:#1a2a3a;border:2px solid #2a3a4a;cursor:pointer}.led-dot:hover{border-color:#4a6a8a}.led-dot.on{background:#9bd770;border-color:#6ba840;box-shadow:0 0 8px #4a8020}.led-dot.on:hover{border-color:#9bd770}.led-label{font-size:10px;color:#808a95}.viper-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.viper-btn{background:#1a2a3a;color:#cfe2b0;border:1px solid #2a3a4a;padding:7px 16px;border-radius:4px;font:inherit;cursor:pointer}.viper-btn:hover{background:#253a52}.viper-btn.lock{border-color:#355e1f;color:#9bd770}.viper-btn.unlock{border-color:#644100;color:#f29900}.viper-btn.start{border-color:#1a4a6a;color:#1ab4ff}.viper-last{font-size:11px;color:#808a95}#rules-panel{flex:1;overflow-y:auto;display:none;padding:14px}.rules-toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}.rule-row{background:#0f1a24;border:1px solid #1e2a38;border-radius:6px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:flex-start;gap:10px}.rule-row.empty{opacity:.35}.rule-idx{font-size:10px;color:#4a6a8a;min-width:22px;padding-top:2px}.rule-desc{flex:1}.rule-trig{font-size:12px;color:#1ab4ff}.rule-act{font-size:12px;color:#9bd770;margin-top:2px}.rule-empty-text{font-size:11px;color:#4a6a8a;font-style:italic}.rule-btns{display:flex;gap:5px}.rule-edit-btn{background:#1a2a3a;color:#cfe2b0;border:1px solid #2a3a4a;padding:2px 8px;border-radius:4px;font:inherit;font-size:11px;cursor:pointer}.rule-edit-btn:hover{background:#253a52}.rule-del-btn{background:#1a0a0a;color:#f29900;border:1px solid #644100;padding:2px 8px;border-radius:4px;font:inherit;font-size:11px;cursor:pointer}.rule-del-btn:hover{background:#2a1000}.rule-editor{background:#0a1520;border:1px solid #2a4a6a;border-radius:6px;padding:12px;margin-bottom:12px}.rule-editor h4{margin:0 0 10px;color:#9bd770;font-size:12px}.re-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center}.re-row label{font-size:11px;color:#808a95;min-width:70px}.re-row input[type=number],.re-row select{background:#0f1a24;color:#cfe2b0;border:1px solid #2a3a4a;border-radius:4px;padding:3px 6px;font:inherit;font-size:12px}.re-row select{min-width:160px}.re-row input[type=number]{width:70px}.re-save{background:#1a3a1a;color:#9bd770;border:1px solid #355e1f;padding:4px 14px;border-radius:4px;font:inherit;cursor:pointer}.re-save:hover{background:#254a25}.re-cancel{background:#1a2a3a;color:#808a95;border:1px solid #2a3a4a;padding:4px 12px;border-radius:4px;font:inherit;cursor:pointer}.re-cancel:hover{background:#253a52}#net-panel{flex:1;overflow-y:auto;display:none;padding:14px}.net-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}.net-node{background:#0f1a24;border:1px solid #1e2a38;border-radius:8px;padding:14px;transition:border-color .3s}.net-node.online{border-color:#253a25}.net-node.unknown{border-color:#3a2c00}.nn-led.on.unknown{background:#d4a020;border-color:#a07010;box-shadow:0 0 6px #805010}.nn-pill.unknown{border-color:#504a00;color:#d4a020;background:#130f00}.nn-header{display:flex;align-items:center;gap:8px;margin-bottom:5px}.nn-led{width:10px;height:10px;border-radius:50%;background:#2a3a4a;border:2px solid #1a2a38;flex-shrink:0}.nn-led.on{background:#9bd770;border-color:#6ba840;box-shadow:0 0 6px #4a8020}.nn-name{font-size:13px;font-weight:700;color:#cfe2b0;flex:1}.nn-id{font-size:11px;color:#4a6a8a;font-family:ui-monospace,monospace}.nn-role{font-size:11px;color:#5a7a5a;margin-bottom:10px;line-height:1.5}.nn-meta{display:flex;align-items:center;justify-content:space-between;gap:6px}.nn-transports{display:flex;gap:4px;flex-wrap:wrap}.nn-pill{padding:1px 7px;border-radius:8px;font-size:10px;border:1px solid #1e2a38;color:#2a3a4a;background:#0b0f14}.nn-pill.can{border-color:#355e1f;color:#9bd770;background:#091508}.nn-pill.wifi{border-color:#1a4a6a;color:#1ab4ff;background:#061320}.nn-pill.self{border-color:#504a00;color:#ffd166;background:#130f00}.nn-last{font-size:10px;color:#4a5a6a;white-space:nowrap}.nid-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.nid-current{font-family:monospace;font-size:13px;color:#9bd770;background:#091508;border:1px solid #355e1f;border-radius:4px;padding:2px 8px}.nid-input{width:70px;background:#0b0f14;color:#cfe2b0;border:1px solid #2a3a4a;border-radius:4px;padding:4px 8px;font-family:monospace;font-size:13px}.nid-input:focus{outline:0;border-color:#4a8040}.nid-hint{font-size:11px;color:#4a5a6a;margin-top:5px}.nn-ids{margin-top:8px;padding-top:8px;border-top:1px solid #1a2a38;display:flex;flex-wrap:wrap;gap:3px}.nn-frid{font-size:10px;font-family:ui-monospace,monospace;padding:1px 5px;border-radius:4px;background:#0b131c;border:1px solid #1a2a38;color:#4a6a8a}</style><header><span>node: <b id="node-name">...</b></span> <span>id: <b id="node-id">...</b></span> <span class="pill" id="p-can">can ?</span> <span class="pill" id="p-wifi">wifi peer ?</span><div class="txm-group" title="CAN transmission mode"><button class="txm-btn" id="txm-0" onclick="setTxMode(0)">CAN+WiFi</button> <button class="txm-btn" id="txm-1" onclick="setTxMode(1)">WiFi Only</button> <button class="txm-btn" id="txm-2" onclick="setTxMode(2)">CAN Only</button></div><span style="margin-left:auto;color:#808a95" id="fps">-</span></header><main><div class="tabs" id="tabs"><button class="tab active" id="tab-can" onclick='switchTab("can")'>CAN</button> <button class="tab" id="tab-control" onclick='switchTab("control")'>Control</button> <button class="tab" id="tab-rules" onclick='switchTab("rules")'>Rules</button> <button class="tab" id="tab-net" onclick='switchTab("net")'>Network</button> <button class="tab-more-btn" id="tab-more-btn" onclick="toggleMoreMenu()">&#8942;</button><div class="tab-dropdown" id="tab-dropdown"><button class="tab" id="tab-serial" onclick='switchTab("serial")'>Serial</button> <button class="tab" id="tab-settings" onclick='switchTab("settings")'>Settings</button><hr class="tab-divider"><button class="tab-action" onclick="exitCaptivePortal()">&#x1F4F1; Exit to App</button></div></div><div id="help">Enter a CAN frame as hex bytes: <b>&lt;id&gt; &lt;byte0&gt; &lt;byte1&gt;...</b> (up to 8 bytes).<br>Or use an alias: <b>:relay &lt;n&gt; on|off</b> &middot; <b>:alloff</b> &middot; <b>:horn</b> &middot; <b>:readcfg sw|relay</b> &middot; <b>:save sw|relay</b> &middot; <b>:reset sw|relay</b> &middot; <b>:viper lock|unlock|start</b></div><div id="log"></div><div id="serial-log"></div><div id="control-panel"></div><div id="rules-panel"></div><div id="net-panel"></div><div id="settings-panel" style="display:none;flex:1;overflow-y:auto"></div><div id="bar"><button onclick='runAlias(":relay 1 on")'>R1 ON</button> <button onclick='runAlias(":relay 1 off")'>R1 OFF</button> <button onclick='runAlias(":relay 5 on")'>HORN ON</button> <button onclick='runAlias(":relay 5 off")'>HORN OFF</button> <button onclick='runAlias(":alloff")'>ALL OFF</button> <button onclick='runAlias(":readcfg relay")'>READ RELAY CFG</button> <button onclick='runAlias(":viper lock")'>VIPER LOCK</button> <button onclick='runAlias(":viper unlock")'>VIPER UNLOCK</button> <button onclick='runAlias(":viper start")'>VIPER START</button> <button onclick="clearLog()">CLEAR</button></div><div id="input-row"><span id="prompt">&gt;</span> <input id="cmd" autocomplete="off" spellcheck="false" placeholder="100 01 01"></div></main><script>const log=document.getElementById("log"),slog=document.getElementById("serial-log"),cmd=document.getElementById("cmd");let currentTxMode=0,sinceSeq=0,serialCursor=0,activeTab="can",history=[],histIdx=-1,statusData={can_ok:!1,wifi_peer:!1,peer_nodes:0,peer_ids:[]};function switchTab(t){activeTab=t;const e="serial"===t||"settings"===t;["can","serial","control","rules","net","settings"].forEach(e=>{document.getElementById("tab-"+e).className="tab"+(t===e?" active":"")}),document.getElementById("tab-more-btn").className="tab-more-btn"+(e?" active":""),document.getElementById("tab-dropdown").classList.remove("open"),document.getElementById("log").style.display="can"===t?"":"none",document.getElementById("help").style.display="can"===t?"":"none",document.getElementById("serial-log").style.display="serial"===t?"block":"none",document.getElementById("control-panel").style.display="control"===t?"block":"none",document.getElementById("rules-panel").style.display="rules"===t?"block":"none",document.getElementById("net-panel").style.display="net"===t?"block":"none",document.getElementById("settings-panel").style.display="settings"===t?"block":"none",document.getElementById("bar").style.display="can"===t?"":"none",document.getElementById("input-row").style.display="can"===t?"":"none","rules"===t&&loadRules(),"net"===t&&renderNetwork(),"control"===t&&cfg&&cfg.is_bridge&&buildBridgePanel()}function toggleMoreMenu(){document.getElementById("tab-dropdown").classList.toggle("open")}function append(t,e){const n=document.createElement("div");for(n.className="row "+t,n.textContent=e,log.appendChild(n);log.childElementCount>400;)log.removeChild(log.firstChild);log.scrollTop=log.scrollHeight}function clearLog(){log.innerHTML=""}function fmtFrame(t){const e=t.data.map(t=>t.toString(16).padStart(2,"0")).join(" "),n="0x"+t.id.toString(16).padStart(3,"0").toUpperCase();return`${new Date(t.t).toISOString().slice(11,23)} ${t.out?"TX":"RX"} ${t.src.padEnd(4)} ${n}  [${t.dlc}] ${e}`}document.addEventListener("click",t=>{document.getElementById("tabs").contains(t.target)||document.getElementById("tab-dropdown").classList.remove("open")});let cfg=null,nodeId=0,relayMask=0,switchState=new Array(16).fill(!1),ledState=0;function updateRelayTiles(){if(cfg&&cfg.has_relay)for(let t=0;t<6;t++){const e=relayMask>>t&1,n=document.getElementById("rt-"+t);n&&(n.className="relay-tile"+(e?" on":""));const s=document.getElementById("rs-"+t);s&&(s.textContent=e?"ON":"OFF")}}function updateSwitchDisplay(){if(cfg&&cfg.has_switches){for(let t=0;t<cfg.switch_count;t++){const e=document.getElementById("swi-"+t),n=document.getElementById("sws-"+t),s=switchState[t];e&&(e.className="sw-input"+(s?" on":"")),n&&(n.textContent=s?"ON":"OFF")}for(let t=0;t<cfg.button_count;t++){const e=cfg.switch_count+t,n=document.getElementById("bti-"+e);n&&(n.className="btn-input"+(switchState[e]?" pressed":""))}}}function updateLedDisplay(){if(cfg&&cfg.has_leds)for(let t=0;t<cfg.led_count;t++){const e=document.getElementById("led-"+t);e&&(e.className="led-dot"+(ledState>>t&1?" on":""))}}function buildControlPanel(){if(!cfg)return;let t="";if(cfg.has_relay){t+='<div class="ctrl-section">',t+='<div class="ctrl-head">Relays</div>',t+='<div class="relay-grid">';for(let e=0;e<6;e++)t+=`<div class="relay-tile" id="rt-${e}">`,t+='<div class="rt-led"></div>',t+=`<div class="rt-name">${cfg.relay_labels[e]}</div>`,t+=`<div class="rt-state" id="rs-${e}">OFF</div>`,t+=`<button class="rt-btn" onclick="toggleRelay(${e})">Toggle</button>`,t+="</div>";t+="</div>",t+='<div class="ctrl-btns">',t+='<button class="ctrl-btn danger" onclick="sendAllOff()">All OFF</button>',t+="</div>",t+="</div>"}if(cfg.has_switches&&cfg.switch_count>0){t+='<div class="ctrl-section">',t+='<div class="ctrl-head">Switch Inputs</div>',t+='<div class="sw-input-grid">';for(let e=0;e<cfg.switch_count;e++)t+=`<div class="sw-input" id="swi-${e}" onclick="simSwitch(${e})">`,t+=`<div class="swi-label">SW${e+1}</div>`,t+=`<div class="swi-state" id="sws-${e}">OFF</div>`,t+="</div>";t+="</div>",t+="</div>"}if(cfg.has_switches&&cfg.button_count>0){t+='<div class="ctrl-section">',t+='<div class="ctrl-head">Buttons</div>',t+='<div class="btn-input-grid">';for(let e=0;e<cfg.button_count;e++){const n=cfg.switch_count+e;t+=`<div class="btn-input" id="bti-${n}" onmousedown="btnDown(${n})" onmouseup="btnUp(${n})" onmouseleave="btnUp(${n})" ontouchstart="btnDown(${n});event.preventDefault()" ontouchend="btnUp(${n})" ontouchcancel="btnUp(${n})">BTN${e+1}</div>`}t+="</div>",t+="</div>"}if(cfg.has_leds&&cfg.led_count>0){t+='<div class="ctrl-section">',t+='<div class="ctrl-head">Status LEDs</div>',t+='<div class="led-grid">';for(let e=0;e<cfg.led_count;e++)t+='<div class="led-indicator">',t+=`<div class="led-dot" id="led-${e}" onclick="toggleLed(${e})"></div>`,t+=`<div class="led-label">LED${e+1}</div>`,t+="</div>";t+="</div>",t+="</div>"}cfg.has_viper&&(t+='<div class="ctrl-section">',t+='<div class="ctrl-head">Alarm</div>',t+='<div class="viper-btns">',t+='<button class="viper-btn lock"   onclick="viperCmd(1)">Lock / Arm</button>',t+='<button class="viper-btn unlock" onclick="viperCmd(2)">Unlock / Disarm</button>',t+='<button class="viper-btn start"  onclick="viperCmd(3)">Remote Start</button>',t+="</div>",t+='<div class="viper-last" id="viper-last">No response yet</div>',t+="</div>"),document.getElementById("control-panel").innerHTML=t,updateRelayTiles(),updateSwitchDisplay(),updateLedDisplay()}async function initControl(){try{const t=await fetch("/api/config");cfg=await t.json(),cfg.is_bridge?(document.getElementById("tab-rules").style.display="none",await buildBridgePanel()):(buildControlPanel(),cfg.has_rules||(document.getElementById("tab-rules").style.display="none")),buildSettingsPanel()}catch(t){}}const BRIDGE_NODE_NAMES={1:"switch-panel",2:"relay-ctrl",3:"viper-iface",4:"ecu-node"};async function buildBridgePanel(){let t=[];try{const e=await fetch("/api/nodecaps");t=await e.json()}catch(t){}t.sort((t,e)=>t.id-e.id);let e='<div class="ctrl-section" style="border-bottom:none;padding-bottom:4px">';e+='<div style="display:flex;align-items:center;gap:8px">',e+='<div class="ctrl-head" style="margin:0">Discovered Nodes</div>',e+='<button class="ctrl-btn" style="font-size:10px;padding:2px 8px" onclick="buildBridgePanel()">Refresh</button>',e+=`<span style="font-size:10px;color:#4a5a6a">${t.length} node${1===t.length?"":"s"}</span>`,e+="</div></div>",t.length||(e+='<div class="ctrl-section"><div style="color:#808a95;line-height:1.8">No capability frames received yet.<br>',e+="Nodes broadcast caps at boot and every 30 s.<br>",e+='<button class="ctrl-btn" style="font-size:10px;padding:2px 8px;margin-top:6px" onclick="sendFrame(0x0F3,[0xFF])">Request All Caps</button></div></div>');for(const n of t){if(n.id===nodeId)continue;if(e+='<div class="ctrl-section">',e+=`<div class="ctrl-head">${BRIDGE_NODE_NAMES[n.id]||"node-"+n.id.toString(16).padStart(2,"0")} <span style="color:#4a6a8a;font-size:9px;font-weight:normal">0x${n.id.toString(16).padStart(2,"0")}</span></div>`,1&n.caps){e+='<div class="relay-grid">';for(let t=0;t<n.relay_count;t++)e+=`<div class="relay-tile" id="rt-${t}"><div class="rt-led"></div>`,e+=`<div class="rt-name">Relay ${t+1}</div>`,e+=`<div class="rt-state" id="rs-${t}">OFF</div>`,e+=`<button class="rt-btn" onclick="toggleRelay(${t})">Toggle</button></div>`;e+="</div>",e+='<div class="ctrl-btns"><button class="ctrl-btn danger" onclick="sendAllOff()">All OFF</button></div>'}if(2&n.caps&&n.switch_count>0){e+='<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Switches</div>',e+='<div class="sw-input-grid">';for(let t=0;t<n.switch_count;t++)e+=`<div class="sw-input" id="swi-${t}" onclick="simSwitch(${t})">`,e+=`<div class="swi-label">SW${t+1}</div><div class="swi-state" id="sws-${t}">OFF</div></div>`;e+="</div></div>"}if(2&n.caps&&n.button_count>0){e+='<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Buttons</div>',e+='<div class="btn-input-grid">';for(let t=0;t<n.button_count;t++){const s=n.switch_count+t;e+=`<div class="btn-input" id="bti-${s}" onmousedown="btnDown(${s})" onmouseup="btnUp(${s})" onmouseleave="btnUp(${s})" ontouchstart="btnDown(${s});event.preventDefault()" ontouchend="btnUp(${s})" ontouchcancel="btnUp(${s})">BTN${t+1}</div>`}e+="</div></div>"}if(4&n.caps&&(e+='<div style="margin-top:10px"><div class="viper-btns">',e+='<button class="viper-btn lock"   onclick="viperCmd(1)">Lock / Arm</button>',e+='<button class="viper-btn unlock" onclick="viperCmd(2)">Unlock / Disarm</button>',e+='<button class="viper-btn start"  onclick="viperCmd(3)">Remote Start</button></div>',e+='<div class="viper-last" id="viper-last">No response yet</div></div>'),8&n.caps&&n.led_count>0){e+='<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Status LEDs</div>',e+='<div class="led-grid">';for(let t=0;t<n.led_count;t++)e+='<div class="led-indicator">',e+=`<div class="led-dot" id="led-${n.id}-${t}" onclick="toggleLed(${t},${n.id})"></div>`,e+=`<div class="led-label">LED${t+1}</div></div>`;e+="</div></div>"}e+="</div>"}document.getElementById("control-panel").innerHTML=e,updateRelayTiles(),updateSwitchDisplay()}async function changeNodeId(){const t=document.getElementById("nid-input"),e=t.value.trim(),n=/^0x/i.test(e)?parseInt(e,16):parseInt(e,10);if(isNaN(n)||n<1||n>254)return void(t.style.borderColor="#c04040");t.style.borderColor="";const s=nodeId.toString(16).padStart(2,"0"),a=n.toString(16).padStart(2,"0");await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({frame:`400 ${s} 01 00 00 ${a} 00 00 01`})}),t.value="",t.placeholder="restarting…",t.disabled=!0,document.getElementById("nid-display").textContent=`0x${a} →`}function toggleRelay(t){const e=1<<t;sendFrame(256,[e,relayMask>>t&1?0:e])}function sendAllOff(){sendFrame(256,[63,0])}function simSwitch(t){const e=switchState[t];switchState[t]=!e,sendFrame(512,[t,e?0:1]),updateSwitchDisplay()}function btnDown(t){switchState[t]||(switchState[t]=!0,updateSwitchDisplay(),sendFrame(512,[t,1]))}function btnUp(t){switchState[t]&&(switchState[t]=!1,updateSwitchDisplay(),sendFrame(512,[t,0]))}function buildSettingsPanel(){let t='<div class="ctrl-section">';t+='<div class="ctrl-head">Node Settings</div>',t+='<div class="nid-row">',t+='  <span style="color:#8a9aaa;font-size:12px">Node ID</span>',t+=`  <span class="nid-current" id="nid-display">0x${nodeId.toString(16).padStart(2,"0")}</span>`,t+='  <input type="text" id="nid-input" class="nid-input" placeholder="0x02" maxlength="4">',t+='  <button class="ctrl-btn" onclick="changeNodeId()">Reassign</button>',t+="</div>",t+='<div class="nid-hint">Saves to NVS and restarts. Must be unique on the bus (0x01–0xFE).</div>',t+="</div>",t+='<div class="ctrl-section">',t+='<div class="ctrl-head">WiFi Credentials</div>',t+='<div style="display:flex;flex-direction:column;gap:8px;max-width:480px">',t+='  <div class="re-row"><label>SSID</label><input type="text" id="wc-ssid" class="nid-input" style="width:200px" maxlength="32" placeholder="AccessoryBus"></div>',t+='  <div class="re-row"><label>Password</label><input type="password" id="wc-pass" class="nid-input" style="width:200px" maxlength="64" placeholder="(empty = open)"></div>',t+='  <div class="re-row"><label>PMK (hex)</label><input type="text" id="wc-pmk" class="nid-input" style="width:280px;font-family:monospace" maxlength="32" placeholder="32 hex chars = 16 bytes"></div>',t+='  <div class="re-row"><label>LMK (hex)</label><input type="text" id="wc-lmk" class="nid-input" style="width:280px;font-family:monospace" maxlength="32" placeholder="32 hex chars = 16 bytes"></div>',t+="</div>",t+='<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">',t+='  <button class="ctrl-btn" onclick="loadWifiCreds()">&#8635; Load Current</button>',t+='  <button class="ctrl-btn" onclick="saveWifiCreds(false)">Save to This Node</button>',t+='  <button class="ctrl-btn" onclick="saveWifiCreds(true)">Broadcast to All Nodes</button>',t+='  <button class="ctrl-btn danger" onclick="rebootAll()">Reboot All</button>',t+="</div>",t+='<div id="wc-status" style="margin-top:8px;font-size:11px;color:#808a95"></div>',t+='<div style="margin-top:10px;font-size:11px;color:#4a5a6a;line-height:1.6">',t+='  <b style="color:#f29900">Warning:</b> Changing SSID or password will disconnect your current session after reboot.<br>',t+="  <b>WiFi-only mode:</b> Broadcast sends over ESP-NOW using current keys. Reboot all nodes simultaneously to apply PMK/LMK changes.",t+="</div>",t+="</div>",document.getElementById("settings-panel").innerHTML=t,loadWifiCreds()}async function loadWifiCreds(){const t=document.getElementById("wc-status");try{const e=await fetch("/api/wifi_creds"),n=await e.json();document.getElementById("wc-ssid").value=n.ssid||"",document.getElementById("wc-pass").value=n.pass||"",document.getElementById("wc-pmk").value=n.pmk||"",document.getElementById("wc-lmk").value=n.lmk||"",t&&(t.textContent="Loaded.")}catch(e){t&&(t.textContent="Failed to load: "+e)}}async function saveWifiCreds(t){const e=document.getElementById("wc-status"),n=document.getElementById("wc-ssid").value.trim(),s=document.getElementById("wc-pass").value,a=document.getElementById("wc-pmk").value.trim().toLowerCase(),i=document.getElementById("wc-lmk").value.trim().toLowerCase();if(!n)return void(e&&(e.textContent="SSID is required."));if(s&&s.length<8)return void(e&&(e.textContent="Password must be empty or ≥ 8 chars."));if(a&&32!==a.length)return void(e&&(e.textContent="PMK must be exactly 32 hex chars."));if(i&&32!==i.length)return void(e&&(e.textContent="LMK must be exactly 32 hex chars."));const l={ssid:n,pass:s,broadcast:t};a&&(l.pmk=a),i&&(l.lmk=i);try{e&&(e.textContent=t?"Broadcasting…":"Saving…");const n=await fetch("/api/wifi_creds",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(l)}),s=await n.json();s.ok?e&&(e.textContent=t?'Broadcast sent. Use "Reboot All" to apply.':"Saved to this node. Reboot to apply."):e&&(e.textContent="Error: "+JSON.stringify(s))}catch(t){e&&(e.textContent="Request failed: "+t)}}async function rebootAll(){confirm("Reboot all nodes now?")&&await sendFrame(245,[255])}function toggleLed(t,e){const n=1<<t;sendFrame(258,[void 0!==e?e:nodeId,n,ledState>>t&1?0:n])}function viperCmd(t){sendFrame(1296,[t])}async function pollFrames(){try{const t=await fetch("/api/frames?since="+sinceSeq),e=await t.json();sinceSeq=e.cursor;for(const t of e.frames){if(append(t.out?"tx":"wifi"===t.src?"rxw":"rx",fmtFrame(t)),257===t.id&&t.dlc>=1?(relayMask=t.data[0],updateRelayTiles()):256===t.id&&t.dlc>=2&&(relayMask=relayMask&~t.data[0]|t.data[1]&t.data[0],updateRelayTiles()),512===t.id&&t.dlc>=2){const e=t.data[0],n=t.data[1];switchState[e]=1===n||2===n,updateSwitchDisplay()}if(259===t.id&&t.dlc>=2)if(cfg&&cfg.is_bridge){const e=t.data[0],n=t.data[1];for(let t=0;t<8;t++){const s=document.getElementById(`led-${e}-${t}`);s&&(s.className="led-dot"+(n>>t&1?" on":""))}}else t.data[0]===nodeId&&(ledState=t.data[1],updateLedDisplay());if(1297===t.id){const e=t.data.slice(0,t.dlc).map(t=>t.toString(16).padStart(2,"0")).join(" "),n=document.getElementById("viper-last");n&&(n.textContent="Last response: "+e)}240===t.id&&t.dlc>=1?netObserveAnnounce(t.data[0],t.src):netObserve(t.id,t.src,t.out)}"net"===activeTab&&renderNetwork()}catch(t){}}async function pollStatus(){try{const t=await fetch("/api/status"),e=await t.json();nodeId=e.id,document.getElementById("node-name").textContent=e.name,document.getElementById("node-id").textContent="0x"+e.id.toString(16).padStart(2,"0");const n=document.getElementById("p-can");n.textContent="can "+(e.can_ok?"OK":"DOWN"),n.className="pill "+(e.can_ok?"ok":"bad");const s=document.getElementById("p-wifi");s.textContent="wifi peer "+(e.wifi_peer?"OK":"IDLE"),s.className="pill "+(e.wifi_peer?"ok":"warn");const a=e.tx_mode||0;a!==currentTxMode&&(currentTxMode=a,updateTxModeButtons(a)),document.getElementById("fps").textContent=e.uptime_s+"s up",statusData=e}catch(t){}}async function sendFrame(t,e){const n=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:t,data:e})});n.ok||append("err","send failed: "+n.status)}async function pollSerial(){try{const t=await fetch("/api/serial?since="+serialCursor),e=await t.json();serialCursor=e.cursor,e.text&&(slog.textContent+=e.text,slog.textContent.length>8e3&&(slog.textContent=slog.textContent.slice(-6e3)),slog.scrollTop=slog.scrollHeight)}catch(t){}}function updateTxModeButtons(t){for(let e=0;e<3;e++){const n=document.getElementById("txm-"+e);n&&(n.className="txm-btn"+(e===t?" active":""))}}async function setTxMode(t){updateTxModeButtons(t),currentTxMode=t,await fetch("/api/tx_mode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:t})})}function parseHex(t){const e=parseInt(t,16);if(isNaN(e))throw new Error("not hex: "+t);return e}function parseRawFrame(t){const e=t.trim().split(/\s+/);if(e.length<1)throw new Error("empty");const n=parseHex(e[0]),s=e.slice(1).map(parseHex);if(s.length>8)throw new Error("max 8 data bytes");return{id:n,data:s}}function aliasToFrame(t){let e;if(e=/^:relay\s+(\d+)\s+(on|off)\s*$/i.exec(t)){const t=parseInt(e[1]);if(t<1||t>6)throw new Error("relay 1..6");const n=1<<t-1;return{id:256,data:[n,"on"===e[2].toLowerCase()?n:0]}}if(/^:alloff\s*$/i.test(t))return{id:256,data:[63,0]};if(/^:horn\s*$/i.test(t))return{id:256,data:[16,16]};if(e=/^:readcfg\s+(sw|relay)\s*$/i.exec(t)){return{id:1025,data:["sw"===e[1].toLowerCase()?1:2,"sw"===e[1].toLowerCase()?16:32,255]}}if(e=/^:save\s+(sw|relay)\s*$/i.exec(t)){return{id:1027,data:["sw"===e[1].toLowerCase()?1:2,1]}}if(e=/^:reset\s+(sw|relay)\s*$/i.exec(t)){return{id:1027,data:["sw"===e[1].toLowerCase()?1:2,3]}}if(e=/^:cfgsw\s+(\d+)\s+(toggle|pulse|event|hold|scene)\s+(\d+)(?:\s+(\d+))?\s*(\!)?\s*$/i.exec(t)){const t=+e[1],n={toggle:0,pulse:1,event:2,hold:3,scene:4}[e[2].toLowerCase()],s=+e[3],a=e[4]?+e[4]:0;return{id:1024,data:[1,16,t,n,s,255&a,a>>8&255,"!"===e[5]?1:0]}}if(e=/^:cfgrelay\s+(\d+)\s+maxon\s+(\d+)\s*(\!)?\s*$/i.exec(t)){const t=+e[1],n=+e[2];return{id:1024,data:[2,32,t,0,0,255&n,n>>8&255,"!"===e[3]?1:0]}}if(e=/^:viper\s+(lock|unlock|start)\s*$/i.exec(t)){return{id:1296,data:[{lock:1,unlock:2,start:3}[e[1].toLowerCase()]]}}throw new Error("unknown alias: "+t)}async function runAlias(t){try{const e=aliasToFrame(t);append("inf","  "+t),await sendFrame(e.id,e.data)}catch(t){append("err","  "+t.message)}}async function submit(){const t=cmd.value.trim();if(t){cmd.value="",history.push(t),histIdx=history.length;try{const e=t.startsWith(":")?aliasToFrame(t):parseRawFrame(t);append("inf","> "+t),await sendFrame(e.id,e.data)}catch(t){append("err","! "+t.message)}}}const CAN_NAMES={256:"RELAY_CMD",257:"RELAY_STATUS",258:"LED_CMD",259:"LED_STATUS",260:"BUZZER_CMD",512:"SWITCH_EVENT",513:"ENCODER_EVENT",768:"TELEMETRY",769:"ENV_DATA",770:"IMU_DATA",771:"SHAKE_EVENT",772:"ENGINE_DATA",773:"GPS_DATA",774:"WBO2_DATA",775:"ECU_DATA",1296:"VIPER_CMD",1297:"VIPER_STATUS",240:"NODE_ANNOUNCE",241:"BOOT_EVENT",244:"BUS_ERROR"},SW_EVENTS=["Release","Press","Long Press","Double Press"],ACT_NAMES=["--","Relay Toggle","Relay On","Relay Off","All Off","Relay Scene","LED On","LED Off","WiFi Enable","WiFi Disable","Viper Cmd","Menu Select","Menu Enter","Relay Timed Off","LED Flash","Buzzer Alert","Buzzer Play"],BUZZER_SEQ_NAMES={1:"Alert",2:"CAN Up",3:"CAN Down",4:"Startup",5:"Peer Count",6:"WiFi Connect",7:"WiFi Disconnect",16:"Relay On",17:"Relay Off",18:"All Off",32:"Mute"},NODE_NAMES={1:"switch-panel",2:"relay-ctrl",3:"viper-iface",255:"broadcast"};function describeTrigger(t){if(!t.trig_id)return null;const e=t.trig_id;if(512===e&&255===t.c0_mask&&255===t.c1_mask){return"SW"+(t.c0_val<6?t.c0_val+1:"BTN"+(t.c0_val-5))+" "+(SW_EVENTS[t.c1_val]||"ev"+t.c1_val)}if(257===e&&0!==t.c0_mask){const e=Math.log2(t.c0_mask);if(Number.isInteger(e))return"Relay "+(e+1)+" "+(t.c0_val?"On":"Off")+" (status)"}if(256===e&&0!==t.c0_mask&&0!==t.c1_mask){const e=Math.log2(t.c0_mask);if(Number.isInteger(e))return"Relay "+(e+1)+" Cmd "+(t.c1_val?"On":"Off")}if(244===e)return"Bus Error (any node)";if(240===e&&0===t.c0_mask&&255===t.c1_mask&&1===t.c1_val)return"Any Node Announces CAN OK";let n=CAN_NAMES[e]||"0x"+e.toString(16).toUpperCase();return t.c0_mask&&(n+=", b"+t.c0_byte+"="+t.c0_val+"&"+t.c0_mask),t.c1_mask&&(n+=", b"+t.c1_byte+"="+t.c1_val+"&"+t.c1_mask),n}function describeAction(t){const e=ACT_NAMES[t.action]||"act"+t.action;if([1,2,3].includes(t.action))return e+" R"+(t.arg0+1);if(5===t.action)return"Scene 0b"+t.arg0.toString(2).padStart(6,"0");if([6,7].includes(t.action)){const n=NODE_NAMES[t.arg0]||"node "+t.arg0;return e+" LED"+(t.arg1+1)+" on "+n}if([8,9].includes(t.action))return e+" on "+(NODE_NAMES[t.arg0]||"node "+t.arg0);if(10===t.action)return"Viper "+({1:"Lock",2:"Unlock",3:"Start"}[t.arg0]||t.arg0);if(13===t.action)return"Relay Off R"+(t.arg0+1)+" after "+t.arg1+"s";if(14===t.action){const e=NODE_NAMES[t.arg0]||"node "+t.arg0;return"Flash LED"+(t.arg1+1)+" on "+e+" ("+50*(t.arg2||1)+"ms half-period)"}if(15===t.action)return"Buzzer Alert (3 beeps)";if(16===t.action){const e=NODE_NAMES[t.arg0]||"node 0x"+t.arg0.toString(16);return"Buzzer "+(BUZZER_SEQ_NAMES[t.arg1]||"seq 0x"+t.arg1.toString(16))+" on "+e+(t.arg2?" (arg="+t.arg2+")":"")}return e}let rulesData=[],editingIdx=-1;async function loadRules(){try{const t=await fetch("/api/rules");rulesData=await t.json(),renderRules()}catch(t){document.getElementById("rules-panel").innerHTML='<div style="color:#f29900;padding:14px">Failed to load rules.</div>'}}function renderRules(){const t=document.getElementById("rules-panel");let e='<div class="rules-toolbar">';e+='<button class="ctrl-btn" onclick="startEdit(-1)">+ Add Rule</button>',e+='<button class="ctrl-btn danger" onclick="resetRules()">Factory Reset</button>',e+="</div>",-2===editingIdx&&(e+=buildEditor(null,-1));for(const t of rulesData){const n=!t.trig_id&&!t.action;editingIdx!==t.i?(e+=`<div class="rule-row${n?" empty":""}">`,e+=`<div class="rule-idx">${t.i}</div>`,e+='<div class="rule-desc">',n?e+='<div class="rule-empty-text">empty slot</div>':(e+=`<div class="rule-trig">&#x2139; ${describeTrigger(t)||"?"}</div>`,e+=`<div class="rule-act">&#x279C; ${describeAction(t)}</div>`),e+="</div>",e+='<div class="rule-btns">',e+=`<button class="rule-edit-btn" onclick="startEdit(${t.i})">Edit</button>`,n||(e+=`<button class="rule-del-btn" onclick="deleteRule(${t.i})">Clear</button>`),e+="</div></div>"):e+=buildEditor(t,t.i)}t.innerHTML=e}function buildEditor(t,e){const n=-1===e,s=n?firstEmptySlot():e,a=t||{trig_id:0,c0_byte:0,c0_val:0,c0_mask:0,c1_byte:0,c1_val:0,c1_mask:0,action:0,arg0:0,arg1:0,arg2:0},i=Object.entries(CAN_NAMES).map(([t,e])=>`<option value="${t}" ${a.trig_id==t?"selected":""}>${e} (0x${(+t).toString(16).toUpperCase()})</option>`).join(""),l=ACT_NAMES.map((t,e)=>`<option value="${e}" ${a.action==e?"selected":""}>${e}: ${t}</option>`).join("");let o='<div class="rule-editor">';return o+=`<h4>${n?"New Rule - Slot "+s:"Edit Rule "+e}</h4>`,o+='<div class="re-row"><label>Trigger ID</label>',o+=`<select id="re-trig"><option value="0">-- custom --</option>${i}</select>`,o+=`<input type="number" id="re-trig-raw" min="0" max="2047" value="${a.trig_id}" style="width:80px"> (raw)</div>`,o+='<div class="re-row"><label>Cond 0</label>',o+=`byte <input type="number" id="re-c0b" min="0" max="7" value="${a.c0_byte}" style="width:50px">`,o+=` val <input type="number" id="re-c0v" min="0" max="255" value="${a.c0_val}" style="width:55px">`,o+=` mask <input type="number" id="re-c0m" min="0" max="255" value="${a.c0_mask}" style="width:55px">`,o+=' <span style="font-size:10px;color:#808a95">(0=skip)</span></div>',o+='<div class="re-row"><label>Cond 1</label>',o+=`byte <input type="number" id="re-c1b" min="0" max="7" value="${a.c1_byte}" style="width:50px">`,o+=` val <input type="number" id="re-c1v" min="0" max="255" value="${a.c1_val}" style="width:55px">`,o+=` mask <input type="number" id="re-c1m" min="0" max="255" value="${a.c1_mask}" style="width:55px">`,o+=' <span style="font-size:10px;color:#808a95">(0=skip)</span></div>',o+='<div class="re-row"><label>Action</label>',o+=`<select id="re-act">${l}</select></div>`,o+='<div class="re-row"><label>arg0</label>',o+=`<input type="number" id="re-a0" min="0" max="255" value="${a.arg0}" style="width:70px">`,o+=' <label style="margin-left:10px">arg1</label>',o+=`<input type="number" id="re-a1" min="0" max="255" value="${a.arg1}" style="width:70px">`,o+=' <label style="margin-left:10px">arg2</label>',o+=`<input type="number" id="re-a2" min="0" max="255" value="${a.arg2}" style="width:70px"></div>`,o+=`<div class="re-row"><button class="re-save" onclick="saveRule(${s})">Save</button>`,o+='<button class="re-cancel" onclick="cancelEdit()" style="margin-left:6px">Cancel</button></div>',o+="</div>",o}function firstEmptySlot(){for(const t of rulesData)if(!t.trig_id&&!t.action)return t.i;return rulesData.length-1}function startEdit(t){editingIdx=-1===t?-2:t,renderRules()}function cancelEdit(){editingIdx=-1,renderRules()}function readEditorTrigId(){const t=document.getElementById("re-trig"),e=+document.getElementById("re-trig-raw").value;return t&&+t.value>0?+t.value:e}async function saveRule(t){const e={i:t,trig_id:readEditorTrigId(),c0_byte:+document.getElementById("re-c0b").value,c0_val:+document.getElementById("re-c0v").value,c0_mask:+document.getElementById("re-c0m").value,c1_byte:+document.getElementById("re-c1b").value,c1_val:+document.getElementById("re-c1v").value,c1_mask:+document.getElementById("re-c1m").value,action:+document.getElementById("re-act").value,arg0:+document.getElementById("re-a0").value,arg1:+document.getElementById("re-a1").value,arg2:+document.getElementById("re-a2").value};try{await fetch("/api/rules",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)}),editingIdx=-1,await loadRules()}catch(t){alert("Save failed: "+t)}}async function deleteRule(t){try{await fetch("/api/rules?i="+t,{method:"DELETE"}),await loadRules()}catch(t){alert("Delete failed: "+t)}}async function resetRules(){if(confirm("Restore all rules to compiled defaults?"))try{await fetch("/api/rules/reset",{method:"POST"}),await loadRules()}catch(t){alert("Reset failed: "+t)}}const NET_TTL=15e3,KNOWN_NODES=[{id:1,name:"switch-panel",role:"Switches - Rules - LCD - Buzzer",txIds:[512,513],idLabels:["SWITCH_EVENT","ENCODER_EVENT"]},{id:2,name:"relay-ctrl",role:"Relays - RPM - Telemetry",txIds:[257,768,772],idLabels:["RELAY_STATUS","TELEMETRY","ENGINE_DATA"]},{id:3,name:"viper-iface",role:"Viper - LCD - IMU",txIds:[1297,770,771],idLabels:["VIPER_STATUS","IMU_DATA","SHAKE_EVENT"]},{id:4,name:"ecu-node",role:"ECU - WBO2 - GPS",txIds:[775,774,773],idLabels:["ECU_DATA","WBO2_DATA","GPS_DATA"]}],FRAME_TO_NID={};for(const t of KNOWN_NODES)for(const e of t.txIds)FRAME_TO_NID[e]=t.id;const netState={},unknownFrameIds={};function netObserveAnnounce(t,e){netState[t]||(netState[t]={lastMs:0,canMs:0,wifiMs:0});const n=netState[t];n.lastMs=Date.now(),"can"===e&&(n.canMs=Date.now()),"wifi"===e&&(n.wifiMs=Date.now())}function netObserve(t,e,n){if(n)return;const s=FRAME_TO_NID[t];if(!s)return void(unknownFrameIds[t]={lastMs:Date.now(),src:e});netState[s]||(netState[s]={lastMs:0,canMs:0,wifiMs:0});const a=netState[s];a.lastMs=Date.now(),"can"===e&&(a.canMs=Date.now()),"wifi"===e&&(a.wifiMs=Date.now())}function renderNetwork(){const t=document.getElementById("net-panel");if(!t||"none"===t.style.display)return;const e=Date.now(),n=statusData&&statusData.peer_nodes||0;let s='<div class="net-grid">';for(const t of KNOWN_NODES){const a=t.id===nodeId,i=netState[t.id],l=!!(n&1<<t.id),o=!!(i&&e-i.lastMs<NET_TTL),d=a||l||o,c=a?!!statusData.can_ok:!!(i&&e-i.canMs<NET_TTL),r=a?!!statusData.wifi_peer:l||!!(i&&e-i.wifiMs<NET_TTL);let u;u=a?"serving UI":l?"active peer":i&&i.lastMs?((e-i.lastMs)/1e3).toFixed(1)+"s ago":"never seen",s+=`<div class="net-node${d?" online":""}">`,s+='<div class="nn-header">',s+=`<div class="nn-led${d?" on":""}"></div>`,s+=`<div class="nn-name">${t.name}</div>`,s+=`<div class="nn-id">0x${t.id.toString(16).padStart(2,"0")}</div>`,s+="</div>",s+=`<div class="nn-role">${t.role}</div>`,s+='<div class="nn-meta">',s+='<div class="nn-transports">',a?(s+=`<span class="nn-pill${c?" can":""}">CAN</span>`,s+=`<span class="nn-pill${r?" wifi":""}">WiFi</span>`,s+='<span class="nn-pill self">serving UI</span>'):d?(s+=`<span class="nn-pill${c?" can":""}">CAN</span>`,s+=`<span class="nn-pill${r?" wifi":""}">WiFi</span>`):s+='<span class="nn-pill">offline</span>',s+="</div>",s+=`<span class="nn-last">${u}</span>`,s+="</div>",s+='<div class="nn-ids">';for(let e=0;e<t.txIds.length;e++)s+=`<span class="nn-frid" title="${t.idLabels[e]}">0x${t.txIds[e].toString(16).toUpperCase()}</span>`;s+="</div>",s+="</div>"}s+="</div>";const a=new Set(KNOWN_NODES.map(t=>t.id)),i=new Set;for(const t of Object.keys(netState).map(Number))!a.has(t)&&netState[t].lastMs&&e-netState[t].lastMs<NET_TTL&&i.add(t);for(const t of statusData.peer_ids||[])a.has(t)||i.add(t);if(i.size){s+='<div class="net-grid" style="margin-top:10px">';for(const t of i){const n=netState[t]||{},a=!!(statusData.peer_nodes&1<<t),i=!!(n.canMs&&e-n.canMs<NET_TTL),l=a||!!(n.wifiMs&&e-n.wifiMs<NET_TTL),o=n.lastMs?((e-n.lastMs)/1e3).toFixed(1)+"s ago":"active peer";s+='<div class="net-node online unknown">',s+='<div class="nn-header">',s+='<div class="nn-led on unknown"></div>',s+='<div class="nn-name">unknown</div>',s+=`<div class="nn-id">0x${t.toString(16).padStart(2,"0")}</div>`,s+="</div>",s+='<div class="nn-role">Unrecognized node</div>',s+='<div class="nn-meta"><div class="nn-transports">',s+=`<span class="nn-pill${i?" can":""}">CAN</span>`,s+=`<span class="nn-pill${l?" wifi":""}">WiFi</span>`,s+='<span class="nn-pill unknown">?</span>',s+=`</div><span class="nn-last">${o}</span></div>`,s+="</div>"}s+="</div>"}const l=Object.entries(unknownFrameIds).filter(([,t])=>e-t.lastMs<NET_TTL);if(l.length){s+='<div class="net-grid" style="margin-top:10px"><div class="net-node online unknown">',s+='<div class="nn-header">',s+='<div class="nn-led on unknown"></div>',s+='<div class="nn-name">foreign traffic</div>',s+='<div class="nn-id">CAN</div>',s+="</div>",s+='<div class="nn-role">Unrecognized CAN frame IDs</div>',s+='<div class="nn-ids">';for(const[t,e]of l)s+=`<span class="nn-frid" title="${e.src}">0x${Number(t).toString(16).toUpperCase()}</span>`;s+="</div>",s+="</div></div>"}t.innerHTML=s}function exitCaptivePortal(){document.getElementById("tab-dropdown").classList.remove("open"),window.location.href="http://captive.apple.com/hotspot-detect.html"}let phoneGpsActive=!1,phoneGpsWatchId=null,lastPhoneGpsTx=0;const PHONE_GPS_MS=1e3;function togglePhoneGps(){phoneGpsActive?stopPhoneGps():startPhoneGps()}function updatePhoneGpsBtn(){const t=document.getElementById("pgps-btn");t&&(t.className="txm-btn"+(phoneGpsActive?" active":""),t.textContent=phoneGpsActive?"📍 GPS ON":"📍 Phone GPS")}function startPhoneGps(){navigator.geolocation?(phoneGpsActive=!0,updatePhoneGpsBtn(),phoneGpsWatchId=navigator.geolocation.watchPosition(onPhoneGpsPos,onPhoneGpsErr,{enableHighAccuracy:!0,maximumAge:1e3,timeout:1e4}),append("inf","[phone-gps] started — publishing as 0x305 GPS_DATA")):append("err","[phone-gps] Geolocation not supported by this browser")}function stopPhoneGps(){null!==phoneGpsWatchId&&(navigator.geolocation.clearWatch(phoneGpsWatchId),phoneGpsWatchId=null),phoneGpsActive=!1,updatePhoneGpsBtn(),append("inf","[phone-gps] stopped")}function onPhoneGpsPos(t){const e=Date.now();if(e-lastPhoneGpsTx<1e3)return;lastPhoneGpsTx=e;const n=t.coords,s=null!=n.speed&&n.speed>=0?Math.round(22.3694*n.speed):0,a=null!=n.heading&&n.heading>=0?Math.round(10*n.heading):0;let i=1;null!=n.speed&&n.speed>=0&&(i|=2),null!=n.heading&&n.heading>=0&&(i|=4),sendFrame(773,[255&s,s>>8&255,255&a,a>>8&255,i])}function onPhoneGpsErr(t){append("err","[phone-gps] "+t.message),stopPhoneGps()}cmd.addEventListener("keydown",t=>{"Enter"===t.key?submit():"ArrowUp"===t.key?histIdx>0&&(histIdx--,cmd.value=history[histIdx]):"ArrowDown"===t.key&&(histIdx<history.length-1?(histIdx++,cmd.value=history[histIdx]):(histIdx=history.length,cmd.value=""))}),updateTxModeButtons(0),initControl(),pollStatus(),setInterval(pollStatus,1500),pollFrames(),setInterval(pollFrames,250),pollSerial(),setInterval(pollSerial,500),setInterval(()=>{"net"===activeTab&&renderNetwork()},1e3)</script>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>AccBus Console</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+         background: #0b0f14; color: #cfe2b0; font-size: 13px; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 10px 14px;
+           background: #0f1a24; border-bottom: 1px solid #1e2a38; align-items: center; }
+  header b { color: #9bd770; }
+  .pill { padding: 2px 8px; border-radius: 10px; border: 1px solid #2a3a4a;
+          font-size: 11px; background: #0b131c; }
+  .ok   { color: #9bd770; border-color: #355e1f; }
+  .bad  { color: #f29900; border-color: #644100; }
+  .warn { color: #ffd166; border-color: #705200; }
+  main { display: flex; flex-direction: column; height: calc(100vh - 52px); }
+  #log { flex: 1; overflow-y: auto; padding: 6px 14px; font-size: 12.5px; line-height: 1.5; }
+  .row { white-space: pre; }
+  .row.tx  { color: #9bd770; }
+  .row.rx  { color: #cfe2b0; }
+  .row.rxw { color: #1ab4ff; }
+  .row.err { color: #ff6b6b; }
+  .row.inf { color: #808a95; }
+  #bar { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid #1e2a38;
+         background: #0f1a24; flex-wrap: wrap; }
+  #bar button { background: #1a2a3a; color: #cfe2b0; border: 1px solid #2a3a4a;
+                padding: 4px 10px; border-radius: 4px; font: inherit; cursor: pointer; }
+  #bar button:hover { background: #253a52; }
+  #input-row { display: flex; padding: 8px 14px; border-top: 1px solid #1e2a38;
+               background: #0b131c; align-items: center; gap: 8px; }
+  #prompt { color: #9bd770; font-weight: bold; }
+  #cmd { flex: 1; background: transparent; color: #cfe2b0; border: none; outline: none;
+         font: inherit; padding: 4px 0; }
+  #help { color: #808a95; font-size: 11px; padding: 0 14px 6px; }
+  .txm-group { display: inline-flex; border-radius: 6px; overflow: hidden; border: 1px solid #2a3a4a; }
+  .txm-btn { background: #0b131c; color: #808a95; border: none; border-right: 1px solid #2a3a4a;
+             padding: 2px 8px; font: inherit; font-size: 11px; cursor: pointer; }
+  .txm-btn:last-child { border-right: none; }
+  .txm-btn.active { background: #1e3a1e; color: #9bd770; }
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid #1e2a38; background: #0f1a24;
+          position: relative; }
+  .tab { padding: 6px 18px; cursor: pointer; color: #808a95; border-bottom: 2px solid transparent;
+         font: inherit; background: none; border-top: none; border-left: none; border-right: none; }
+  .tab.active { color: #9bd770; border-bottom-color: #9bd770; }
+  .tab:hover { color: #cfe2b0; }
+  .tab-more-btn { margin-left: auto; padding: 6px 14px; cursor: pointer; color: #808a95;
+                  border: none; background: none; font: inherit; font-size: 16px;
+                  border-bottom: 2px solid transparent; }
+  .tab-more-btn:hover { color: #cfe2b0; }
+  .tab-more-btn.active { color: #9bd770; border-bottom-color: #9bd770; }
+  .tab-dropdown { display: none; position: absolute; right: 0; top: 100%; z-index: 100;
+                  background: #0f1a24; border: 1px solid #1e2a38; border-top: none;
+                  min-width: 130px; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+  .tab-dropdown.open { display: block; }
+  .tab-dropdown .tab { display: block; width: 100%; text-align: left; border-bottom: none;
+                       border-left: 3px solid transparent; padding: 8px 16px; }
+  .tab-dropdown .tab.active { border-left-color: #9bd770; border-bottom: none; }
+  .tab-dropdown .tab-action { display: block; width: 100%; text-align: left; border: none;
+                              border-left: 3px solid transparent; padding: 8px 16px;
+                              background: none; font: inherit; color: #808a95; cursor: pointer; }
+  .tab-dropdown .tab-action:hover { color: #cfe2b0; background: #0f2030; }
+  .tab-dropdown .tab-divider { border: none; border-top: 1px solid #1e2a38; margin: 4px 0; }
+  #serial-log { flex: 1; overflow-y: auto; padding: 6px 14px; font-size: 12.5px;
+                line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+                color: #a0b0c0; display: none; }
+  /* --- Control tab --- */
+  #control-panel { flex: 1; overflow-y: auto; display: none; }
+  .ctrl-section { padding: 14px 14px; border-bottom: 1px solid #1e2a38; }
+  .ctrl-head { font-size: 10px; font-weight: bold; color: #9bd770; letter-spacing: 1px;
+               text-transform: uppercase; margin-bottom: 12px; }
+  .relay-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px;
+                margin-bottom: 10px; }
+  .relay-tile { background: #0f1a24; border: 1px solid #2a3a4a; border-radius: 6px;
+                padding: 10px 8px; display: flex; flex-direction: column;
+                align-items: center; gap: 5px; }
+  .relay-tile.on { border-color: #355e1f; background: #0a180a; }
+  .rt-led { width: 12px; height: 12px; border-radius: 50%;
+            background: #1a2a3a; border: 2px solid #2a3a4a; flex-shrink: 0; }
+  .relay-tile.on .rt-led { background: #9bd770; border-color: #6ba840;
+                            box-shadow: 0 0 8px #4a8020; }
+  .rt-name { font-size: 10px; color: #808a95; text-align: center; width: 100%;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rt-state { font-size: 12px; font-weight: bold; color: #2a3a4a; }
+  .relay-tile.on .rt-state { color: #9bd770; }
+  .rt-btn { background: #1a2a3a; color: #cfe2b0; border: 1px solid #2a3a4a;
+            padding: 3px 10px; border-radius: 4px; font: inherit; font-size: 11px; cursor: pointer; }
+  .rt-btn:hover { background: #253a52; }
+  .ctrl-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ctrl-btn { background: #1a2a3a; color: #cfe2b0; border: 1px solid #2a3a4a;
+              padding: 5px 14px; border-radius: 4px; font: inherit; font-size: 12px; cursor: pointer; }
+  .ctrl-btn:hover { background: #253a52; }
+  .ctrl-btn.danger { border-color: #644100; color: #f29900; }
+  .ctrl-btn.danger:hover { background: #2a1800; }
+  /* switch inputs */
+  .sw-input-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  .sw-input { background: #0f1a24; border: 2px solid #2a3a4a; border-radius: 6px;
+              padding: 8px 10px; display: flex; flex-direction: column;
+              align-items: center; gap: 3px; min-width: 58px; cursor: pointer; }
+  .sw-input:hover { background: #152030; }
+  .sw-input.on { border-color: #355e1f; background: #0a180a; }
+  .sw-input.on:hover { background: #0f2010; }
+  .swi-label { font-size: 10px; color: #808a95; }
+  .swi-state { font-size: 12px; font-weight: bold; color: #2a3a4a; }
+  .sw-input.on .swi-state { color: #9bd770; }
+  /* buttons */
+  .btn-input-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn-input { background: #0f1a24; border: 2px solid #2a3a4a; border-radius: 20px;
+               padding: 6px 16px; font: inherit; font-size: 12px; color: #808a95; cursor: pointer;
+               user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  .btn-input:hover { background: #152030; }
+  .btn-input.pressed { background: #0a1a2a; border-color: #1ab4ff; color: #1ab4ff; }
+  /* status LEDs */
+  .led-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+  .led-indicator { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .led-dot { width: 18px; height: 18px; border-radius: 50%;
+             background: #1a2a3a; border: 2px solid #2a3a4a; cursor: pointer; }
+  .led-dot:hover { border-color: #4a6a8a; }
+  .led-dot.on { background: #9bd770; border-color: #6ba840; box-shadow: 0 0 8px #4a8020; }
+  .led-dot.on:hover { border-color: #9bd770; }
+  .led-label { font-size: 10px; color: #808a95; }
+  .viper-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .viper-btn { background: #1a2a3a; color: #cfe2b0; border: 1px solid #2a3a4a;
+               padding: 7px 16px; border-radius: 4px; font: inherit; cursor: pointer; }
+  .viper-btn:hover { background: #253a52; }
+  .viper-btn.lock   { border-color: #355e1f; color: #9bd770; }
+  .viper-btn.unlock { border-color: #644100; color: #f29900; }
+  .viper-btn.start  { border-color: #1a4a6a; color: #1ab4ff; }
+  .viper-last { font-size: 11px; color: #808a95; }
+  /* --- Rules tab --- */
+  #rules-panel { flex: 1; overflow-y: auto; display: none; padding: 14px; }
+  .rules-toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .rule-row { background: #0f1a24; border: 1px solid #1e2a38; border-radius: 6px;
+              padding: 10px 12px; margin-bottom: 8px; display: flex;
+              align-items: flex-start; gap: 10px; }
+  .rule-row.empty { opacity: 0.35; }
+  .rule-idx { font-size: 10px; color: #4a6a8a; min-width: 22px; padding-top: 2px; }
+  .rule-desc { flex: 1; }
+  .rule-trig { font-size: 12px; color: #1ab4ff; }
+  .rule-act  { font-size: 12px; color: #9bd770; margin-top: 2px; }
+  .rule-empty-text { font-size: 11px; color: #4a6a8a; font-style: italic; }
+  .rule-btns { display: flex; gap: 5px; }
+  .rule-edit-btn { background:#1a2a3a; color:#cfe2b0; border:1px solid #2a3a4a;
+                   padding:2px 8px; border-radius:4px; font:inherit; font-size:11px; cursor:pointer; }
+  .rule-edit-btn:hover { background:#253a52; }
+  .rule-del-btn  { background:#1a0a0a; color:#f29900; border:1px solid #644100;
+                   padding:2px 8px; border-radius:4px; font:inherit; font-size:11px; cursor:pointer; }
+  .rule-del-btn:hover { background:#2a1000; }
+  /* editor */
+  .rule-editor { background:#0a1520; border:1px solid #2a4a6a; border-radius:6px;
+                 padding:12px; margin-bottom:12px; }
+  .rule-editor h4 { margin:0 0 10px; color:#9bd770; font-size:12px; }
+  .re-row { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; align-items:center; }
+  .re-row label { font-size:11px; color:#808a95; min-width:70px; }
+  .re-row select, .re-row input[type=number] {
+    background:#0f1a24; color:#cfe2b0; border:1px solid #2a3a4a; border-radius:4px;
+    padding:3px 6px; font:inherit; font-size:12px; }
+  .re-row select { min-width:160px; }
+  .re-row input[type=number] { width:70px; }
+  .re-save { background:#1a3a1a; color:#9bd770; border:1px solid #355e1f;
+             padding:4px 14px; border-radius:4px; font:inherit; cursor:pointer; }
+  .re-save:hover { background:#254a25; }
+  .re-cancel { background:#1a2a3a; color:#808a95; border:1px solid #2a3a4a;
+               padding:4px 12px; border-radius:4px; font:inherit; cursor:pointer; }
+  .re-cancel:hover { background:#253a52; }
+  /* --- Network tab --- */
+  #net-panel { flex: 1; overflow-y: auto; display: none; padding: 14px; }
+  .net-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .net-node { background: #0f1a24; border: 1px solid #1e2a38; border-radius: 8px;
+              padding: 14px; transition: border-color .3s; }
+  .net-node.online { border-color: #253a25; }
+  .net-node.unknown { border-color: #3a2c00; }
+  .nn-led.on.unknown { background: #d4a020; border-color: #a07010; box-shadow: 0 0 6px #805010; }
+  .nn-pill.unknown { border-color: #504a00; color: #d4a020; background: #130f00; }
+  .nn-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .nn-led { width: 10px; height: 10px; border-radius: 50%;
+            background: #2a3a4a; border: 2px solid #1a2a38; flex-shrink: 0; }
+  .nn-led.on { background: #9bd770; border-color: #6ba840; box-shadow: 0 0 6px #4a8020; }
+  .nn-name { font-size: 13px; font-weight: bold; color: #cfe2b0; flex: 1; }
+  .nn-id { font-size: 11px; color: #4a6a8a; font-family: ui-monospace, monospace; }
+  .nn-role { font-size: 11px; color: #5a7a5a; margin-bottom: 10px; line-height: 1.5; }
+  .nn-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .nn-transports { display: flex; gap: 4px; flex-wrap: wrap; }
+  .nn-pill { padding: 1px 7px; border-radius: 8px; font-size: 10px;
+             border: 1px solid #1e2a38; color: #2a3a4a; background: #0b0f14; }
+  .nn-pill.can  { border-color: #355e1f; color: #9bd770; background: #091508; }
+  .nn-pill.wifi { border-color: #1a4a6a; color: #1ab4ff; background: #061320; }
+  .nn-pill.self { border-color: #504a00; color: #ffd166; background: #130f00; }
+  .nn-last { font-size: 10px; color: #4a5a6a; white-space: nowrap; }
+  .nid-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .nid-current { font-family: monospace; font-size: 13px; color: #9bd770; background: #091508;
+                 border: 1px solid #355e1f; border-radius: 4px; padding: 2px 8px; }
+  .nid-input { width: 70px; background: #0b0f14; color: #cfe2b0; border: 1px solid #2a3a4a;
+               border-radius: 4px; padding: 4px 8px; font-family: monospace; font-size: 13px; }
+  .nid-input:focus { outline: none; border-color: #4a8040; }
+  .nid-hint { font-size: 11px; color: #4a5a6a; margin-top: 5px; }
+  .nn-ids { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1a2a38;
+            display: flex; flex-wrap: wrap; gap: 3px; }
+  .nn-frid { font-size: 10px; font-family: ui-monospace, monospace; padding: 1px 5px;
+             border-radius: 4px; background: #0b131c; border: 1px solid #1a2a38; color: #4a6a8a; }
+</style>
+</head>
+<body>
+<header>
+  <span>node: <b id="node-name">...</b></span>
+  <span>id: <b id="node-id">...</b></span>
+  <span class="pill" id="p-can">can ?</span>
+  <span class="pill" id="p-wifi">wifi peer ?</span>
+  <div class="txm-group" title="CAN transmission mode">
+    <button class="txm-btn" id="txm-0" onclick="setTxMode(0)">CAN+WiFi</button>
+    <button class="txm-btn" id="txm-1" onclick="setTxMode(1)">WiFi Only</button>
+    <button class="txm-btn" id="txm-2" onclick="setTxMode(2)">CAN Only</button>
+  </div>
+  <span style="margin-left:auto;color:#808a95" id="fps">-</span>
+</header>
+<main>
+  <div class="tabs" id="tabs">
+    <button class="tab active" id="tab-can" onclick="switchTab('can')">CAN</button>
+    <button class="tab" id="tab-control" onclick="switchTab('control')">Control</button>
+    <button class="tab" id="tab-rules" onclick="switchTab('rules')">Rules</button>
+    <button class="tab" id="tab-net" onclick="switchTab('net')">Network</button>
+    <button class="tab-more-btn" id="tab-more-btn" onclick="toggleMoreMenu()">&#8942;</button>
+    <div class="tab-dropdown" id="tab-dropdown">
+      <button class="tab" id="tab-serial" onclick="switchTab('serial')">Serial</button>
+      <button class="tab" id="tab-settings" onclick="switchTab('settings')">Settings</button>
+      <hr class="tab-divider">
+      <button class="tab-action" onclick="exitCaptivePortal()">&#x1F4F1; Exit to App</button>
+    </div>
+  </div>
+  <div id="help">
+    Enter a CAN frame as hex bytes: <b>&lt;id&gt; &lt;byte0&gt; &lt;byte1&gt;...</b>  (up to 8 bytes).<br>
+    Or use an alias: <b>:relay &lt;n&gt; on|off</b> &middot; <b>:alloff</b> &middot; <b>:horn</b>  &middot;
+    <b>:readcfg sw|relay</b> &middot; <b>:save sw|relay</b> &middot; <b>:reset sw|relay</b> &middot;
+    <b>:viper lock|unlock|start</b>
+  </div>
+  <div id="log"></div>
+  <div id="serial-log"></div>
+  <div id="control-panel"></div>
+  <div id="rules-panel"></div>
+  <div id="net-panel"></div>
+  <div id="settings-panel" style="display:none;flex:1;overflow-y:auto;"></div>
+  <div id="bar">
+    <button onclick="runAlias(':relay 1 on')">R1 ON</button>
+    <button onclick="runAlias(':relay 1 off')">R1 OFF</button>
+    <button onclick="runAlias(':relay 5 on')">HORN ON</button>
+    <button onclick="runAlias(':relay 5 off')">HORN OFF</button>
+    <button onclick="runAlias(':alloff')">ALL OFF</button>
+    <button onclick="runAlias(':readcfg relay')">READ RELAY CFG</button>
+    <button onclick="runAlias(':viper lock')">VIPER LOCK</button>
+    <button onclick="runAlias(':viper unlock')">VIPER UNLOCK</button>
+    <button onclick="runAlias(':viper start')">VIPER START</button>
+    <button onclick="clearLog()">CLEAR</button>
+  </div>
+  <div id="input-row">
+    <span id="prompt">&gt;</span>
+    <input id="cmd" autocomplete="off" spellcheck="false" placeholder="100 01 01">
+  </div>
+</main>
+
+<script>
+const log   = document.getElementById('log');
+const slog  = document.getElementById('serial-log');
+const cmd   = document.getElementById('cmd');
+let currentTxMode = 0;
+let sinceSeq = 0;
+let serialCursor = 0;
+let activeTab = 'can';
+let history  = [];
+let histIdx  = -1;
+let statusData = { can_ok: false, wifi_peer: false, peer_nodes: 0, peer_ids: [] };
+
+// ---------- tabs ----------
+function switchTab(tab) {
+  activeTab = tab;
+  const inMenu = tab === 'serial' || tab === 'settings';
+  ['can','serial','control','rules','net','settings'].forEach(t => {
+    document.getElementById('tab-' + t).className = 'tab' + (tab===t ? ' active' : '');
+  });
+  document.getElementById('tab-more-btn').className = 'tab-more-btn' + (inMenu ? ' active' : '');
+  document.getElementById('tab-dropdown').classList.remove('open');
+  document.getElementById('log').style.display             = tab==='can'      ? '' : 'none';
+  document.getElementById('help').style.display            = tab==='can'      ? '' : 'none';
+  document.getElementById('serial-log').style.display      = tab==='serial'   ? 'block' : 'none';
+  document.getElementById('control-panel').style.display   = tab==='control'  ? 'block' : 'none';
+  document.getElementById('rules-panel').style.display     = tab==='rules'    ? 'block' : 'none';
+  document.getElementById('net-panel').style.display       = tab==='net'      ? 'block' : 'none';
+  document.getElementById('settings-panel').style.display  = tab==='settings' ? 'block' : 'none';
+  document.getElementById('bar').style.display             = tab==='can'      ? '' : 'none';
+  document.getElementById('input-row').style.display       = tab==='can'      ? '' : 'none';
+  if (tab === 'rules') loadRules();
+  if (tab === 'net') renderNetwork();
+  if (tab === 'control' && cfg && cfg.is_bridge) buildBridgePanel();
+}
+function toggleMoreMenu() {
+  document.getElementById('tab-dropdown').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  if (!document.getElementById('tabs').contains(e.target))
+    document.getElementById('tab-dropdown').classList.remove('open');
+});
+
+// ---------- rendering ----------
+function append(cls, text) {
+  const d = document.createElement('div');
+  d.className = 'row ' + cls;
+  d.textContent = text;
+  log.appendChild(d);
+  while (log.childElementCount > 400) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+function clearLog() { log.innerHTML = ''; }
+
+function fmtFrame(f) {
+  const hex = f.data.map(b => b.toString(16).padStart(2,'0')).join(' ');
+  const id  = '0x' + f.id.toString(16).padStart(3, '0').toUpperCase();
+  const ts  = new Date(f.t).toISOString().slice(11, 23);
+  const dir = f.out ? 'TX' : 'RX';
+  const src = f.src.padEnd(4);
+  return `${ts} ${dir} ${src} ${id}  [${f.dlc}] ${hex}`;
+}
+
+// ---------- control tab state ----------
+let cfg    = null;
+let nodeId = 0;
+let relayMask   = 0;
+let switchState = new Array(16).fill(false);
+let ledState    = 0;
+
+function updateRelayTiles() {
+  if (!cfg || !cfg.has_relay) return;
+  for (let i = 0; i < 6; i++) {
+    const on = (relayMask >> i) & 1;
+    const tile = document.getElementById('rt-' + i);
+    if (tile) tile.className = 'relay-tile' + (on ? ' on' : '');
+    const st = document.getElementById('rs-' + i);
+    if (st) st.textContent = on ? 'ON' : 'OFF';
+  }
+}
+
+function updateSwitchDisplay() {
+  if (!cfg || !cfg.has_switches) return;
+  for (let i = 0; i < cfg.switch_count; i++) {
+    const el = document.getElementById('swi-' + i);
+    const st = document.getElementById('sws-' + i);
+    const on = switchState[i];
+    if (el) el.className = 'sw-input' + (on ? ' on' : '');
+    if (st) st.textContent = on ? 'ON' : 'OFF';
+  }
+  for (let i = 0; i < cfg.button_count; i++) {
+    const idx = cfg.switch_count + i;
+    const el = document.getElementById('bti-' + idx);
+    if (el) el.className = 'btn-input' + (switchState[idx] ? ' pressed' : '');
+  }
+}
+
+function updateLedDisplay() {
+  if (!cfg || !cfg.has_leds) return;
+  for (let i = 0; i < cfg.led_count; i++) {
+    const el = document.getElementById('led-' + i);
+    if (el) el.className = 'led-dot' + ((ledState >> i) & 1 ? ' on' : '');
+  }
+}
+
+function buildControlPanel() {
+  if (!cfg) return;
+  let h = '';
+
+  if (cfg.has_relay) {
+    h += '<div class="ctrl-section">';
+    h += '<div class="ctrl-head">Relays</div>';
+    h += '<div class="relay-grid">';
+    for (let i = 0; i < 6; i++) {
+      h += `<div class="relay-tile" id="rt-${i}">`;
+      h +=   '<div class="rt-led"></div>';
+      h +=   `<div class="rt-name">${cfg.relay_labels[i]}</div>`;
+      h +=   `<div class="rt-state" id="rs-${i}">OFF</div>`;
+      h +=   `<button class="rt-btn" onclick="toggleRelay(${i})">Toggle</button>`;
+      h += '</div>';
+    }
+    h += '</div>';
+    h += '<div class="ctrl-btns">';
+    h += '<button class="ctrl-btn danger" onclick="sendAllOff()">All OFF</button>';
+    h += '</div>';
+    h += '</div>';
+  }
+
+  if (cfg.has_switches && cfg.switch_count > 0) {
+    h += '<div class="ctrl-section">';
+    h += '<div class="ctrl-head">Switch Inputs</div>';
+    h += '<div class="sw-input-grid">';
+    for (let i = 0; i < cfg.switch_count; i++) {
+      h += `<div class="sw-input" id="swi-${i}" onclick="simSwitch(${i})">`;
+      h +=   `<div class="swi-label">SW${i + 1}</div>`;
+      h +=   `<div class="swi-state" id="sws-${i}">OFF</div>`;
+      h += '</div>';
+    }
+    h += '</div>';
+    h += '</div>';
+  }
+
+  if (cfg.has_switches && cfg.button_count > 0) {
+    h += '<div class="ctrl-section">';
+    h += '<div class="ctrl-head">Buttons</div>';
+    h += '<div class="btn-input-grid">';
+    for (let i = 0; i < cfg.button_count; i++) {
+      const idx = cfg.switch_count + i;
+      h += `<div class="btn-input" id="bti-${idx}" onmousedown="btnDown(${idx})" onmouseup="btnUp(${idx})" onmouseleave="btnUp(${idx})" ontouchstart="btnDown(${idx});event.preventDefault()" ontouchend="btnUp(${idx})" ontouchcancel="btnUp(${idx})">BTN${i + 1}</div>`;
+    }
+    h += '</div>';
+    h += '</div>';
+  }
+
+  if (cfg.has_leds && cfg.led_count > 0) {
+    h += '<div class="ctrl-section">';
+    h += '<div class="ctrl-head">Status LEDs</div>';
+    h += '<div class="led-grid">';
+    for (let i = 0; i < cfg.led_count; i++) {
+      h += '<div class="led-indicator">';
+      h +=   `<div class="led-dot" id="led-${i}" onclick="toggleLed(${i})"></div>`;
+      h +=   `<div class="led-label">LED${i + 1}</div>`;
+      h += '</div>';
+    }
+    h += '</div>';
+    h += '</div>';
+  }
+
+  if (cfg.has_viper) {
+    h += '<div class="ctrl-section">';
+    h += '<div class="ctrl-head">Alarm</div>';
+    h += '<div class="viper-btns">';
+    h += '<button class="viper-btn lock"   onclick="viperCmd(1)">Lock / Arm</button>';
+    h += '<button class="viper-btn unlock" onclick="viperCmd(2)">Unlock / Disarm</button>';
+    h += '<button class="viper-btn start"  onclick="viperCmd(3)">Remote Start</button>';
+    h += '</div>';
+    h += '<div class="viper-last" id="viper-last">No response yet</div>';
+    h += '</div>';
+  }
+
+  document.getElementById('control-panel').innerHTML = h;
+  updateRelayTiles();
+  updateSwitchDisplay();
+  updateLedDisplay();
+}
+
+async function initControl() {
+  try {
+    const r = await fetch('/api/config');
+    cfg = await r.json();
+    if (cfg.is_bridge) {
+      document.getElementById('tab-rules').style.display = 'none';
+      await buildBridgePanel();
+    } else {
+      buildControlPanel();
+      if (!cfg.has_rules) document.getElementById('tab-rules').style.display = 'none';
+    }
+    buildSettingsPanel();
+  } catch(e) {}
+}
+
+const BRIDGE_NODE_NAMES = {1:'switch-panel',2:'relay-ctrl',3:'viper-iface',4:'ecu-node'};
+
+async function buildBridgePanel() {
+  let nodes = [];
+  try {
+    const r = await fetch('/api/nodecaps');
+    nodes = await r.json();
+  } catch(e) {}
+  nodes.sort((a, b) => a.id - b.id);
+
+  let h = '<div class="ctrl-section" style="border-bottom:none;padding-bottom:4px">';
+  h += '<div style="display:flex;align-items:center;gap:8px">';
+  h += '<div class="ctrl-head" style="margin:0">Discovered Nodes</div>';
+  h += `<button class="ctrl-btn" style="font-size:10px;padding:2px 8px" onclick="buildBridgePanel()">Refresh</button>`;
+  h += `<span style="font-size:10px;color:#4a5a6a">${nodes.length} node${nodes.length===1?'':'s'}</span>`;
+  h += '</div></div>';
+
+  if (!nodes.length) {
+    h += '<div class="ctrl-section"><div style="color:#808a95;line-height:1.8">No capability frames received yet.<br>';
+    h += 'Nodes broadcast caps at boot and every 30 s.<br>';
+    h += '<button class="ctrl-btn" style="font-size:10px;padding:2px 8px;margin-top:6px" onclick="sendFrame(0x0F3,[0xFF])">Request All Caps</button></div></div>';
+  }
+
+  for (const n of nodes) {
+    if (n.id === nodeId) continue;
+    const name = BRIDGE_NODE_NAMES[n.id] || ('node-' + n.id.toString(16).padStart(2,'0'));
+    h += '<div class="ctrl-section">';
+    h += `<div class="ctrl-head">${name} <span style="color:#4a6a8a;font-size:9px;font-weight:normal">0x${n.id.toString(16).padStart(2,'0')}</span></div>`;
+
+    if (n.caps & 0x01) {
+      h += '<div class="relay-grid">';
+      for (let i = 0; i < n.relay_count; i++) {
+        h += `<div class="relay-tile" id="rt-${i}"><div class="rt-led"></div>`;
+        h +=   `<div class="rt-name">Relay ${i+1}</div>`;
+        h +=   `<div class="rt-state" id="rs-${i}">OFF</div>`;
+        h +=   `<button class="rt-btn" onclick="toggleRelay(${i})">Toggle</button></div>`;
+      }
+      h += '</div>';
+      h += '<div class="ctrl-btns"><button class="ctrl-btn danger" onclick="sendAllOff()">All OFF</button></div>';
+    }
+
+    if ((n.caps & 0x02) && n.switch_count > 0) {
+      h += '<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Switches</div>';
+      h += '<div class="sw-input-grid">';
+      for (let i = 0; i < n.switch_count; i++) {
+        h += `<div class="sw-input" id="swi-${i}" onclick="simSwitch(${i})">`;
+        h +=   `<div class="swi-label">SW${i+1}</div><div class="swi-state" id="sws-${i}">OFF</div></div>`;
+      }
+      h += '</div></div>';
+    }
+
+    if ((n.caps & 0x02) && n.button_count > 0) {
+      h += '<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Buttons</div>';
+      h += '<div class="btn-input-grid">';
+      for (let i = 0; i < n.button_count; i++) {
+        const idx = n.switch_count + i;
+        h += `<div class="btn-input" id="bti-${idx}" onmousedown="btnDown(${idx})" onmouseup="btnUp(${idx})" onmouseleave="btnUp(${idx})" ontouchstart="btnDown(${idx});event.preventDefault()" ontouchend="btnUp(${idx})" ontouchcancel="btnUp(${idx})">BTN${i+1}</div>`;
+      }
+      h += '</div></div>';
+    }
+
+    if (n.caps & 0x04) {
+      h += '<div style="margin-top:10px"><div class="viper-btns">';
+      h += '<button class="viper-btn lock"   onclick="viperCmd(1)">Lock / Arm</button>';
+      h += '<button class="viper-btn unlock" onclick="viperCmd(2)">Unlock / Disarm</button>';
+      h += '<button class="viper-btn start"  onclick="viperCmd(3)">Remote Start</button></div>';
+      h += '<div class="viper-last" id="viper-last">No response yet</div></div>';
+    }
+
+    if ((n.caps & 0x08) && n.led_count > 0) {
+      h += '<div style="margin-top:10px"><div style="font-size:9px;color:#4a8a4a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Status LEDs</div>';
+      h += '<div class="led-grid">';
+      for (let i = 0; i < n.led_count; i++) {
+        h += '<div class="led-indicator">';
+        h +=   `<div class="led-dot" id="led-${n.id}-${i}" onclick="toggleLed(${i},${n.id})"></div>`;
+        h +=   `<div class="led-label">LED${i+1}</div></div>`;
+      }
+      h += '</div></div>';
+    }
+    h += '</div>';
+  }
+
+  document.getElementById('control-panel').innerHTML = h;
+  updateRelayTiles();
+  updateSwitchDisplay();
+}
+
+// ---------- control actions ----------
+async function changeNodeId() {
+  const inp = document.getElementById('nid-input');
+  const val = inp.value.trim();
+  const newId = /^0x/i.test(val) ? parseInt(val, 16) : parseInt(val, 10);
+  if (isNaN(newId) || newId < 1 || newId > 0xFE) {
+    inp.style.borderColor = '#c04040'; return;
+  }
+  inp.style.borderColor = '';
+  const cur = nodeId.toString(16).padStart(2, '0');
+  const nxt = newId.toString(16).padStart(2, '0');
+  // CONFIG_WRITE: target=cur_id, key=0x01(CFG_KEY_NODE_ID), idx=0, kind=0, arg=new_id, lo=0, hi=0, flags=persist
+  await fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ frame: `400 ${cur} 01 00 00 ${nxt} 00 00 01` }) });
+  inp.value = ''; inp.placeholder = 'restarting…'; inp.disabled = true;
+  document.getElementById('nid-display').textContent = `0x${nxt} →`;
+}
+
+function toggleRelay(idx) {
+  const on = (relayMask >> idx) & 1;
+  const mask = 1 << idx;
+  sendFrame(0x100, [mask, on ? 0 : mask]);
+}
+function sendAllOff() { sendFrame(0x100, [0x3F, 0x00]); }
+
+function simSwitch(idx) {
+  const on = switchState[idx];
+  switchState[idx] = !on;
+  sendFrame(0x200, [idx, on ? 0 : 1]);
+  updateSwitchDisplay();
+}
+
+function btnDown(idx) {
+  if (switchState[idx]) return;
+  switchState[idx] = true;
+  updateSwitchDisplay();
+  sendFrame(0x200, [idx, 1]);
+}
+function btnUp(idx) {
+  if (!switchState[idx]) return;
+  switchState[idx] = false;
+  updateSwitchDisplay();
+  sendFrame(0x200, [idx, 0]);
+}
+
+function buildSettingsPanel() {
+  let h = '<div class="ctrl-section">';
+  h += '<div class="ctrl-head">Node Settings</div>';
+  h += '<div class="nid-row">';
+  h += '  <span style="color:#8a9aaa;font-size:12px">Node ID</span>';
+  h += `  <span class="nid-current" id="nid-display">0x${nodeId.toString(16).padStart(2,'0')}</span>`;
+  h += '  <input type="text" id="nid-input" class="nid-input" placeholder="0x02" maxlength="4">';
+  h += '  <button class="ctrl-btn" onclick="changeNodeId()">Reassign</button>';
+  h += '</div>';
+  h += '<div class="nid-hint">Saves to NVS and restarts. Must be unique on the bus (0x01–0xFE).</div>';
+  h += '</div>';
+
+  h += '<div class="ctrl-section">';
+  h += '<div class="ctrl-head">WiFi Credentials</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:8px;max-width:480px">';
+  h += '  <div class="re-row"><label>SSID</label><input type="text" id="wc-ssid" class="nid-input" style="width:200px" maxlength="32" placeholder="AccessoryBus"></div>';
+  h += '  <div class="re-row"><label>Password</label><input type="password" id="wc-pass" class="nid-input" style="width:200px" maxlength="64" placeholder="(empty = open)"></div>';
+  h += '  <div class="re-row"><label>PMK (hex)</label><input type="text" id="wc-pmk" class="nid-input" style="width:280px;font-family:monospace" maxlength="32" placeholder="32 hex chars = 16 bytes"></div>';
+  h += '  <div class="re-row"><label>LMK (hex)</label><input type="text" id="wc-lmk" class="nid-input" style="width:280px;font-family:monospace" maxlength="32" placeholder="32 hex chars = 16 bytes"></div>';
+  h += '</div>';
+  h += '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">';
+  h += '  <button class="ctrl-btn" onclick="loadWifiCreds()">&#8635; Load Current</button>';
+  h += '  <button class="ctrl-btn" onclick="saveWifiCreds(false)">Save to This Node</button>';
+  h += '  <button class="ctrl-btn" onclick="saveWifiCreds(true)">Broadcast to All Nodes</button>';
+  h += '  <button class="ctrl-btn danger" onclick="rebootAll()">Reboot All</button>';
+  h += '</div>';
+  h += '<div id="wc-status" style="margin-top:8px;font-size:11px;color:#808a95"></div>';
+  h += '<div style="margin-top:10px;font-size:11px;color:#4a5a6a;line-height:1.6">';
+  h += '  <b style="color:#f29900">Warning:</b> Changing SSID or password will disconnect your current session after reboot.<br>';
+  h += '  <b>WiFi-only mode:</b> Broadcast sends over ESP-NOW using current keys. Reboot all nodes simultaneously to apply PMK/LMK changes.';
+  h += '</div>';
+  h += '</div>';
+
+  h += '<div class="ctrl-section">';
+  h += '<div class="ctrl-head">Firmware Update</div>';
+  h += `<div style="font-size:11px;color:#808a95;margin-bottom:10px">Upload a compiled <b>.bin</b> for this node type (<b>${statusData ? statusData.name : 'unknown'}</b>). The node restarts automatically after flashing.</div>`;
+  h += '<div style="font-size:11px;color:#f29900;margin-bottom:10px"><b>First use requires one USB flash</b> to install the OTA partition table (reflash with <code>make upload-*</code>). After that, all updates can be done wirelessly.</div>';
+  h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+  h += '  <input type="file" id="ota-file" accept=".bin" style="color:#cfe2b0;font-size:12px">';
+  h += '  <button class="ctrl-btn" id="ota-btn" onclick="uploadFirmware()">&#128736; Flash Firmware</button>';
+  h += '</div>';
+  h += '<div id="ota-progress" style="margin-top:10px;display:none">';
+  h += '  <div style="background:#1a2a3a;border-radius:4px;height:8px;overflow:hidden">';
+  h += '    <div id="ota-bar" style="background:#9bd770;height:100%;width:0%;transition:width 0.2s"></div>';
+  h += '  </div>';
+  h += '  <div id="ota-status" style="margin-top:6px;font-size:11px;color:#808a95"></div>';
+  h += '</div>';
+  h += '</div>';
+
+  document.getElementById('settings-panel').innerHTML = h;
+  loadWifiCreds();
+}
+
+async function loadWifiCreds() {
+  const st = document.getElementById('wc-status');
+  try {
+    const r = await fetch('/api/wifi_creds');
+    const j = await r.json();
+    document.getElementById('wc-ssid').value = j.ssid || '';
+    document.getElementById('wc-pass').value = j.pass || '';
+    document.getElementById('wc-pmk').value  = j.pmk  || '';
+    document.getElementById('wc-lmk').value  = j.lmk  || '';
+    if (st) st.textContent = 'Loaded.';
+  } catch(e) {
+    if (st) st.textContent = 'Failed to load: ' + e;
+  }
+}
+
+async function saveWifiCreds(broadcast) {
+  const st = document.getElementById('wc-status');
+  const ssid = document.getElementById('wc-ssid').value.trim();
+  const pass = document.getElementById('wc-pass').value;
+  const pmk  = document.getElementById('wc-pmk').value.trim().toLowerCase();
+  const lmk  = document.getElementById('wc-lmk').value.trim().toLowerCase();
+  if (!ssid) { if (st) st.textContent = 'SSID is required.'; return; }
+  if (pass && pass.length < 8) { if (st) st.textContent = 'Password must be empty or ≥ 8 chars.'; return; }
+  if (pmk && pmk.length !== 32) { if (st) st.textContent = 'PMK must be exactly 32 hex chars.'; return; }
+  if (lmk && lmk.length !== 32) { if (st) st.textContent = 'LMK must be exactly 32 hex chars.'; return; }
+  const body = { ssid, pass, broadcast };
+  if (pmk) body.pmk = pmk;
+  if (lmk) body.lmk = lmk;
+  try {
+    if (st) st.textContent = broadcast ? 'Broadcasting\u2026' : 'Saving\u2026';
+    const r = await fetch('/api/wifi_creds', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (j.ok) {
+      if (st) st.textContent = broadcast
+        ? 'Broadcast sent. Use "Reboot All" to apply.'
+        : 'Saved to this node. Reboot to apply.';
+    } else {
+      if (st) st.textContent = 'Error: ' + JSON.stringify(j);
+    }
+  } catch(e) {
+    if (st) st.textContent = 'Request failed: ' + e;
+  }
+}
+
+async function rebootAll() {
+  if (!confirm('Reboot all nodes now?')) return;
+  await sendFrame(0x0F5, [0xFF]);
+}
+
+function uploadFirmware() {
+  const fileInput = document.getElementById('ota-file');
+  const progressDiv = document.getElementById('ota-progress');
+  const bar = document.getElementById('ota-bar');
+  const status = document.getElementById('ota-status');
+  const btn = document.getElementById('ota-btn');
+  if (!fileInput.files.length) { alert('Select a .bin file first.'); return; }
+  const file = fileInput.files[0];
+  if (!file.name.endsWith('.bin')) { alert('File must be a .bin firmware image.'); return; }
+  const sizeKB = (file.size / 1024).toFixed(1);
+  if (!confirm(`Flash "${file.name}" (${sizeKB} KB) to this node?\nThe node will restart after flashing.`)) return;
+  btn.disabled = true;
+  progressDiv.style.display = 'block';
+  bar.style.background = '#9bd770';
+  bar.style.width = '0%';
+  status.textContent = 'Uploading…';
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/ota');
+  xhr.timeout = 120000;
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round(e.loaded / e.total * 100);
+    bar.style.width = pct + '%';
+    status.textContent = `Uploading: ${pct}% (${(e.loaded/1024).toFixed(0)} / ${(e.total/1024).toFixed(0)} KB)`;
+  };
+  xhr.onload = () => {
+    if (xhr.status === 200 && xhr.responseText === 'OK') {
+      bar.style.width = '100%';
+      status.textContent = 'Flashed! Node is restarting… Reconnect to the AP and reload.';
+    } else {
+      bar.style.background = '#ff6b6b';
+      status.textContent = 'Failed: ' + (xhr.responseText || xhr.status);
+      btn.disabled = false;
+    }
+  };
+  xhr.onerror = xhr.ontimeout = () => {
+    bar.style.width = '100%';
+    status.textContent = 'Node is restarting… Reconnect to the AP and reload.';
+  };
+  const fd = new FormData();
+  fd.append('firmware', file, file.name);
+  xhr.send(fd);
+}
+
+function toggleLed(idx, targetNode) {
+  const on = (ledState >> idx) & 1;
+  const mask = 1 << idx;
+  const target = (targetNode !== undefined) ? targetNode : nodeId;
+  sendFrame(0x102, [target, mask, on ? 0 : mask]);
+}
+function viperCmd(c) { sendFrame(0x510, [c]); }
+
+// ---------- API ----------
+async function pollFrames() {
+  try {
+    const r = await fetch('/api/frames?since=' + sinceSeq);
+    const j = await r.json();
+    sinceSeq = j.cursor;
+    for (const f of j.frames) {
+      const cls = f.out ? 'tx' : (f.src === 'wifi' ? 'rxw' : 'rx');
+      append(cls, fmtFrame(f));
+      if (f.id === 0x101 && f.dlc >= 1) {
+        relayMask = f.data[0];
+        updateRelayTiles();
+      } else if (f.id === 0x100 && f.dlc >= 2) {
+        relayMask = (relayMask & ~f.data[0]) | (f.data[1] & f.data[0]);
+        updateRelayTiles();
+      }
+      if (f.id === 0x200 && f.dlc >= 2) {
+        const sw = f.data[0], ev = f.data[1];
+        switchState[sw] = (ev === 1 || ev === 2);
+        updateSwitchDisplay();
+      }
+      if (f.id === 0x103 && f.dlc >= 2) {
+        if (cfg && cfg.is_bridge) {
+          // Bridge: update per-node LED dots directly
+          const nid = f.data[0], bm = f.data[1];
+          for (let i = 0; i < 8; i++) {
+            const el = document.getElementById(`led-${nid}-${i}`);
+            if (el) el.className = 'led-dot' + ((bm >> i) & 1 ? ' on' : '');
+          }
+        } else if (f.data[0] === nodeId) {
+          ledState = f.data[1];
+          updateLedDisplay();
+        }
+      }
+      if (f.id === 0x511) {
+        const hex = f.data.slice(0, f.dlc).map(b => b.toString(16).padStart(2,'0')).join(' ');
+        const el = document.getElementById('viper-last');
+        if (el) el.textContent = 'Last response: ' + hex;
+      }
+      // Network tab tracking: NODE_ANNOUNCE carries node_id in data[0]
+      if (f.id === 0x0F0 && f.dlc >= 1) {
+        netObserveAnnounce(f.data[0], f.src);
+      } else {
+        netObserve(f.id, f.src, f.out);
+      }
+    }
+    if (activeTab === 'net') renderNetwork();
+  } catch (e) { /* ignore */ }
+}
+
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    nodeId = s.id;
+    document.getElementById('node-name').textContent = s.name;
+    document.getElementById('node-id').textContent   = '0x' + s.id.toString(16).padStart(2, '0');
+    const pc = document.getElementById('p-can');
+    pc.textContent = 'can ' + (s.can_ok ? 'OK' : 'DOWN');
+    pc.className = 'pill ' + (s.can_ok ? 'ok' : 'bad');
+    const pw = document.getElementById('p-wifi');
+    pw.textContent = 'wifi peer ' + (s.wifi_peer ? 'OK' : 'IDLE');
+    pw.className = 'pill ' + (s.wifi_peer ? 'ok' : 'warn');
+    const m = s.tx_mode || 0;
+    if (m !== currentTxMode) { currentTxMode = m; updateTxModeButtons(m); }
+    document.getElementById('fps').textContent = s.uptime_s + 's up';
+    statusData = s;
+  } catch (e) { /* ignore */ }
+}
+
+async function sendFrame(id, data) {
+  const r = await fetch('/api/send', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ id, data })
+  });
+  if (!r.ok) append('err', 'send failed: ' + r.status);
+}
+
+async function pollSerial() {
+  try {
+    const r = await fetch('/api/serial?since=' + serialCursor);
+    const j = await r.json();
+    serialCursor = j.cursor;
+    if (j.text) {
+      slog.textContent += j.text;
+      if (slog.textContent.length > 8000)
+        slog.textContent = slog.textContent.slice(-6000);
+      slog.scrollTop = slog.scrollHeight;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function updateTxModeButtons(mode) {
+  for (let i = 0; i < 3; i++) {
+    const b = document.getElementById('txm-' + i);
+    if (b) b.className = 'txm-btn' + (i === mode ? ' active' : '');
+  }
+}
+
+async function setTxMode(mode) {
+  updateTxModeButtons(mode);
+  currentTxMode = mode;
+  await fetch('/api/tx_mode', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ mode })
+  });
+}
+
+// ---------- command parsing ----------
+function parseHex(tok) {
+  const n = parseInt(tok, 16);
+  if (isNaN(n)) throw new Error('not hex: ' + tok);
+  return n;
+}
+function parseRawFrame(line) {
+  const toks = line.trim().split(/\s+/);
+  if (toks.length < 1) throw new Error('empty');
+  const id = parseHex(toks[0]);
+  const data = toks.slice(1).map(parseHex);
+  if (data.length > 8) throw new Error('max 8 data bytes');
+  return { id, data };
+}
+function aliasToFrame(line) {
+  let m;
+  if ((m = /^:relay\s+(\d+)\s+(on|off)\s*$/i.exec(line))) {
+    const n = parseInt(m[1]);
+    if (n < 1 || n > 6) throw new Error('relay 1..6');
+    const mask  = 1 << (n - 1);
+    const state = m[2].toLowerCase() === 'on' ? mask : 0;
+    return { id: 0x100, data: [mask, state] };
+  }
+  if (/^:alloff\s*$/i.test(line)) return { id: 0x100, data: [0x3F, 0x00] };
+  if (/^:horn\s*$/i.test(line))   return { id: 0x100, data: [0x10, 0x10] };
+  if ((m = /^:readcfg\s+(sw|relay)\s*$/i.exec(line))) {
+    const target = m[1].toLowerCase() === 'sw' ? 0x01 : 0x02;
+    const key    = m[1].toLowerCase() === 'sw' ? 0x10 : 0x20;
+    return { id: 0x401, data: [target, key, 0xFF] };
+  }
+  if ((m = /^:save\s+(sw|relay)\s*$/i.exec(line))) {
+    const target = m[1].toLowerCase() === 'sw' ? 0x01 : 0x02;
+    return { id: 0x403, data: [target, 0x01] };
+  }
+  if ((m = /^:reset\s+(sw|relay)\s*$/i.exec(line))) {
+    const target = m[1].toLowerCase() === 'sw' ? 0x01 : 0x02;
+    return { id: 0x403, data: [target, 0x03] };
+  }
+  if ((m = /^:cfgsw\s+(\d+)\s+(toggle|pulse|event|hold|scene)\s+(\d+)(?:\s+(\d+))?\s*(\!)?\s*$/i.exec(line))) {
+    const idx = +m[1];
+    const kindMap = { toggle:0, pulse:1, event:2, hold:3, scene:4 };
+    const kind = kindMap[m[2].toLowerCase()];
+    const arg  = +m[3];
+    const arg2 = m[4] ? +m[4] : 0;
+    const flags = m[5] === '!' ? 0x01 : 0x00;
+    return { id: 0x400, data: [0x01, 0x10, idx, kind, arg, arg2 & 0xFF, (arg2>>8)&0xFF, flags] };
+  }
+  if ((m = /^:cfgrelay\s+(\d+)\s+maxon\s+(\d+)\s*(\!)?\s*$/i.exec(line))) {
+    const idx = +m[1];
+    const ms  = +m[2];
+    const flags = m[3] === '!' ? 0x01 : 0x00;
+    return { id: 0x400, data: [0x02, 0x20, idx, 0, 0, ms & 0xFF, (ms>>8)&0xFF, flags] };
+  }
+  if ((m = /^:viper\s+(lock|unlock|start)\s*$/i.exec(line))) {
+    const cmdMap = { lock: 0x01, unlock: 0x02, start: 0x03 };
+    return { id: 0x510, data: [cmdMap[m[1].toLowerCase()]] };
+  }
+  throw new Error('unknown alias: ' + line);
+}
+async function runAlias(line) {
+  try {
+    const f = aliasToFrame(line);
+    append('inf', '  ' + line);
+    await sendFrame(f.id, f.data);
+  } catch (e) {
+    append('err', '  ' + e.message);
+  }
+}
+async function submit() {
+  const line = cmd.value.trim();
+  if (!line) return;
+  cmd.value = '';
+  history.push(line); histIdx = history.length;
+  try {
+    const f = line.startsWith(':') ? aliasToFrame(line) : parseRawFrame(line);
+    append('inf', '> ' + line);
+    await sendFrame(f.id, f.data);
+  } catch (e) {
+    append('err', '! ' + e.message);
+  }
+}
+
+// ---------- rules tab ----------
+const CAN_NAMES = {
+  0x100:'RELAY_CMD', 0x101:'RELAY_STATUS', 0x102:'LED_CMD', 0x103:'LED_STATUS',
+  0x104:'BUZZER_CMD',
+  0x200:'SWITCH_EVENT', 0x201:'ENCODER_EVENT',
+  0x300:'TELEMETRY', 0x301:'ENV_DATA', 0x302:'IMU_DATA', 0x303:'SHAKE_EVENT',
+  0x304:'ENGINE_DATA', 0x305:'GPS_DATA', 0x306:'WBO2_DATA', 0x307:'ECU_DATA',
+  0x510:'VIPER_CMD', 0x511:'VIPER_STATUS',
+  0x0F0:'NODE_ANNOUNCE', 0x0F1:'BOOT_EVENT', 0x0F4:'BUS_ERROR'
+};
+const SW_EVENTS = ['Release','Press','Long Press','Double Press'];
+const ACT_NAMES = ['--','Relay Toggle','Relay On','Relay Off','All Off','Relay Scene',
+                   'LED On','LED Off','WiFi Enable','WiFi Disable','Viper Cmd',
+                   'Menu Select','Menu Enter','Relay Timed Off','LED Flash','Buzzer Alert',
+                   'Buzzer Play','Fuel Pump Safety'];
+const BUZZER_SEQ_NAMES = {
+  0x01:'Alert', 0x02:'CAN Up', 0x03:'CAN Down', 0x04:'Startup', 0x05:'Peer Count',
+  0x06:'WiFi Connect', 0x07:'WiFi Disconnect',
+  0x10:'Relay On', 0x11:'Relay Off', 0x12:'All Off', 0x20:'Mute'
+};
+const NODE_NAMES = {1:'switch-panel', 2:'relay-ctrl', 3:'viper-iface', 255:'broadcast'};
+
+function describeTrigger(r) {
+  if (!r.trig_id) return null;
+  const id = r.trig_id;
+  if (id === 0x200 && r.c0_mask === 0xFF && r.c1_mask === 0xFF) {
+    const sw = 'SW' + (r.c0_val < 6 ? (r.c0_val+1) : ('BTN'+(r.c0_val-5)));
+    return sw + ' ' + (SW_EVENTS[r.c1_val] || 'ev'+r.c1_val);
+  }
+  if (id === 0x101 && r.c0_mask !== 0) {
+    const bit = Math.log2(r.c0_mask);
+    if (Number.isInteger(bit))
+      return 'Relay '+(bit+1)+' '+(r.c0_val ? 'On' : 'Off')+' (status)';
+  }
+  if (id === 0x100 && r.c0_mask !== 0 && r.c1_mask !== 0) {
+    const bit = Math.log2(r.c0_mask);
+    if (Number.isInteger(bit))
+      return 'Relay '+(bit+1)+' Cmd '+(r.c1_val ? 'On' : 'Off');
+  }
+  if (id === 0x0F4) return 'Bus Error (any node)';
+  if (id === 0x0F0 && r.c0_mask === 0 && r.c1_mask === 0xFF && r.c1_val === 1)
+    return 'Any Node Announces CAN OK';
+  const name = CAN_NAMES[id] || ('0x'+id.toString(16).toUpperCase());
+  let s = name;
+  if (r.c0_mask) s += ', b'+r.c0_byte+'='+r.c0_val+'&'+r.c0_mask;
+  if (r.c1_mask) s += ', b'+r.c1_byte+'='+r.c1_val+'&'+r.c1_mask;
+  return s;
+}
+
+function describeAction(r) {
+  const name = ACT_NAMES[r.action] || ('act'+r.action);
+  if ([1,2,3].includes(r.action)) return name + ' R' + (r.arg0+1);
+  if (r.action === 5) return 'Scene 0b'+r.arg0.toString(2).padStart(6,'0');
+  if ([6,7].includes(r.action)) {
+    const node = NODE_NAMES[r.arg0] || ('node '+r.arg0);
+    return name + ' LED'+(r.arg1+1)+' on '+node;
+  }
+  if ([8,9].includes(r.action)) return name + ' on ' + (NODE_NAMES[r.arg0] || ('node '+r.arg0));
+  if (r.action === 10) return 'Viper ' + ({1:'Lock',2:'Unlock',3:'Start'}[r.arg0] || r.arg0);
+  if (r.action === 13) return 'Relay Off R' + (r.arg0+1) + ' after ' + r.arg1 + 's';
+  if (r.action === 14) {
+    const node = NODE_NAMES[r.arg0] || ('node '+r.arg0);
+    return 'Flash LED'+(r.arg1+1)+' on '+node+' ('+((r.arg2||1)*50)+'ms half-period)';
+  }
+  if (r.action === 15) return 'Buzzer Alert (3 beeps)';
+  if (r.action === 16) {
+    const node = NODE_NAMES[r.arg0] || ('node 0x'+r.arg0.toString(16));
+    const seq  = BUZZER_SEQ_NAMES[r.arg1] || ('seq 0x'+r.arg1.toString(16));
+    return 'Buzzer '+seq+' on '+node+(r.arg2 ? ' (arg='+r.arg2+')' : '');
+  }
+  if (r.action === 17) {
+    const modes = {0:'OFF (force on)', 1:'RPM only', 2:'COIL only', 3:'BOTH'};
+    return 'Fuel Pump Safety: '+(modes[r.arg0] || ('mode '+r.arg0));
+  }
+  return name;
+}
+
+let rulesData = [];
+let editingIdx = -1;
+
+async function loadRules() {
+  try {
+    const r = await fetch('/api/rules');
+    rulesData = await r.json();
+    renderRules();
+  } catch(e) {
+    document.getElementById('rules-panel').innerHTML = '<div style="color:#f29900;padding:14px">Failed to load rules.</div>';
+  }
+}
+
+function renderRules() {
+  const panel = document.getElementById('rules-panel');
+  let h = '<div class="rules-toolbar">';
+  h += '<button class="ctrl-btn" onclick="startEdit(-1)">+ Add Rule</button>';
+  h += '<button class="ctrl-btn danger" onclick="resetRules()">Factory Reset</button>';
+  h += '</div>';
+  if (editingIdx === -2) h += buildEditor(null, -1);
+  for (const r of rulesData) {
+    const empty = !r.trig_id && !r.action;
+    if (editingIdx === r.i) { h += buildEditor(r, r.i); continue; }
+    h += `<div class="rule-row${empty?' empty':''}">`;
+    h += `<div class="rule-idx">${r.i}</div>`;
+    h += '<div class="rule-desc">';
+    if (empty) {
+      h += '<div class="rule-empty-text">empty slot</div>';
+    } else {
+      h += `<div class="rule-trig">&#x2139; ${describeTrigger(r)||'?'}</div>`;
+      h += `<div class="rule-act">&#x279C; ${describeAction(r)}</div>`;
+    }
+    h += '</div>';
+    h += '<div class="rule-btns">';
+    h += `<button class="rule-edit-btn" onclick="startEdit(${r.i})">Edit</button>`;
+    if (!empty) h += `<button class="rule-del-btn" onclick="deleteRule(${r.i})">Clear</button>`;
+    h += '</div></div>';
+  }
+  panel.innerHTML = h;
+}
+
+function buildEditor(r, idx) {
+  const isNew = idx === -1;
+  const slotIdx = isNew ? firstEmptySlot() : idx;
+  const v = r || {trig_id:0,c0_byte:0,c0_val:0,c0_mask:0,c1_byte:0,c1_val:0,c1_mask:0,action:0,arg0:0,arg1:0,arg2:0};
+  const trigOpts = Object.entries(CAN_NAMES).map(([id,name]) =>
+    `<option value="${id}" ${v.trig_id==id?'selected':''}>${name} (0x${(+id).toString(16).toUpperCase()})</option>`
+  ).join('');
+  const actOpts = ACT_NAMES.map((n,i) =>
+    `<option value="${i}" ${v.action==i?'selected':''}>${i}: ${n}</option>`
+  ).join('');
+  let h = '<div class="rule-editor">';
+  h += `<h4>${isNew ? 'New Rule - Slot '+slotIdx : 'Edit Rule '+idx}</h4>`;
+  h += '<div class="re-row"><label>Trigger ID</label>';
+  h += `<select id="re-trig"><option value="0">-- custom --</option>${trigOpts}</select>`;
+  h += `<input type="number" id="re-trig-raw" min="0" max="2047" value="${v.trig_id}" style="width:80px"> (raw)</div>`;
+  h += '<div class="re-row"><label>Cond 0</label>';
+  h += `byte <input type="number" id="re-c0b" min="0" max="7" value="${v.c0_byte}" style="width:50px">`;
+  h += ` val <input type="number" id="re-c0v" min="0" max="255" value="${v.c0_val}" style="width:55px">`;
+  h += ` mask <input type="number" id="re-c0m" min="0" max="255" value="${v.c0_mask}" style="width:55px">`;
+  h += ' <span style="font-size:10px;color:#808a95">(0=skip)</span></div>';
+  h += '<div class="re-row"><label>Cond 1</label>';
+  h += `byte <input type="number" id="re-c1b" min="0" max="7" value="${v.c1_byte}" style="width:50px">`;
+  h += ` val <input type="number" id="re-c1v" min="0" max="255" value="${v.c1_val}" style="width:55px">`;
+  h += ` mask <input type="number" id="re-c1m" min="0" max="255" value="${v.c1_mask}" style="width:55px">`;
+  h += ' <span style="font-size:10px;color:#808a95">(0=skip)</span></div>';
+  h += '<div class="re-row"><label>Action</label>';
+  h += `<select id="re-act">${actOpts}</select></div>`;
+  h += '<div class="re-row"><label>arg0</label>';
+  h += `<input type="number" id="re-a0" min="0" max="255" value="${v.arg0}" style="width:70px">`;
+  h += ' <label style="margin-left:10px">arg1</label>';
+  h += `<input type="number" id="re-a1" min="0" max="255" value="${v.arg1}" style="width:70px">`;
+  h += ' <label style="margin-left:10px">arg2</label>';
+  h += `<input type="number" id="re-a2" min="0" max="255" value="${v.arg2}" style="width:70px"></div>`;
+  h += `<div class="re-row"><button class="re-save" onclick="saveRule(${slotIdx})">Save</button>`;
+  h += '<button class="re-cancel" onclick="cancelEdit()" style="margin-left:6px">Cancel</button></div>';
+  h += '</div>';
+  return h;
+}
+
+function firstEmptySlot() {
+  for (const r of rulesData) if (!r.trig_id && !r.action) return r.i;
+  return rulesData.length - 1;
+}
+function startEdit(idx) { editingIdx = (idx === -1) ? -2 : idx; renderRules(); }
+function cancelEdit() { editingIdx = -1; renderRules(); }
+function readEditorTrigId() {
+  const sel = document.getElementById('re-trig');
+  const raw = +document.getElementById('re-trig-raw').value;
+  return (sel && +sel.value > 0) ? +sel.value : raw;
+}
+
+async function saveRule(idx) {
+  const body = {
+    i: idx,
+    trig_id: readEditorTrigId(),
+    c0_byte: +document.getElementById('re-c0b').value,
+    c0_val:  +document.getElementById('re-c0v').value,
+    c0_mask: +document.getElementById('re-c0m').value,
+    c1_byte: +document.getElementById('re-c1b').value,
+    c1_val:  +document.getElementById('re-c1v').value,
+    c1_mask: +document.getElementById('re-c1m').value,
+    action:  +document.getElementById('re-act').value,
+    arg0:    +document.getElementById('re-a0').value,
+    arg1:    +document.getElementById('re-a1').value,
+    arg2:    +document.getElementById('re-a2').value,
+  };
+  try {
+    await fetch('/api/rules', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    editingIdx = -1;
+    await loadRules();
+  } catch(e) { alert('Save failed: ' + e); }
+}
+async function deleteRule(idx) {
+  try {
+    await fetch('/api/rules?i=' + idx, { method:'DELETE' });
+    await loadRules();
+  } catch(e) { alert('Delete failed: ' + e); }
+}
+async function resetRules() {
+  if (!confirm('Restore all rules to compiled defaults?')) return;
+  try {
+    await fetch('/api/rules/reset', { method:'POST' });
+    await loadRules();
+  } catch(e) { alert('Reset failed: ' + e); }
+}
+
+// ---------- network tab ----------
+// NODE_ANNOUNCE (0x0F0) — broadcast every 5 s from every node.
+//   data[0] = node_id, data[1] = peer_count, data[2] = can_ok (0/1)
+// Lets every node build a complete presence map even for quiet nodes
+// (viper, switch panel) that have no periodic CAN traffic of their own.
+// NET_TTL = 3x announce interval — must miss 3 beats to go offline.
+const NET_TTL = 15000;
+
+const KNOWN_NODES = [
+  { id: 0x01, name: 'switch-panel', role: 'Switches - Rules - LCD - Buzzer',
+    txIds: [0x200, 0x201], idLabels: ['SWITCH_EVENT', 'ENCODER_EVENT'] },
+  { id: 0x02, name: 'relay-ctrl', role: 'Relays - RPM - Telemetry',
+    txIds: [0x101, 0x300, 0x304], idLabels: ['RELAY_STATUS', 'TELEMETRY', 'ENGINE_DATA'] },
+  { id: 0x03, name: 'viper-iface', role: 'Viper - LCD - IMU',
+    txIds: [0x511, 0x302, 0x303], idLabels: ['VIPER_STATUS', 'IMU_DATA', 'SHAKE_EVENT'] },
+  { id: 0x04, name: 'ecu-node', role: 'ECU - WBO2 - GPS',
+    txIds: [0x307, 0x306, 0x305], idLabels: ['ECU_DATA', 'WBO2_DATA', 'GPS_DATA'] },
+];
+
+const FRAME_TO_NID = {};
+for (const n of KNOWN_NODES) for (const id of n.txIds) FRAME_TO_NID[id] = n.id;
+
+const netState = {};
+const unknownFrameIds = {}; // fid → { lastMs, src } for CAN IDs not in FRAME_TO_NID
+
+function netObserveAnnounce(nid, src) {
+  if (!netState[nid]) netState[nid] = { lastMs: 0, canMs: 0, wifiMs: 0 };
+  const s = netState[nid];
+  s.lastMs = Date.now();
+  if (src === 'can')  s.canMs  = Date.now();
+  if (src === 'wifi') s.wifiMs = Date.now();
+}
+
+function netObserve(fid, src, out) {
+  if (out) return;
+  const nid = FRAME_TO_NID[fid];
+  if (!nid) {
+    unknownFrameIds[fid] = { lastMs: Date.now(), src };
+    return;
+  }
+  if (!netState[nid]) netState[nid] = { lastMs: 0, canMs: 0, wifiMs: 0 };
+  const s = netState[nid];
+  s.lastMs = Date.now();
+  if (src === 'can')  s.canMs  = Date.now();
+  if (src === 'wifi') s.wifiMs = Date.now();
+}
+
+function renderNetwork() {
+  const panel = document.getElementById('net-panel');
+  if (!panel || panel.style.display === 'none') return;
+  const now  = Date.now();
+  const bits = (statusData && statusData.peer_nodes) || 0;
+  let h = '<div class="net-grid">';
+  for (const n of KNOWN_NODES) {
+    const isSelf    = n.id === nodeId;
+    const st        = netState[n.id];
+    const peerBit   = !!(bits & (1 << n.id));
+    const frameSeen = !!(st && (now - st.lastMs) < NET_TTL);
+    const online    = isSelf || peerBit || frameSeen;
+    const canOk     = isSelf ? !!statusData.can_ok  : !!(st && (now - st.canMs)  < NET_TTL);
+    const wifiOk    = isSelf ? !!statusData.wifi_peer : peerBit || !!(st && (now - st.wifiMs) < NET_TTL);
+    let lastSeen;
+    if      (isSelf)        lastSeen = 'serving UI';
+    else if (peerBit)       lastSeen = 'active peer';
+    else if (st && st.lastMs) lastSeen = ((now - st.lastMs) / 1000).toFixed(1) + 's ago';
+    else                    lastSeen = 'never seen';
+    h += `<div class="net-node${online ? ' online' : ''}">`;
+    h +=   '<div class="nn-header">';
+    h +=     `<div class="nn-led${online ? ' on' : ''}"></div>`;
+    h +=     `<div class="nn-name">${n.name}</div>`;
+    h +=     `<div class="nn-id">0x${n.id.toString(16).padStart(2,'0')}</div>`;
+    h +=   '</div>';
+    h +=   `<div class="nn-role">${n.role}</div>`;
+    h +=   '<div class="nn-meta">';
+    h +=     '<div class="nn-transports">';
+    if (isSelf) {
+      h += `<span class="nn-pill${canOk  ? ' can'  : ''}">CAN</span>`;
+      h += `<span class="nn-pill${wifiOk ? ' wifi' : ''}">WiFi</span>`;
+      h +=  '<span class="nn-pill self">serving UI</span>';
+    } else if (online) {
+      h += `<span class="nn-pill${canOk  ? ' can'  : ''}">CAN</span>`;
+      h += `<span class="nn-pill${wifiOk ? ' wifi' : ''}">WiFi</span>`;
+    } else {
+      h +=  '<span class="nn-pill">offline</span>';
+    }
+    h +=     '</div>';
+    h +=     `<span class="nn-last">${lastSeen}</span>`;
+    h +=   '</div>';
+    h +=   '<div class="nn-ids">';
+    for (let i = 0; i < n.txIds.length; i++)
+      h += `<span class="nn-frid" title="${n.idLabels[i]}">0x${n.txIds[i].toString(16).toUpperCase()}</span>`;
+    h +=   '</div>';
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // Unknown nodes: nids seen via announce or peer_ids that aren't in KNOWN_NODES
+  const knownIds = new Set(KNOWN_NODES.map(n => n.id));
+  const foreignIds = new Set();
+  for (const nid of Object.keys(netState).map(Number)) {
+    if (!knownIds.has(nid) && netState[nid].lastMs && (now - netState[nid].lastMs) < NET_TTL)
+      foreignIds.add(nid);
+  }
+  for (const nid of (statusData.peer_ids || [])) {
+    if (!knownIds.has(nid)) foreignIds.add(nid);
+  }
+  if (foreignIds.size) {
+    h += '<div class="net-grid" style="margin-top:10px">';
+    for (const nid of foreignIds) {
+      const st     = netState[nid] || {};
+      const peerBit = !!(statusData.peer_nodes & (1 << nid));
+      const canOk  = !!(st.canMs  && (now - st.canMs)  < NET_TTL);
+      const wifiOk = peerBit || !!(st.wifiMs && (now - st.wifiMs) < NET_TTL);
+      const lastSeen = st.lastMs ? ((now - st.lastMs) / 1000).toFixed(1) + 's ago' : 'active peer';
+      h += '<div class="net-node online unknown">';
+      h +=   '<div class="nn-header">';
+      h +=     '<div class="nn-led on unknown"></div>';
+      h +=     '<div class="nn-name">unknown</div>';
+      h +=     `<div class="nn-id">0x${nid.toString(16).padStart(2,'0')}</div>`;
+      h +=   '</div>';
+      h +=   '<div class="nn-role">Unrecognized node</div>';
+      h +=   '<div class="nn-meta"><div class="nn-transports">';
+      h +=     `<span class="nn-pill${canOk  ? ' can'  : ''}">CAN</span>`;
+      h +=     `<span class="nn-pill${wifiOk ? ' wifi' : ''}">WiFi</span>`;
+      h +=     '<span class="nn-pill unknown">?</span>';
+      h +=   `</div><span class="nn-last">${lastSeen}</span></div>`;
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  // Unknown CAN frame IDs — CAN traffic from devices not in KNOWN_NODES
+  const recentUnknown = Object.entries(unknownFrameIds)
+    .filter(([, v]) => (now - v.lastMs) < NET_TTL);
+  if (recentUnknown.length) {
+    h += '<div class="net-grid" style="margin-top:10px"><div class="net-node online unknown">';
+    h +=   '<div class="nn-header">';
+    h +=     '<div class="nn-led on unknown"></div>';
+    h +=     '<div class="nn-name">foreign traffic</div>';
+    h +=     '<div class="nn-id">CAN</div>';
+    h +=   '</div>';
+    h +=   '<div class="nn-role">Unrecognized CAN frame IDs</div>';
+    h +=   '<div class="nn-ids">';
+    for (const [fid, v] of recentUnknown)
+      h += `<span class="nn-frid" title="${v.src}">0x${Number(fid).toString(16).toUpperCase()}</span>`;
+    h +=   '</div>';
+    h += '</div></div>';
+  }
+
+  panel.innerHTML = h;
+}
+
+// ---------- exit captive portal ----------
+// Navigates to a non-captive URL so iOS/Android dismiss the portal browser
+// and return to the native app (e.g., the Tuner Swift app in bridge mode).
+// The phone stays connected to the Wi-Fi network — it just exits the mini browser.
+function exitCaptivePortal() {
+  document.getElementById('tab-dropdown').classList.remove('open');
+  // Any routable external URL works; using Apple's captive-portal probe endpoint
+  // is reliable and won't trigger a real browser redirect on non-captive networks.
+  window.location.href = 'http://captive.apple.com/hotspot-detect.html';
+}
+
+// ---------- phone GPS → CAN bridge ----------
+// NOTE: The Geolocation API requires HTTPS and will not work from this captive portal
+// (plain http://192.168.4.1). This code is intentionally left here for future use
+// once the bridge node is wired up — the Tuner Swift app uses CoreLocation natively
+// and injects GPS frames via WKWebView.evaluateJavaScript instead.
+// Uses the Geolocation API to read phone speed/heading and publishes it
+// as CAN_ID_GPS_DATA (0x305) frames at ~1 Hz, identical to the hardware GPS module.
+// Format: [speed_lo, speed_hi, heading_lo, heading_hi, flags]
+//   speed  = mph × 10 (uint16 LE)   heading = degrees × 10 (uint16 LE)
+//   flags  = bit0 fix | bit1 speed valid | bit2 heading valid
+let phoneGpsActive  = false;
+let phoneGpsWatchId = null;
+let lastPhoneGpsTx  = 0;
+const PHONE_GPS_MS  = 1000;
+
+function togglePhoneGps() {
+  phoneGpsActive ? stopPhoneGps() : startPhoneGps();
+}
+
+function updatePhoneGpsBtn() {
+  const b = document.getElementById('pgps-btn');
+  if (b) {
+    b.className = 'txm-btn' + (phoneGpsActive ? ' active' : '');
+    b.textContent = phoneGpsActive ? '\u{1F4CD} GPS ON' : '\u{1F4CD} Phone GPS';
+  }
+}
+
+function startPhoneGps() {
+  if (!navigator.geolocation) {
+    append('err', '[phone-gps] Geolocation not supported by this browser');
+    return;
+  }
+  phoneGpsActive = true;
+  updatePhoneGpsBtn();
+  phoneGpsWatchId = navigator.geolocation.watchPosition(
+    onPhoneGpsPos,
+    onPhoneGpsErr,
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+  );
+  append('inf', '[phone-gps] started — publishing as 0x305 GPS_DATA');
+}
+
+function stopPhoneGps() {
+  if (phoneGpsWatchId !== null) {
+    navigator.geolocation.clearWatch(phoneGpsWatchId);
+    phoneGpsWatchId = null;
+  }
+  phoneGpsActive = false;
+  updatePhoneGpsBtn();
+  append('inf', '[phone-gps] stopped');
+}
+
+function onPhoneGpsPos(pos) {
+  const now = Date.now();
+  if (now - lastPhoneGpsTx < PHONE_GPS_MS) return;
+  lastPhoneGpsTx = now;
+
+  const c = pos.coords;
+  // m/s → mph × 10  (0.1-mph units match hardware GPS module)
+  const spd = (c.speed != null && c.speed >= 0) ? Math.round(c.speed * 22.3694) : 0;
+  // degrees × 10  (0.1-degree units)
+  const hdg = (c.heading != null && c.heading >= 0) ? Math.round(c.heading * 10) : 0;
+  let flags = 0x01;                                          // bit0 = fix valid
+  if (c.speed   != null && c.speed   >= 0) flags |= 0x02;  // bit1 = speed valid
+  if (c.heading != null && c.heading >= 0) flags |= 0x04;  // bit2 = heading valid
+
+  sendFrame(0x305, [
+    spd & 0xFF, (spd >> 8) & 0xFF,
+    hdg & 0xFF, (hdg >> 8) & 0xFF,
+    flags
+  ]);
+}
+
+function onPhoneGpsErr(err) {
+  append('err', '[phone-gps] ' + err.message);
+  stopPhoneGps();
+}
+
+// ---------- events ----------
+cmd.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { submit(); }
+  else if (e.key === 'ArrowUp')   { if (histIdx > 0) { histIdx--; cmd.value = history[histIdx]; } }
+  else if (e.key === 'ArrowDown') {
+    if (histIdx < history.length - 1) { histIdx++; cmd.value = history[histIdx]; }
+    else { histIdx = history.length; cmd.value = ''; }
+  }
+});
+
+updateTxModeButtons(0);
+initControl();
+pollStatus(); setInterval(pollStatus, 1500);
+pollFrames(); setInterval(pollFrames, 250);
+pollSerial(); setInterval(pollSerial, 500);
+setInterval(() => { if (activeTab === 'net') renderNetwork(); }, 1000);
+</script>
+</body>
+</html>
 )HTMLPAGE";

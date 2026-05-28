@@ -100,3 +100,7 @@ A full off-device tuning platform built as a Quasar/Vue app that talks to the ex
 ## Done
 
 - ~~LCD menu Bluetooth submenu~~ — `MENU_HAS_BLUETOOTH`; Advertise toggle (runtime) + BT Power toggle (NVS + restart)
+- ~~RPM sensor on the relay controller~~ — `ENABLE_RPM` on relay node; GPIO 35 with external 10 kΩ pull-up; advertises `CHAN_ID_RPM` alongside VBAT channels
+- ~~Multi-gate fuel pump safety~~ — `mod_fuel_pump` FSM with PRIME / ARMED / RUNNING states. Gates: RPM (`ENGINE_DATA`) and COIL (`IGNITION_DATA`). Mode bitmask (`FP_MODE_OFF / RPM / COIL / BOTH`) settable via `CFG_KEY_FUEL_PUMP_SAFETY (0x61)` or `ACT_FUEL_PUMP_SAFETY_*` rule actions. On stall, broadcasts `BUZZER_SEQ_FUEL_PUMP_OFF` so the switch panel buzzer and Cardputer both alert audibly.
+- ~~Ignition coil voltage sense~~ — `mod_ignition` reads coil + through a 5.545:1 divider on GPIO 39, applies on/off hysteresis (6.00 V / 4.00 V), broadcasts `IGNITION_DATA (0x310)` periodically + on every edge.
+- ~~Cardputer firmware OTA upload~~ — `ENABLE_OTA_UPLOAD` adds an OTA screen that lists `.bin` files from `/canoe-firmwares/` on the MicroSD and uploads to `http://192.168.4.1/api/ota`. ESP-NOW stays alive on channel 6 throughout (STA association only, no mode change). Limitation: all nodes share the SSID so only one target should be powered on during upload — see [CLAUDE.md roadmap items 10–11](CLAUDE.md) for per-node SSID disambiguation and MD5 verification follow-ups.

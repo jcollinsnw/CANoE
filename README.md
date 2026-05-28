@@ -17,7 +17,7 @@ All nodes compile from the same unified sketch (`firmware/accessory_node/`). Fea
 | Node | ID | Config | Key features |
 |------|----|--------|-------------|
 | switch_panel | 0x01 | `configs/switch_panel.h` | Switches, buttons, encoder, LCD, menu, buzzer, LEDs, rules |
-| relay_controller | 0x02 | `configs/relay_controller.h` | 6 relays, battery ADC, RPM sensor |
+| relay_controller | 0x02 | `configs/relay_controller.h` | 6 relays, battery ADC, RPM sensor, coil-voltage sense, fuel pump safety FSM, BLE CAN mirror |
 | viper_interface | 0x03 | `configs/viper_interface.h` | Viper 5305V serial bridge, LCD, MPU-6050 |
 | ecu_node | 0x04 | `configs/ecu_node.h` | MAP/TPS/CLT/IAT sensors, WBO2, RPM, carb/injection fuel control |
 | bridge | 0x05 | `configs/bridge.h` | CAN ↔ home WiFi, MQTT publish, node discovery web UI |
@@ -57,6 +57,8 @@ Each module lives in `firmware/accessory_node/mod_*.cpp` and is compiled in only
 | [mpu6050](docs/modules/mpu6050.md) | `ENABLE_MPU6050` | MPU-6050 accelerometer / shake detection |
 | [dht22](docs/modules/dht22.md) | `ENABLE_DHT22` | AM2302 temperature/humidity sensor |
 | [rpm](docs/modules/rpm.md) | `ENABLE_RPM` | Engine RPM via optocoupler interrupt |
+| [ignition](docs/modules/ignition.md) | `ENABLE_IGNITION` | Coil + voltage ADC; broadcasts `IGNITION_DATA (0x310)` for "is the key in" detection |
+| [fuel_pump](docs/modules/fuel_pump.md) | `ENABLE_FUEL_PUMP_SAFETY` | Multi-gate fuel pump safety FSM (RPM + COIL gates, AND/OR composition) |
 | [gps](docs/modules/gps.md) | `ENABLE_GPS` | GPS speed/heading via NMEA UART |
 | [wbo2](docs/modules/wbo2.md) | `ENABLE_WBO2` | Wideband O2 sensor analog read |
 | [ecu](docs/modules/ecu.md) | `ENABLE_ECU` | Dual-mode fuel controller (carb PI + TBI injection) |

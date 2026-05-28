@@ -4,6 +4,8 @@
 
 > **Battery voltage telemetry** is handled by `mod_battery` (enabled via `ENABLE_BATTERY`), not mod_relay. Any node with ADC pins wired to voltage dividers can broadcast TELEMETRY (0x300). See `switch_panel.h` or `relay_controller.h` for pin definitions.
 
+> **Fuel pump relay (R1) on the relay controller** is logically owned by [`mod_fuel_pump`](fuel_pump.md) when `ENABLE_FUEL_PUMP_SAFETY` is configured. The FSM emits `RELAY_CMD` frames on state transitions (PRIME / ARMED / RUNNING) — mod_relay applies them like any other CAN command. Manual RELAY_CMDs for R1 still work between transitions; the FSM is advisory rather than authoritative.
+
 ## Enable
 
 ```cpp

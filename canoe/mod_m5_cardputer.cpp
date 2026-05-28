@@ -11,9 +11,15 @@
 #include <M5Cardputer.h>
 #include <Arduino.h>
 #include <Preferences.h>
-#ifdef ENABLE_SD_LOG
+#if defined(ENABLE_SD_LOG) || defined(ENABLE_OTA_UPLOAD)
 #include <SD.h>
 #include <FS.h>
+#include <SPI.h>
+#endif
+#ifdef ENABLE_OTA_UPLOAD
+#include <WiFi.h>
+#include "esp_wifi.h"
+#include "mod_wifi_creds.h"
 #endif
 #include "driver/twai.h"
 #include "can_protocol.h"
@@ -48,7 +54,7 @@ static uint8_t  g_feed_head  = 0;
 static uint8_t  g_feed_count = 0;
 
 // --- Screen state ---
-enum class M5Screen { CAN, FEED, MENU, SETTINGS };
+enum class M5Screen { CAN, FEED, MENU, SETTINGS, OTA };
 static M5Screen g_screen      = M5Screen::CAN;
 static uint8_t  g_last_mirror = 0xFF;
 static int32_t  g_batt_pct   = -1;
@@ -74,6 +80,23 @@ static int g_set_sel = 0;
 static bool g_logging = false;
 #ifdef ENABLE_SD_LOG
 static File g_log_file;
+#endif
+
+// --- OTA state ---
+#ifdef ENABLE_OTA_UPLOAD
+enum class OtaState : uint8_t { LIST, EMPTY, CONFIRM, UPLOADING, DONE };
+#define OTA_MAX_FILES   16
+#define OTA_VISIBLE_ROWS 7
+#define OTA_DIR         "/canoe-firmwares"
+static OtaState g_ota_state       = OtaState::LIST;
+static String   g_ota_files[OTA_MAX_FILES];
+static uint8_t  g_ota_file_count  = 0;
+static uint8_t  g_ota_sel         = 0;
+static uint8_t  g_ota_scroll      = 0;
+static String   g_ota_msg;
+static uint16_t g_ota_msg_color   = WHITE;
+static uint8_t  g_ota_progress    = 0;   // 0-100
+static bool     g_sd_mounted      = false;
 #endif
 
 // --- CLI state ---
@@ -105,8 +128,13 @@ struct MenuItem {
     ArgType      arg;
 };
 
+#ifdef ENABLE_OTA_UPLOAD
+static const char* SB_DROPDOWN_ITEMS[] = {"CAN", "FEED", "COMMANDS", "SETTINGS", "OTA"};
+static const int   SB_DD_COUNT = 5;
+#else
 static const char* SB_DROPDOWN_ITEMS[] = {"CAN", "FEED", "COMMANDS", "SETTINGS"};
 static const int   SB_DD_COUNT = 4;
+#endif
 
 static const MenuItem MENU_ITEMS[] = {
     {"All Relays OFF",   ARG_NONE},
@@ -138,6 +166,13 @@ static void enter_can();
 static void enter_feed();
 static void enter_menu();
 static void enter_settings();
+#ifdef ENABLE_OTA_UPLOAD
+static void enter_ota();
+static void draw_ota();
+static void handle_ota_keys(const Keyboard_Class::KeysState& ks);
+static void ota_scan_files();
+static void ota_run_upload();
+#endif
 static void draw_menu();
 static void draw_settings();
 static void handle_settings_keys(const Keyboard_Class::KeysState& ks);
@@ -258,8 +293,12 @@ void m5_loop() {
             if (g_cli_active) { g_cli_active = false; g_cli_input = ""; }
             g_sb_sel_active = false;
             g_sb_dropdown   = false;
-            if (g_screen == M5Screen::MENU || g_screen == M5Screen::SETTINGS) enter_can();
-            else                                                              enter_menu();
+            if (g_screen == M5Screen::MENU || g_screen == M5Screen::SETTINGS
+#ifdef ENABLE_OTA_UPLOAD
+                || g_screen == M5Screen::OTA
+#endif
+            ) enter_can();
+            else enter_menu();
             return;
         }
 
@@ -273,6 +312,9 @@ void m5_loop() {
                 if (was_dropdown) {
                     if      (g_screen == M5Screen::SETTINGS) draw_settings();
                     else if (g_screen == M5Screen::MENU)     draw_menu();
+#ifdef ENABLE_OTA_UPLOAD
+                    else if (g_screen == M5Screen::OTA)      draw_ota();
+#endif
                     else if (g_screen == M5Screen::FEED)     redraw_feed();
                     else                                     redraw_can();
                 }
@@ -294,7 +336,11 @@ void m5_loop() {
         }
 
         // ctrl alone toggles CLI bar (CAN/FEED screens only, not in status bar selection)
-        if (ks.ctrl && ks.word.empty() && g_screen != M5Screen::MENU && g_screen != M5Screen::SETTINGS && !g_sb_sel_active) {
+        if (ks.ctrl && ks.word.empty() && g_screen != M5Screen::MENU && g_screen != M5Screen::SETTINGS
+#ifdef ENABLE_OTA_UPLOAD
+            && g_screen != M5Screen::OTA
+#endif
+            && !g_sb_sel_active) {
             m5_ui_click();
             g_cli_active = !g_cli_active;
             g_cli_input  = "";
@@ -306,6 +352,9 @@ void m5_loop() {
 
         if      (g_screen == M5Screen::SETTINGS) handle_settings_keys(ks);
         else if (g_screen == M5Screen::MENU)     handle_menu_keys(ks);
+#ifdef ENABLE_OTA_UPLOAD
+        else if (g_screen == M5Screen::OTA)      handle_ota_keys(ks);
+#endif
         else                                     handle_feed_keys(ks);
     }
 
@@ -315,6 +364,9 @@ void m5_loop() {
         if (!g_sb_dropdown) {
             if      (g_screen == M5Screen::MENU)     draw_menu();
             else if (g_screen == M5Screen::SETTINGS) draw_settings();
+#ifdef ENABLE_OTA_UPLOAD
+            else if (g_screen == M5Screen::OTA)      draw_ota();
+#endif
         }
     }
 }
@@ -336,6 +388,32 @@ void m5_handle_frame(const BusFrame& f) {
                 }
             }
         }
+    }
+
+    // Audible alerts: broadcast or self-targeted BUZZER_CMD plays a tone
+    // and surfaces a brief event message in the CLI bar.
+    if (f.id == CAN_ID_BUZZER_CMD && f.dlc >= 2) {
+        uint8_t target = f.data[0];
+        uint8_t cmd    = f.data[1];
+        if (target == 0xFF || target == NODE_ID) {
+            switch (cmd) {
+                case BUZZER_SEQ_FUEL_PUMP_OFF:
+                    m5_set_event("FUEL PUMP CUT");
+                    m5_beep_alert();
+                    break;
+                case BUZZER_SEQ_ALERT:
+                    m5_set_event("Alert");
+                    m5_beep_alert();
+                    break;
+                default: break;
+            }
+        }
+    }
+
+    // Fuel pump state transitions show on the FEED screen via decode_frame;
+    // also surface stalls in the CLI bar for visibility while on CAN screen.
+    if (f.id == CAN_ID_FUEL_PUMP_STATE && f.dlc >= 3 && f.data[2] == 4 /*STALL*/) {
+        m5_set_event("Pump stall — ARMED");
     }
 
     // SD log regardless of active screen
@@ -417,6 +495,9 @@ static void draw_status_bar() {
     const char* label =
         g_screen == M5Screen::SETTINGS ? "SETTINGS" :
         g_screen == M5Screen::MENU     ? "COMMANDS" :
+#ifdef ENABLE_OTA_UPLOAD
+        g_screen == M5Screen::OTA      ? "OTA"      :
+#endif
         g_screen == M5Screen::FEED     ? "FEED"     : "CAN";
     int label_px = strlen(label) * 6;
     M5Cardputer.Display.setCursor(2 + (LABEL_W - label_px) / 2, (STATUS_BAR_H - 8) / 2);
@@ -807,6 +888,26 @@ static bool decode_frame(const BusFrame& f, char* buf, size_t sz) {
                 return true;
             }
             break;
+        case CAN_ID_IGNITION_DATA:
+            if (f.dlc >= 3) {
+                int16_t cv = (int16_t)(f.data[0] | ((uint16_t)f.data[1] << 8));
+                snprintf(buf, sz, "Coil: %d.%02dV %s",
+                         cv / 100, cv >= 0 ? cv % 100 : -(cv % 100),
+                         f.data[2] ? "ON" : "off");
+                return true;
+            }
+            break;
+        case CAN_ID_FUEL_PUMP_STATE:
+            if (f.dlc >= 3) {
+                static const char* STATES[]  = {"PRIME","ARMED","RUN"};
+                static const char* REASONS[] = {"-","boot","prime","gate","STALL","mode","reenable"};
+                uint8_t s    = f.data[0] < 3 ? f.data[0] : 0;
+                uint8_t mode = f.data[1] & 0x07;
+                uint8_t why  = f.data[2] < 7 ? f.data[2] : 0;
+                snprintf(buf, sz, "FP %s m=%u %s", STATES[s], mode, REASONS[why]);
+                return true;
+            }
+            break;
         case CAN_ID_GPS_DATA:
             if (f.dlc >= 4) {
                 uint16_t spd = f.data[0] | ((uint16_t)f.data[1] << 8);
@@ -910,9 +1011,13 @@ static void handle_sb_sel_keys(const Keyboard_Class::KeysState& ks) {
     if (g_sb_dropdown) {
         if (ks.del) {
             g_sb_dropdown = false;
-            if      (g_screen == M5Screen::MENU) draw_menu();
-            else if (g_screen == M5Screen::FEED) redraw_feed();
-            else                                 redraw_can();
+            if      (g_screen == M5Screen::MENU)     draw_menu();
+            else if (g_screen == M5Screen::SETTINGS) draw_settings();
+#ifdef ENABLE_OTA_UPLOAD
+            else if (g_screen == M5Screen::OTA)      draw_ota();
+#endif
+            else if (g_screen == M5Screen::FEED)     redraw_feed();
+            else                                     redraw_can();
             return;
         }
         if (!ks.word.empty()) {
@@ -924,7 +1029,12 @@ static void handle_sb_sel_keys(const Keyboard_Class::KeysState& ks) {
             m5_ui_click();
             g_sb_dropdown   = false;
             g_sb_sel_active = false;
+#ifdef ENABLE_OTA_UPLOAD
+            if      (g_sb_dd_sel == 4) enter_ota();
+            else if (g_sb_dd_sel == 3) enter_settings();
+#else
             if      (g_sb_dd_sel == 3) enter_settings();
+#endif
             else if (g_sb_dd_sel == 2) enter_menu();
             else if (g_sb_dd_sel == 1) enter_feed();
             else                       enter_can();
@@ -957,7 +1067,11 @@ static void handle_sb_sel_keys(const Keyboard_Class::KeysState& ks) {
             print_can("[relay " + String(relay + 1) + (on ? " OFF]" : " ON]"), ORANGE);
         } else {
             g_sb_dropdown = true;
-            g_sb_dd_sel   = g_screen == M5Screen::SETTINGS ? 3 :
+            g_sb_dd_sel   =
+#ifdef ENABLE_OTA_UPLOAD
+                            g_screen == M5Screen::OTA      ? 4 :
+#endif
+                            g_screen == M5Screen::SETTINGS ? 3 :
                             g_screen == M5Screen::MENU     ? 2 :
                             g_screen == M5Screen::FEED     ? 1 : 0;
             draw_sb_dropdown();
@@ -1168,6 +1282,336 @@ static void handle_menu_keys(const Keyboard_Class::KeysState& ks) {
         }
     }
 }
+
+// --- OTA upload ---
+
+#ifdef ENABLE_OTA_UPLOAD
+
+static bool ota_mount_sd() {
+    if (g_sd_mounted) return true;
+    if (!SD.begin(SS, SPI, 25000000)) return false;
+    g_sd_mounted = true;
+    return true;
+}
+
+static void ota_scan_files() {
+    g_ota_file_count = 0;
+    g_ota_sel        = 0;
+    g_ota_scroll     = 0;
+
+    if (!ota_mount_sd()) {
+        g_ota_state    = OtaState::EMPTY;
+        g_ota_msg      = "SD mount failed";
+        g_ota_msg_color = RED;
+        return;
+    }
+
+    File dir = SD.open(OTA_DIR);
+    if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();
+        g_ota_state    = OtaState::EMPTY;
+        g_ota_msg      = OTA_DIR " not found";
+        g_ota_msg_color = YELLOW;
+        return;
+    }
+
+    while (g_ota_file_count < OTA_MAX_FILES) {
+        File f = dir.openNextFile();
+        if (!f) break;
+        if (!f.isDirectory()) {
+            String name = String(f.name());
+            int slash   = name.lastIndexOf('/');
+            if (slash >= 0) name = name.substring(slash + 1);
+            String lower = name; lower.toLowerCase();
+            if (lower.endsWith(".bin")) {
+                g_ota_files[g_ota_file_count++] = name;
+            }
+        }
+        f.close();
+    }
+    dir.close();
+
+    if (g_ota_file_count == 0) {
+        g_ota_state    = OtaState::EMPTY;
+        g_ota_msg      = "No .bin in " OTA_DIR;
+        g_ota_msg_color = YELLOW;
+    } else {
+        g_ota_state = OtaState::LIST;
+        g_ota_msg   = "";
+    }
+}
+
+static void draw_ota() {
+    M5Cardputer.Display.fillRect(0, STATUS_BAR_H + 1, SCREEN_W,
+                                 CLI_BAR_Y - STATUS_BAR_H - 1, BLACK);
+
+    if (g_ota_state == OtaState::EMPTY) {
+        M5Cardputer.Display.setCursor(4, MENU_START_Y);
+        M5Cardputer.Display.setTextColor(g_ota_msg_color);
+        M5Cardputer.Display.print(g_ota_msg);
+        M5Cardputer.Display.setCursor(4, MENU_START_Y + MENU_ITEM_H + 4);
+        M5Cardputer.Display.setTextColor(DARKGREY);
+        M5Cardputer.Display.print("enter: rescan  del: back");
+        return;
+    }
+
+    if (g_ota_state == OtaState::UPLOADING || g_ota_state == OtaState::DONE) {
+        M5Cardputer.Display.setCursor(4, MENU_START_Y);
+        M5Cardputer.Display.setTextColor(g_ota_msg_color);
+        M5Cardputer.Display.print(g_ota_msg);
+
+        // Progress bar
+        if (g_ota_state == OtaState::UPLOADING) {
+            int bx = 4, by = MENU_START_Y + 16, bw = SCREEN_W - 8, bh = 10;
+            M5Cardputer.Display.drawRect(bx, by, bw, bh, WHITE);
+            int fill = (bw - 2) * g_ota_progress / 100;
+            if (fill > 0)
+                M5Cardputer.Display.fillRect(bx + 1, by + 1, fill, bh - 2, ACAPULCO_BLUE);
+            char pbuf[8];
+            snprintf(pbuf, sizeof(pbuf), "%u%%", (unsigned)g_ota_progress);
+            int tw = strlen(pbuf) * 6;
+            M5Cardputer.Display.setCursor(bx + (bw - tw) / 2, by + 1);
+            M5Cardputer.Display.setTextColor(WHITE);
+            M5Cardputer.Display.print(pbuf);
+        }
+
+        if (g_ota_state == OtaState::DONE) {
+            M5Cardputer.Display.setCursor(4, MENU_START_Y + 24);
+            M5Cardputer.Display.setTextColor(DARKGREY);
+            M5Cardputer.Display.print("any key: back");
+        }
+        return;
+    }
+
+    if (g_ota_state == OtaState::CONFIRM) {
+        M5Cardputer.Display.setCursor(4, MENU_START_Y);
+        M5Cardputer.Display.setTextColor(WHITE);
+        M5Cardputer.Display.print("Upload to 192.168.4.1?");
+        M5Cardputer.Display.setCursor(4, MENU_START_Y + MENU_ITEM_H + 4);
+        M5Cardputer.Display.setTextColor(CYAN);
+        M5Cardputer.Display.print(g_ota_files[g_ota_sel]);
+        M5Cardputer.Display.setCursor(4, MENU_START_Y + 2 * (MENU_ITEM_H + 4) + 6);
+        M5Cardputer.Display.setTextColor(DARKGREY);
+        M5Cardputer.Display.print("enter: confirm  del: cancel");
+        return;
+    }
+
+    // LIST
+    M5Cardputer.Display.setCursor(4, MENU_START_Y);
+    M5Cardputer.Display.setTextColor(DARKGREY);
+    M5Cardputer.Display.printf("%s (%u)", OTA_DIR, (unsigned)g_ota_file_count);
+
+    for (int i = 0; i < OTA_VISIBLE_ROWS; i++) {
+        int idx = g_ota_scroll + i;
+        if (idx >= g_ota_file_count) break;
+        int  y   = MENU_START_Y + MENU_ITEM_H + i * MENU_ITEM_H;
+        bool sel = (idx == g_ota_sel);
+        if (sel) M5Cardputer.Display.fillRect(0, y, SCREEN_W, MENU_ITEM_H, DARKGREY);
+        M5Cardputer.Display.setCursor(4, y + 1);
+        M5Cardputer.Display.setTextColor(sel ? YELLOW : WHITE);
+        M5Cardputer.Display.print(g_ota_files[idx]);
+    }
+}
+
+static void enter_ota() {
+    g_screen = M5Screen::OTA;
+    ota_scan_files();
+    draw_status_bar();
+    draw_ota();
+    draw_cli_bar();
+}
+
+// Push a status message to the OTA screen and refresh display.
+static void ota_set_msg(const char* msg, uint16_t color) {
+    g_ota_msg       = msg;
+    g_ota_msg_color = color;
+    draw_ota();
+}
+
+static void ota_run_upload() {
+    String filename = g_ota_files[g_ota_sel];
+    g_ota_state     = OtaState::UPLOADING;
+    g_ota_progress  = 0;
+    ota_set_msg("Mounting SD...", WHITE);
+
+    if (!ota_mount_sd()) { g_ota_state = OtaState::DONE; ota_set_msg("SD mount failed", RED); return; }
+
+    File file = SD.open(String(OTA_DIR) + "/" + filename, FILE_READ);
+    if (!file) { g_ota_state = OtaState::DONE; ota_set_msg("File open failed", RED); return; }
+    size_t total = file.size();
+    if (total == 0) { file.close(); g_ota_state = OtaState::DONE; ota_set_msg("File is empty", RED); return; }
+
+    // Connect to AP (radio is already up in WIFI_STA for ESP-NOW, just associate).
+    char ssid[33], pass[65];
+    wifi_creds_get_ssid(ssid, sizeof(ssid));
+    wifi_creds_get_pass(pass, sizeof(pass));
+
+    ota_set_msg("Connecting WiFi...", WHITE);
+    WiFi.begin(ssid, pass);
+    uint32_t deadline = millis() + 15000;
+    while (WiFi.status() != WL_CONNECTED && (int32_t)(deadline - millis()) > 0) {
+        delay(100);
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        file.close();
+        WiFi.disconnect(false, true);
+        esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+        g_ota_state = OtaState::DONE;
+        ota_set_msg("WiFi connect failed", RED);
+        return;
+    }
+
+    ota_set_msg("Opening connection...", WHITE);
+    WiFiClient client;
+    client.setTimeout(15);  // seconds
+    if (!client.connect(IPAddress(192, 168, 4, 1), 80)) {
+        file.close();
+        WiFi.disconnect(false, true);
+        esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+        g_ota_state = OtaState::DONE;
+        ota_set_msg("Connect refused", RED);
+        return;
+    }
+
+    const char* boundary = "----CANoEBoundary8273";
+    String head;
+    head.reserve(160);
+    head  = "--"; head += boundary; head += "\r\n";
+    head += "Content-Disposition: form-data; name=\"firmware\"; filename=\"";
+    head += filename;
+    head += "\"\r\nContent-Type: application/octet-stream\r\n\r\n";
+    String tail;
+    tail.reserve(40);
+    tail  = "\r\n--"; tail += boundary; tail += "--\r\n";
+    size_t content_len = head.length() + total + tail.length();
+
+    client.printf("POST /api/ota HTTP/1.1\r\n");
+    client.printf("Host: 192.168.4.1\r\n");
+    client.printf("User-Agent: CANoE-Cardputer\r\n");
+    client.printf("Content-Type: multipart/form-data; boundary=%s\r\n", boundary);
+    client.printf("Content-Length: %u\r\n", (unsigned)content_len);
+    client.printf("Connection: close\r\n\r\n");
+    client.print(head);
+
+    ota_set_msg("Uploading...", WHITE);
+    uint8_t  buf[1024];
+    size_t   sent     = 0;
+    uint32_t last_pct = 200;
+    while (file.available()) {
+        size_t n = file.read(buf, sizeof(buf));
+        if (n == 0) break;
+        size_t w = client.write(buf, n);
+        if (w != n) {
+            file.close();
+            client.stop();
+            WiFi.disconnect(false, true);
+            esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+            g_ota_state = OtaState::DONE;
+            ota_set_msg("Upload aborted", RED);
+            return;
+        }
+        sent += w;
+        uint32_t pct = (uint32_t)(sent * 100ULL / total);
+        if (pct != last_pct) {
+            last_pct = pct;
+            g_ota_progress = pct;
+            draw_ota();
+        }
+    }
+    client.print(tail);
+    file.close();
+
+    // Read first line of response — Update endpoint replies "OK" with 200 or "FAIL" with 500.
+    deadline = millis() + 10000;
+    while (client.connected() && !client.available() && (int32_t)(deadline - millis()) > 0) {
+        delay(20);
+    }
+    String status_line = client.readStringUntil('\n');
+    client.stop();
+
+    WiFi.disconnect(false, true);
+    esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+
+    bool ok = status_line.indexOf(" 200 ") > 0;
+    g_ota_state = OtaState::DONE;
+    if (ok) {
+        ota_set_msg("Success - target rebooting", GREEN);
+    } else {
+        String em = "Upload failed";
+        if (status_line.length() > 0) {
+            int sp = status_line.indexOf(' ');
+            if (sp > 0 && sp + 4 <= (int)status_line.length()) {
+                em += " (HTTP ";
+                em += status_line.substring(sp + 1, sp + 4);
+                em += ")";
+            }
+        }
+        ota_set_msg(em.c_str(), RED);
+    }
+}
+
+static void handle_ota_keys(const Keyboard_Class::KeysState& ks) {
+    if (g_ota_state == OtaState::DONE) {
+        // Any keypress returns to the list
+        if (ks.del || ks.enter || !ks.word.empty()) {
+            m5_ui_click();
+            g_ota_state = OtaState::LIST;
+            ota_scan_files();
+            draw_ota();
+        }
+        return;
+    }
+
+    if (g_ota_state == OtaState::UPLOADING) return;  // ignore keys during upload
+
+    if (g_ota_state == OtaState::EMPTY) {
+        if (ks.del) { enter_can(); return; }
+        if (ks.enter) { m5_ui_click(); ota_scan_files(); draw_ota(); return; }
+        return;
+    }
+
+    if (g_ota_state == OtaState::CONFIRM) {
+        if (ks.del)   { m5_ui_click(); g_ota_state = OtaState::LIST; draw_ota(); return; }
+        if (ks.enter) { m5_ui_click(); ota_run_upload();              return; }
+        return;
+    }
+
+    // LIST
+    if (ks.del) { enter_can(); return; }
+
+    if (!ks.word.empty()) {
+        char c = ks.word[0];
+        if (c == ';') {
+            m5_ui_click();
+            if (g_ota_file_count == 0) return;
+            g_ota_sel = (uint8_t)((g_ota_sel + g_ota_file_count - 1) % g_ota_file_count);
+            if (g_ota_sel < g_ota_scroll) g_ota_scroll = g_ota_sel;
+            else if (g_ota_sel == g_ota_file_count - 1)
+                g_ota_scroll = (g_ota_file_count > OTA_VISIBLE_ROWS) ? g_ota_file_count - OTA_VISIBLE_ROWS : 0;
+            draw_ota();
+            return;
+        }
+        if (c == '.') {
+            m5_ui_click();
+            if (g_ota_file_count == 0) return;
+            g_ota_sel = (uint8_t)((g_ota_sel + 1) % g_ota_file_count);
+            if (g_ota_sel >= g_ota_scroll + OTA_VISIBLE_ROWS)
+                g_ota_scroll = g_ota_sel - OTA_VISIBLE_ROWS + 1;
+            else if (g_ota_sel == 0)
+                g_ota_scroll = 0;
+            draw_ota();
+            return;
+        }
+    }
+
+    if (ks.enter && g_ota_file_count > 0) {
+        m5_ui_click();
+        g_ota_state = OtaState::CONFIRM;
+        draw_ota();
+    }
+}
+
+#endif // ENABLE_OTA_UPLOAD
 
 // --- SD logging ---
 

@@ -55,6 +55,8 @@ Add `#define ENABLE_*` flags for the capabilities this node needs. Every flag is
 | `ENABLE_MPU6050` | MPU-6050 accelerometer / shake detection | `MPU_SDA_PIN`, `MPU_SCL_PIN` (shares I2C with LCD) |
 | `ENABLE_DHT22` | AM2302 temperature/humidity broadcast | `DHT22_PIN` |
 | `ENABLE_RPM` | Engine RPM via PC817C optocoupler + interrupt counting; optional LCD bar widget | `RPM_PIN` (if sensing); `RPM_WIDGET_ROW` (if LCD widget); `RPM_CYLINDERS` |
+| `ENABLE_IGNITION` | Coil + voltage ADC sampler — broadcasts `IGNITION_DATA (0x310)`, used as fuel pump COIL gate | `IGN_COIL_ADC_PIN`, `IGN_COIL_DIVIDER_RATIO`, `IGN_COIL_ON_THRESHOLD_CV`, `IGN_COIL_OFF_THRESHOLD_CV` |
+| `ENABLE_FUEL_PUMP_SAFETY` | Multi-gate fuel pump FSM (PRIME → ARMED → RUNNING). Owns a relay (default R1). | `FUEL_PUMP_RELAY`, `FUEL_PUMP_PRIME_MS`, `FUEL_PUMP_RPM_THRESHOLD`, `FUEL_PUMP_STALL_MS`, `FUEL_PUMP_DEFAULT_MODE` |
 | `ENABLE_GPS` | GPS speed/heading via NMEA UART; broadcasts `GPS_DATA (0x305)` | `GPS_SERIAL_NUM`, `GPS_RX_PIN`, `GPS_TX_PIN`, `GPS_BAUD` |
 | `ENABLE_WBO2` | Wideband O2 analog read; broadcasts `WBO2_DATA (0x306)` | `WBO2_PIN`, `WBO2_SAMPLE_MS`, `WBO2_MIN_V`, `WBO2_MAX_V`, `WBO2_MIN_AFR`, `WBO2_MAX_AFR` |
 | `ENABLE_ECU` | Dual-mode fuel controller: carb PI loop or TBI dual-injector; reads MAP/TPS/CLT/IAT | `ECU_*` defines — see ECU node config for full list |

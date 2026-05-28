@@ -967,7 +967,7 @@ const SW_EVENTS = ['Release','Press','Long Press','Double Press'];
 const ACT_NAMES = ['--','Relay Toggle','Relay On','Relay Off','All Off','Relay Scene',
                    'LED On','LED Off','WiFi Enable','WiFi Disable','Viper Cmd',
                    'Menu Select','Menu Enter','Relay Timed Off','LED Flash','Buzzer Alert',
-                   'Buzzer Play'];
+                   'Buzzer Play','Fuel Pump Safety'];
 const BUZZER_SEQ_NAMES = {
   0x01:'Alert', 0x02:'CAN Up', 0x03:'CAN Down', 0x04:'Startup', 0x05:'Peer Count',
   0x06:'WiFi Connect', 0x07:'WiFi Disconnect',
@@ -1022,6 +1022,10 @@ function describeAction(r) {
     const node = NODE_NAMES[r.arg0] || ('node 0x'+r.arg0.toString(16));
     const seq  = BUZZER_SEQ_NAMES[r.arg1] || ('seq 0x'+r.arg1.toString(16));
     return 'Buzzer '+seq+' on '+node+(r.arg2 ? ' (arg='+r.arg2+')' : '');
+  }
+  if (r.action === 17) {
+    const modes = {0:'OFF (force on)', 1:'RPM only', 2:'COIL only', 3:'BOTH'};
+    return 'Fuel Pump Safety: '+(modes[r.arg0] || ('mode '+r.arg0));
   }
   return name;
 }

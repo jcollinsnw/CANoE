@@ -31,3 +31,4 @@
 
 // ---- Features ----
 #define ENABLE_M5_CARDPUTER
+#define ENABLE_OTA_UPLOAD          // SD-card → HTTP POST OTA client (target node at 192.168.4.1)
