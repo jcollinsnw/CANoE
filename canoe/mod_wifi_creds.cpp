@@ -1,6 +1,7 @@
 #include "mod_wifi_creds.h"
 #include "can_protocol.h"
 #include "mod_blob.h"
+#include "mod_error.h"
 #include <Preferences.h>
 #include <Arduino.h>
 #include <string.h>
@@ -88,6 +89,7 @@ void wifi_creds_on_blob(uint8_t key, const uint8_t* data, uint16_t len, uint8_t 
     case BLOB_KEY_SSID: {
       if (len == 0 || len > 32) {
         wlog("[wcreds] reject SSID len=%u (need 1..32)\n", len);
+        error_raise_local(ERR_WIFI_CREDS_REJECTED, ERR_SEV_WARNING, BLOB_KEY_SSID);
         return;
       }
       char s[WIFI_SSID_MAX] = {};
@@ -99,10 +101,12 @@ void wifi_creds_on_blob(uint8_t key, const uint8_t* data, uint16_t len, uint8_t 
     case BLOB_KEY_PASS: {
       if (len > 0 && len < 8) {
         wlog("[wcreds] reject PASS len=%u (need 0 or >=8)\n", len);
+        error_raise_local(ERR_WIFI_CREDS_REJECTED, ERR_SEV_WARNING, BLOB_KEY_PASS);
         return;
       }
       if (len > 63) {
         wlog("[wcreds] reject PASS len=%u (max 63)\n", len);
+        error_raise_local(ERR_WIFI_CREDS_REJECTED, ERR_SEV_WARNING, BLOB_KEY_PASS);
         return;
       }
       char s[WIFI_PASS_MAX] = {};
@@ -112,11 +116,11 @@ void wifi_creds_on_blob(uint8_t key, const uint8_t* data, uint16_t len, uint8_t 
       break;
     }
     case BLOB_KEY_PMK:
-      if (len != 16) { wlog("[wcreds] reject PMK len=%u (need 16)\n", len); return; }
+      if (len != 16) { wlog("[wcreds] reject PMK len=%u (need 16)\n", len); error_raise_local(ERR_WIFI_CREDS_REJECTED, ERR_SEV_WARNING, BLOB_KEY_PMK); return; }
       wifi_creds_set_pmk(data);
       break;
     case BLOB_KEY_LMK:
-      if (len != 16) { wlog("[wcreds] reject LMK len=%u (need 16)\n", len); return; }
+      if (len != 16) { wlog("[wcreds] reject LMK len=%u (need 16)\n", len); error_raise_local(ERR_WIFI_CREDS_REJECTED, ERR_SEV_WARNING, BLOB_KEY_LMK); return; }
       wifi_creds_set_lmk(data);
       break;
     default: return;

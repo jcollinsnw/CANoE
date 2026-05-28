@@ -17,6 +17,7 @@
 #include "can_protocol.h"
 #include "bus.h"
 #include "mod_buzzer.h"
+#include "mod_error.h"
 #include "node_state.h"
 
 #if USE_WIFI
@@ -168,9 +169,7 @@ void switches_loop() {
       wlog("[sw] retry sw%u ev%u (%u left)\n", p.sw_id, p.event, p.retries);
     } else {
       wlogln("[sw] ACK timeout — no response after retries");
-      buzzer_alert();
-      uint8_t led[4] = { NODE_ID, 1u << SW_ERROR_LED, 1u << SW_ERROR_LED, 4 };
-      bus_tx(CAN_ID_LED_CMD, led, 4);
+      error_raise_local(ERR_SWITCH_ACK_TIMEOUT, ERR_SEV_WARNING, p.sw_id);
       p.active = false;
     }
   }

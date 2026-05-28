@@ -40,6 +40,7 @@
 #include "can_protocol.h"
 #include "bus.h"
 #include "mod_lcd.h"
+#include "mod_error.h"
 
 #ifndef WBO2_SAMPLE_MS
 #define WBO2_SAMPLE_MS 500
@@ -111,6 +112,22 @@ static void sensor_loop() {
   g_last_sample_ms = now;
 
   float v = read_voltage();
+
+  // Sensor fault detection: voltage near 0 (disconnected) or near max (shorted).
+  // Threshold: < 0.02V or within 0.05V of ADC Vref.
+  static bool fault_active = false;
+  if (v < 0.02f || v > (WBO2_ADC_VREF - 0.05f)) {
+    if (!fault_active) {
+      fault_active = true;
+      uint8_t raw_byte = (uint8_t)(v * 100.0f);  // rough voltage for diagnostics
+      error_raise_local(ERR_WBO2_SENSOR_FAULT, ERR_SEV_CRITICAL, raw_byte);
+    }
+    return;  // Don't broadcast a false reading
+  } else if (fault_active) {
+    fault_active = false;
+    error_clear(ERR_WBO2_SENSOR_FAULT);
+  }
+
   float afr = voltage_to_afr(v);
 #ifdef WBO2_EMA_ALPHA
   if (g_afr_ema == 0.0f) g_afr_ema = afr;

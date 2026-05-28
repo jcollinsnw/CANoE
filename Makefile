@@ -31,12 +31,12 @@ UPLOAD_SPEED ?= 115200 # 921600
 PORT    ?= /dev/cu.SLAB_USBtoUART   # switch panel
 # PORT  ?= /dev/cu.usbserial-0001   # relay controller
 
-SKETCH      := firmware/accessory_node
-CONFIGS     := firmware/configs
+SKETCH      := canoe
+CONFIGS     := configs
 MINIFY      := $(SKETCH)/minify_index_html.sh
 HTMLDST     := $(SKETCH)/index_html.h
 BUILD_DIR   := build
-SKETCH_NAME := accessory_node
+SKETCH_NAME := canoe
 OTA_IP      ?= 192.168.4.1
 
 # Cardputer UF2 / mass-storage deploy (plug in via USB while holding G0 for UF2 mode)

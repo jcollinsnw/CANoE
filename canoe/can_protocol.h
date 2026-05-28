@@ -80,6 +80,18 @@
 // data[0] = target_node_id (0x01–0x04 for a specific node, 0xFF = all nodes)
 #define CAN_ID_REBOOT_CMD        0x0F5
 
+// Unified error event — any module may emit to signal an abnormal condition.
+// Receivers (buzzer, LEDs, Cardputer, web UI) react based on severity.
+// data[0] = source_node_id
+// data[1] = error_code (ERR_*)
+// data[2] = severity (ERR_SEV_*)
+// data[3] = target_node_id (0xFF = all nodes should alert; specific = only that node alerts)
+// data[4] = flags (ERR_FLAG_*)
+// data[5] = arg0 (error-specific context)
+// data[6] = arg1
+// data[7] = arg2
+#define CAN_ID_ERROR_EVENT       0x0F6
+
 // Bus error event — emitted by any node that detects a CAN error condition.
 // Sent on both transports (ESP-NOW carries it even if wired CAN is failing).
 // data[0]=node_id, data[1]=error_code (BUS_ERR_*), data[2]=tx_err_cnt, data[3]=rx_err_cnt
@@ -90,6 +102,52 @@
 #define BUS_ERR_ERROR_PASSIVE    0x02  // TEC or REC >= 96 (error passive threshold)
 #define BUS_ERR_TX_FAIL          0x03  // 5+ consecutive TX failures (no ACK)
 #define BUS_ERR_RX_OVERFLOW      0x04  // RX buffer overrun — frames were silently dropped
+
+// --------------------------------------------------------------
+// ERROR_EVENT severity levels
+// --------------------------------------------------------------
+#define ERR_SEV_INFO             0x00  // transient, usually self-resolving (e.g. sensor glitch)
+#define ERR_SEV_WARNING          0x01  // degraded operation, needs attention soon
+#define ERR_SEV_CRITICAL         0x02  // hardware damage risk or safety system engaged
+#define ERR_SEV_EMERGENCY        0x03  // system inoperable or imminent danger
+
+// ERROR_EVENT flags (data[4])
+#define ERR_FLAG_ACTIVE          0x01  // 1 = fault active; 0 = fault cleared
+#define ERR_FLAG_AUDIBLE         0x02  // request audible alert on receiver
+#define ERR_FLAG_VISUAL          0x04  // request visual alert (LED flash / screen)
+#define ERR_FLAG_LATCHING        0x08  // stays active until explicit clear frame received
+
+// ERROR_EVENT error codes (data[1])
+// Grouped by subsystem: 0x01–0x1F bus/transport, 0x20–0x3F power,
+//                       0x40–0x5F engine/fuel, 0x60–0x7F sensors,
+//                       0x80–0x9F comms, 0xA0+ application
+// -- Bus / transport --
+#define ERR_CAN_INIT_FAIL        0x01  // CAN driver could not start
+#define ERR_CAN_BUS_OFF          0x02  // TWAI bus-off state
+#define ERR_CAN_ERROR_PASSIVE    0x03  // TWAI error-passive threshold
+#define ERR_CAN_TX_FAIL          0x04  // repeated TX failures
+#define ERR_CAN_RX_OVERFLOW      0x05  // RX ring overflow, frames lost
+#define ERR_ESPNOW_INIT_FAIL     0x06  // ESP-NOW could not initialize
+// -- Power --
+#define ERR_LOW_VOLTAGE          0x20  // battery below threshold; arg0 = which bat (0=primary, 1=aux)
+#define ERR_RELAY_WATCHDOG       0x21  // relay forced off by watchdog; arg0 = relay index
+// -- Engine / fuel --
+#define ERR_FUEL_PUMP_STALL      0x40  // fuel pump FSM cut (RUNNING→ARMED); arg0 = stall reason
+#define ERR_INJECTOR_SATURATED   0x41  // injector duty >95%; arg0 = duty % clamped
+#define ERR_WBO2_SENSOR_FAULT    0x42  // WBO2 reading implausible (0V or 5V); arg0 = raw ADC byte
+#define ERR_ECU_SENSOR_FAULT     0x43  // NTC/MAP/TPS out of range; arg0 = sensor id (0=MAP,1=TPS,2=CLT,3=IAT)
+// -- Sensors --
+#define ERR_MPU6050_FAIL         0x60  // IMU not responding
+#define ERR_DHT22_FAIL           0x61  // temp/humidity read failed; arg0 = consecutive fail count
+#define ERR_GPS_NO_FIX           0x62  // GPS has no fix (INFO-level, self-resolving)
+// -- Comms --
+#define ERR_SWITCH_ACK_TIMEOUT   0x80  // switch event not ACKed after retries; arg0 = switch_id
+#define ERR_RELAY_CONFIRM_TIMEOUT 0x81 // RELAY_STATUS not received after CMD; arg0 = relay mask
+#define ERR_WIFI_CREDS_REJECTED  0x82  // blob credential validation failed; arg0 = key (SSID/PASS/PMK/LMK)
+#define ERR_OTA_FAILED           0x83  // OTA upload failed
+#define ERR_MQTT_CONNECT_FAIL    0x84  // MQTT broker unreachable
+// -- Application --
+#define ERR_NVS_CORRUPT          0xA0  // NVS read returned implausible value; arg0 = context id
 
 // Capability bits for CAN_ID_NODE_CAP data[1]
 #define NODE_CAP_RELAY    0x01   // has relay outputs
@@ -330,6 +388,12 @@ struct CanRule {
 
 // Bus error — fires when any node broadcasts CAN_ID_BUS_ERROR (any error code).
 #define TRIG_BUS_ERROR()      CAN_ID_BUS_ERROR, 0, 0, 0x00, 0, 0, 0x00
+
+// Error event — fires on any ERROR_EVENT frame. Use c0/c1 to filter by severity or code.
+// Example: TRIG_ERROR_CRITICAL() fires only on severity >= CRITICAL.
+#define TRIG_ERROR_EVENT()           CAN_ID_ERROR_EVENT, 0, 0, 0x00, 0, 0, 0x00
+#define TRIG_ERROR_CRITICAL()        CAN_ID_ERROR_EVENT, 2, ERR_SEV_CRITICAL, 0xFE, 0, 0, 0x00
+#define TRIG_ERROR_EMERGENCY()       CAN_ID_ERROR_EVENT, 2, ERR_SEV_EMERGENCY, 0xFF, 0, 0, 0x00
 
 // CAN OK — fires when a NODE_ANNOUNCE with can_ok=1 arrives; use to auto-clear error indicators.
 // data[2] = can_ok (1 = bus healthy); matches any node announcing itself as healthy.

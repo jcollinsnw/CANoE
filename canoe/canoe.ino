@@ -57,6 +57,7 @@
 #include "mod_battery.h"
 #include "mod_channels.h"
 #include "mod_m5_cardputer.h"
+#include "mod_error.h"
 
 // --------------------------------------------------------------
 // Shared state definitions (declared extern in node_state.h)
@@ -406,13 +407,11 @@ void loop() {
 #ifdef ENABLE_BUZZER
   buzzer_tick();
 #endif
+  error_tick();
 #if (defined(ENABLE_BUZZER) || defined(ENABLE_M5_CARDPUTER)) && !defined(ENABLE_RELAY)
   if (g_relay_cmd_deadline && millis() >= g_relay_cmd_deadline) {
     g_relay_cmd_deadline = 0;
-#ifdef ENABLE_BUZZER
-    buzzer_alert();
-#endif
-    m5_beep_alert();
+    error_raise_local(ERR_RELAY_CONFIRM_TIMEOUT, ERR_SEV_WARNING);
   }
 #endif
 #ifdef ENABLE_LEDS
@@ -589,6 +588,7 @@ void loop() {
     ecu_handle_frame(f);
 #endif
     m5_handle_frame(f);
+    error_handle_frame(f);
   }
 
   // TWAI health check + bus-off recovery every 2 s

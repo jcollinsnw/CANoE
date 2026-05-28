@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 760" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="12">
+  <style>
+    .wire    { stroke: #1a1a1a; stroke-width: 1.6; fill: none; stroke-linecap: round; }
+    .comp    { stroke: #1a1a1a; stroke-width: 1.6; fill: #ffffff; }
+    .label   { fill: #1a1a1a; }
+    .ref     { fill: #b03050; font-weight: bold; }
+    .val     { fill: #1a1a1a; }
+    .net     { fill: #2050a0; font-style: italic; }
+    .rail    { fill: #1a1a1a; font-weight: bold; }
+    .note    { fill: #555; font-style: italic; }
+    .sec     { stroke: #c8c8c8; stroke-width: 1; stroke-dasharray: 5 4; fill: none; }
+    .seclbl  { fill: #555; font-size: 11px; font-weight: bold; letter-spacing: 1px; }
+    .title   { fill: #1a1a1a; font-weight: bold; }
+  </style>
+
+  <!-- Title -->
+  <text x="620" y="32" text-anchor="middle" font-size="20" class="title">CANoE Coil Interface Board</text>
+  <text x="620" y="52" text-anchor="middle" font-size="12" class="note">RPM (coil −) + ignition voltage (coil +) sensor frontend for the relay node ESP32</text>
+  <text x="620" y="68" text-anchor="middle" font-size="11" class="note">3V3 powered from the ESP32 over the J2 cable — no on-board regulator needed</text>
+
+  <!-- ====================================================================== -->
+  <!-- COIL +  VOLTAGE DIVIDER SECTION                                       -->
+  <!-- ====================================================================== -->
+  <rect x="40" y="100" width="1160" height="180" class="sec" rx="6" />
+  <text x="56" y="96" class="seclbl">COIL + SENSING  ·  voltage divider → ADC</text>
+
+  <!-- J1.1 COIL+ pad -->
+  <circle cx="120" cy="180" r="5" class="comp" />
+  <text x="112" y="166" text-anchor="end" class="ref">J1.1</text>
+  <text x="112" y="186" text-anchor="end" class="label">COIL +</text>
+  <text x="112" y="202" text-anchor="end" font-size="10" class="note">(post-ballast)</text>
+
+  <!-- wire J1.1 → R1 -->
+  <line x1="125" y1="180" x2="240" y2="180" class="wire" />
+
+  <!-- R1: 10kΩ series -->
+  <rect x="240" y="168" width="80" height="24" class="comp" />
+  <text x="280" y="160" text-anchor="middle" class="ref">R1</text>
+  <text x="280" y="185" text-anchor="middle" class="val">10 kΩ</text>
+
+  <!-- wire R1 out to VCOIL_ADC junction -->
+  <line x1="320" y1="180" x2="600" y2="180" class="wire" />
+  <text x="402" y="172" class="net">VCOIL_ADC</text>
+
+  <!-- R2: 2.2kΩ to GND -->
+  <line x1="400" y1="180" x2="400" y2="205" class="wire" />
+  <rect x="388" y="205" width="24" height="50" class="comp" />
+  <text x="420" y="222" class="ref">R2</text>
+  <text x="420" y="236" class="val">2.2 kΩ</text>
+  <line x1="400" y1="255" x2="400" y2="260" class="wire" />
+  <g stroke="#1a1a1a" stroke-width="2.2" fill="none">
+    <line x1="388" y1="260" x2="412" y2="260" />
+    <line x1="393" y1="266" x2="407" y2="266" />
+    <line x1="398" y1="272" x2="402" y2="272" />
+  </g>
+
+  <!-- D2: 3.3V zener clamp -->
+  <line x1="480" y1="180" x2="480" y2="205" class="wire" />
+  <polygon points="468,205 492,205 480,225" class="comp" fill="#1a1a1a" />
+  <line x1="468" y1="205" x2="492" y2="205" class="comp" stroke-width="2.2" />
+  <line x1="466" y1="202" x2="468" y2="205" class="comp" stroke-width="1.6" />
+  <line x1="494" y1="208" x2="492" y2="205" class="comp" stroke-width="1.6" />
+  <text x="460" y="218" text-anchor="end" class="ref">D2</text>
+  <text x="460" y="232" text-anchor="end" class="val">3.3 V zener</text>
+  <text x="460" y="246" text-anchor="end" font-size="10" class="note">(or 3.3 V TVS)</text>
+  <line x1="480" y1="225" x2="480" y2="260" class="wire" />
+  <g stroke="#1a1a1a" stroke-width="2.2" fill="none">
+    <line x1="468" y1="260" x2="492" y2="260" />
+    <line x1="473" y1="266" x2="487" y2="266" />
+    <line x1="478" y1="272" x2="482" y2="272" />
+  </g>
+
+  <!-- C4: 100nF filter cap to GND -->
+  <line x1="560" y1="180" x2="560" y2="205" class="wire" />
+  <line x1="545" y1="205" x2="575" y2="205" class="comp" stroke-width="2.2" />
+  <line x1="550" y1="212" x2="570" y2="212" class="comp" stroke-width="2.2" />
+  <line x1="560" y1="212" x2="560" y2="260" class="wire" />
+  <text x="580" y="210" class="ref">C4</text>
+  <text x="580" y="224" class="val">100 nF</text>
+  <g stroke="#1a1a1a" stroke-width="2.2" fill="none">
+    <line x1="548" y1="260" x2="572" y2="260" />
+    <line x1="553" y1="266" x2="567" y2="266" />
+    <line x1="558" y1="272" x2="562" y2="272" />
+  </g>
+
+  <!-- output: VCOIL_ADC → J2.1 -->
+  <line x1="600" y1="180" x2="1100" y2="180" class="wire" />
+  <text x="1075" y="172" text-anchor="end" class="rail">→ J2.1  VCOIL_ADC</text>
+
+  <text x="700" y="208" class="note">Divider ratio: (10 k + 2.2 k) / 2.2 k = 5.545</text>
+  <text x="700" y="224" class="note">14.4 V (charging) → 2.60 V at ADC.  D2 clamps any over-voltage to 3.3 V.</text>
+  <text x="700" y="240" class="note">Firmware (mod_ignition) does software hysteresis at 6.0 V / 4.0 V.</text>
+
+  <!-- ====================================================================== -->
+  <!-- COIL − OPTOCOUPLER SECTION                                            -->
+  <!-- ====================================================================== -->
+  <rect x="40" y="310" width="1160" height="320" class="sec" rx="6" />
+  <text x="56" y="306" class="seclbl">COIL − SENSING  ·  optocoupler-isolated tach pulse</text>
+
+  <!-- J1.2 COIL- pad -->
+  <circle cx="120" cy="420" r="5" class="comp" />
+  <text x="112" y="406" text-anchor="end" class="ref">J1.2</text>
+  <text x="112" y="426" text-anchor="end" class="label">COIL −</text>
+  <text x="112" y="442" text-anchor="end" font-size="10" class="note">(tach point on coil)</text>
+
+  <!-- wire J1.2 → R3 -->
+  <line x1="125" y1="420" x2="190" y2="420" class="wire" />
+
+  <!-- R3: 10kΩ 1W series -->
+  <rect x="190" y="408" width="90" height="24" class="comp" />
+  <text x="235" y="400" text-anchor="middle" class="ref">R3</text>
+  <text x="235" y="425" text-anchor="middle" class="val">10 kΩ / 1 W</text>
+
+  <!-- wire R3 → junction INT -->
+  <line x1="280" y1="420" x2="450" y2="420" class="wire" />
+  <text x="315" y="412" class="net">INT</text>
+
+  <!-- D3: 18V zener clamp -->
+  <line x1="340" y1="420" x2="340" y2="450" class="wire" />
+  <line x1="328" y1="450" x2="352" y2="450" class="comp" stroke-width="2.2" />
+  <polygon points="328,450 352,450 340,470" class="comp" fill="#1a1a1a" />
+  <line x1="326" y1="447" x2="328" y2="450" class="comp" stroke-width="1.6" />
+  <line x1="354" y1="453" x2="352" y2="450" class="comp" stroke-width="1.6" />
+  <text x="320" y="463" text-anchor="end" class="ref">D3</text>
+  <text x="320" y="477" text-anchor="end" class="val">18 V zener</text>
+  <text x="320" y="491" text-anchor="end" font-size="10" class="note">(1 W min)</text>
+  <line x1="340" y1="470" x2="340" y2="500" class="wire" />
+  <g stroke="#1a1a1a" stroke-width="2.2" fill="none">
+    <line x1="328" y1="500" x2="352" y2="500" />
+    <line x1="333" y1="506" x2="347" y2="506" />
+    <line x1="338" y1="512" x2="342" y2="512" />
+  </g>
+
+  <!-- R4: 270Ω LED current limit -->
+  <rect x="450" y="408" width="60" height="24" class="comp" />
+  <text x="480" y="400" text-anchor="middle" class="ref">R4</text>
+  <text x="480" y="425" text-anchor="middle" class="val">270 Ω</text>
+
+  <!-- wire R4 → U2 LED anode -->
+  <line x1="510" y1="420" x2="590" y2="420" class="wire" />
+
+  <!-- U2: PC817C optocoupler box -->
+  <rect x="590" y="360" width="180" height="160" class="comp" rx="3" />
+  <text x="680" y="348" text-anchor="middle" class="ref">U2</text>
+  <text x="680" y="334" text-anchor="middle" class="val">PC817C</text>
+  <text x="680" y="542" text-anchor="middle" font-size="10" class="note">(or EL817C / LTV-817)</text>
+
+  <!-- U2 LED -->
+  <line x1="590" y1="420" x2="620" y2="420" class="wire" />
+  <polygon points="620,410 642,420 620,430" class="comp" fill="#1a1a1a" />
+  <line x1="642" y1="408" x2="642" y2="432" class="comp" stroke-width="2.2" />
+  <line x1="628" y1="402" x2="636" y2="394" class="comp" stroke-width="1.2" />
+  <polygon points="634,392 638,392 637,396" fill="#1a1a1a" />
+  <line x1="636" y1="402" x2="644" y2="394" class="comp" stroke-width="1.2" />
+  <polygon points="642,392 646,392 645,396" fill="#1a1a1a" />
+  <line x1="642" y1="420" x2="680" y2="420" class="wire" />
+  <line x1="680" y1="420" x2="680" y2="510" class="wire" />
+  <text x="688" y="520" class="label">GND</text>
+  <g stroke="#1a1a1a" stroke-width="2.2" fill="none">
+    <line x1="668" y1="510" x2="692" y2="510" />
+    <line x1="673" y1="516" x2="687" y2="516" />
+    <line x1="678" y1="522" x2="682" y2="522" />
+  </g>
+
+  <!-- pin labels -->
+  <text x="598" y="415" font-size="9" class="label">1</text>
+  <text x="670" y="415" text-anchor="end" font-size="9" class="label">2</text>
+
+  <!-- U2 phototransistor -->
+  <line x1="730" y1="380" x2="730" y2="415" class="wire" />
+  <text x="723" y="375" text-anchor="end" font-size="9" class="label">4</text>
+  <circle cx="730" cy="435" r="20" class="comp" />
+  <line x1="710" y1="435" x2="720" y2="435" class="comp" stroke-width="2.2" />
+  <line x1="730" y1="415" x2="730" y2="425" class="comp" stroke-width="2.2" />
+  <line x1="720" y1="425" x2="740" y2="425" class="comp" stroke-width="2.2" />
+  <line x1="720" y1="445" x2="740" y2="445" class="comp" stroke-width="2.2" />
+  <line x1="730" y1="445" x2="730" y2="455" class="wire" />
+  <polygon points="734,449 738,454 732,454" fill="#1a1a1a"/>
+  <line x1="730" y1="455" x2="730" y2="510" class="wire" />
+  <text x="738" y="520" class="label">GND</text>
+  <g stroke="#1a1a1a" stroke-width="2.2" fill="none">
+    <line x1="718" y1="510" x2="742" y2="510" />
+    <line x1="723" y1="516" x2="737" y2="516" />
+    <line x1="728" y1="522" x2="732" y2="522" />
+  </g>
+  <text x="745" y="460" font-size="9" class="label">3</text>
+
+  <!-- light arrow between LED and transistor -->
+  <g stroke="#b08040" stroke-width="1.2" fill="none">
+    <line x1="660" y1="420" x2="710" y2="432" />
+    <polygon points="708,428 715,432 708,435" fill="#b08040"/>
+  </g>
+
+  <!-- collector pull-up to +3V3 (from J2.4) -->
+  <line x1="730" y1="380" x2="730" y2="345" class="wire" />
+  <line x1="730" y1="345" x2="840" y2="345" class="wire" />
+  <rect x="840" y="333" width="60" height="24" class="comp" />
+  <text x="870" y="330" text-anchor="middle" class="ref">R5</text>
+  <text x="870" y="368" text-anchor="middle" class="val">10 kΩ</text>
+  <line x1="900" y1="345" x2="1100" y2="345" class="wire" />
+  <text x="1075" y="337" text-anchor="end" class="rail">← J2.4  +3V3 (from ESP32)</text>
+
+  <!-- RPM_PULSE output tap -->
+  <line x1="730" y1="345" x2="730" y2="320" class="wire" />
+  <line x1="730" y1="320" x2="1100" y2="320" class="wire" />
+  <text x="800" y="312" class="net">RPM_PULSE</text>
+  <text x="1075" y="312" text-anchor="end" class="rail">→ J2.2  RPM_PULSE</text>
+
+  <!-- Notes -->
+  <text x="950" y="420" class="note">R3 absorbs spike energy; D3 clamps</text>
+  <text x="950" y="436" class="note">INT to 18 V so the opto LED sees a</text>
+  <text x="950" y="452" class="note">safe ~17 V across R4 even on a 200 V</text>
+  <text x="950" y="468" class="note">flyback transient.</text>
+  <text x="950" y="490" class="note">R4 sets steady-state LED current</text>
+  <text x="950" y="506" class="note">≈ 40 mA peak / a few mA average.</text>
+
+  <!-- ====================================================================== -->
+  <!-- OUTPUT CONNECTOR J2                                                   -->
+  <!-- ====================================================================== -->
+  <rect x="1100" y="150" width="100" height="220" class="comp" rx="4" />
+  <text x="1150" y="144" text-anchor="middle" class="ref">J2</text>
+  <text x="1150" y="385" text-anchor="middle" class="val">to ESP32</text>
+  <text x="1150" y="400" text-anchor="middle" font-size="10" class="note">JST-XH 4-pin</text>
+
+  <!-- J2 pads -->
+  <circle cx="1105" cy="180" r="4" class="comp" />
+  <text x="1115" y="184" class="label">1  VCOIL_ADC</text>
+  <circle cx="1105" cy="225" r="4" class="comp" />
+  <text x="1115" y="229" class="label">2  RPM_PULSE</text>
+  <circle cx="1105" cy="275" r="4" class="comp" />
+  <text x="1115" y="279" class="label">3  GND</text>
+  <circle cx="1105" cy="345" r="4" class="comp" />
+  <text x="1115" y="349" class="label">4  +3V3 (IN from ESP32)</text>
+
+  <!-- Direct wire J2.1 to the upper signal path -->
+  <line x1="1100" y1="180" x2="1101" y2="180" class="wire" />
+  <!-- J2.2 to RPM_PULSE wire -->
+  <line x1="1100" y1="320" x2="1101" y2="225" class="wire" />
+  <!-- J2.3 GND down to common -->
+  <line x1="1101" y1="275" x2="1090" y2="275" class="wire" />
+  <line x1="1090" y1="275" x2="1090" y2="510" class="wire" />
+  <text x="1085" y="520" text-anchor="end" class="label">GND</text>
+  <g stroke="#1a1a1a" stroke-width="2.2" fill="none">
+    <line x1="1078" y1="510" x2="1102" y2="510" />
+    <line x1="1083" y1="516" x2="1097" y2="516" />
+    <line x1="1088" y1="522" x2="1092" y2="522" />
+  </g>
+  <!-- J2.4 to +3V3 wire -->
+  <line x1="1100" y1="345" x2="1101" y2="345" class="wire" />
+
+  <!-- ====================================================================== -->
+  <!-- COIL CONNECTOR J1 -->
+  <!-- ====================================================================== -->
+  <rect x="80" y="150" width="40" height="290" class="sec" rx="4" />
+  <text x="100" y="144" text-anchor="middle" class="ref">J1</text>
+  <text x="100" y="458" text-anchor="middle" font-size="10" class="note">from coil</text>
+
+  <!-- ====================================================================== -->
+  <!-- BOTTOM:  notes / reference                                            -->
+  <!-- ====================================================================== -->
+  <rect x="40" y="650" width="1160" height="100" class="sec" rx="6" />
+  <text x="56" y="646" class="seclbl">NOTES</text>
+
+  <text x="60" y="672" font-size="11" class="label">• ESP32 pinout for J2: VCOIL_ADC → GPIO 39 (ADC1, input-only); RPM_PULSE → GPIO 35 (ADC1, falling-edge interrupt); +3V3 sourced from the ESP32 dev board's 3V3 pin.</text>
+  <text x="60" y="690" font-size="11" class="label">• Tie J2.3 GND to the relay-box GND. Run J2 as a 4-wire bundle (twisted pair or shielded cable); keep &lt; 1 m to avoid pickup from ignition noise.</text>
+  <text x="60" y="708" font-size="11" class="label">• Star-ground the coil − sensing return: short, fat trace from D3/U2 cathodes to the J2.3 GND pad. The flyback clamp current returns here, not through any signal trace.</text>
+  <text x="60" y="726" font-size="11" class="label">• Calibration: after assembly, key-on with engine off, measure J2.1 (VCOIL_ADC) with a multimeter. Expect ≈ 1.6 V for a ~9 V coil + reading. Update IGN_COIL_DIVIDER_RATIO in firmware if needed.</text>
+  <text x="60" y="744" font-size="11" class="label">• Optional: add a 100 nF ceramic from J2.4 (+3V3) to GND right at the connector to bypass any cable-pickup noise on the supply rail.</text>
+</svg>

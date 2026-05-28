@@ -8,6 +8,7 @@
 #ifdef ENABLE_RELAY
 
 #include "can_protocol.h"
+#include "mod_error.h"
 #include "bus.h"
 #include "node_state.h"
 
@@ -123,6 +124,7 @@ void relay_loop() {
       wlog("[watchdog] relay %u forced OFF after %u ms\n", i, g_max_on_ms[i]);
       relay_write(i, false);
       send_relay_status();
+      error_raise_local(ERR_RELAY_WATCHDOG, ERR_SEV_CRITICAL, i);
     }
   }
 

@@ -1,6 +1,12 @@
 .DS_Store
 firmware/accessory_node/secrets.h
 firmware/accessory_node/node_config.h
+canoe/secrets.h
+canoe/node_config.h
+canoe/build/
+firmware/accessory_node/build/
+build/
+.vscode/
 .claude/
 tuner/Tuner.xcodeproj/project.xcworkspace/xcuserdata/
 tuner/Tuner.xcodeproj/xcuserdata/

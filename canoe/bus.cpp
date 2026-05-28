@@ -8,6 +8,7 @@
 #include "node_config.h"
 #include "bus.h"
 #include "can_protocol.h"
+#include "mod_error.h"
 
 #ifdef ENABLE_LCD
 #include "mod_lcd.h"
@@ -166,6 +167,7 @@ void bus_init(uint8_t node_id) {
   // WiFi must be initialized (by webui_init) before esp_now_init.
   if (esp_now_init() != ESP_OK) {
     Serial.println("[bus] esp_now_init failed");
+    error_raise_local(ERR_ESPNOW_INIT_FAIL, ERR_SEV_WARNING);
     return;
   }
   esp_now_set_pmk(g_espnow_keys_set ? g_espnow_pmk : (const uint8_t*)ESPNOW_PMK);
@@ -195,6 +197,7 @@ void bus_init_no_ap(uint8_t node_id) {
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("[bus] esp_now_init failed (no-ap mode)");
+    error_raise_local(ERR_ESPNOW_INIT_FAIL, ERR_SEV_WARNING);
     return;
   }
   esp_now_set_pmk(g_espnow_keys_set ? g_espnow_pmk : (const uint8_t*)ESPNOW_PMK);
@@ -341,6 +344,20 @@ bool bus_twai_check() {
     bus_tx(CAN_ID_BUS_ERROR, d, 4);
     Serial.printf("[bus] BUS_ERROR emitted: code=%u tx_err=%u rx_err=%u\n",
                   new_err, info.tx_error_counter, info.rx_error_counter);
+    // Also emit unified ERROR_EVENT so buzzer/LED/Cardputer react.
+    uint8_t err_code = (new_err == BUS_ERR_BUS_OFF)       ? ERR_CAN_BUS_OFF :
+                       (new_err == BUS_ERR_ERROR_PASSIVE) ? ERR_CAN_ERROR_PASSIVE :
+                       (new_err == BUS_ERR_TX_FAIL)       ? ERR_CAN_TX_FAIL :
+                                                           ERR_CAN_RX_OVERFLOW;
+    uint8_t sev = (new_err == BUS_ERR_BUS_OFF) ? ERR_SEV_CRITICAL : ERR_SEV_WARNING;
+    error_raise_local(err_code, sev, new_err);
+  } else if (new_err == 0 && g_last_error_code != 0) {
+    // Bus recovered — clear any active CAN error.
+    uint8_t prev_code = (g_last_error_code == BUS_ERR_BUS_OFF)       ? ERR_CAN_BUS_OFF :
+                        (g_last_error_code == BUS_ERR_ERROR_PASSIVE) ? ERR_CAN_ERROR_PASSIVE :
+                        (g_last_error_code == BUS_ERR_TX_FAIL)       ? ERR_CAN_TX_FAIL :
+                                                                       ERR_CAN_RX_OVERFLOW;
+    error_clear(prev_code);
   }
   g_last_error_code = new_err;
 

@@ -21,6 +21,7 @@
 
 #include "can_protocol.h"
 #include "bus.h"
+#include "mod_error.h"
 
 // v3.x changed ledcWrite to take a pin instead of a channel
 #if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
@@ -127,6 +128,16 @@ static void sensor_sample() {
   g_tps_pct = read_tps_pct();
   g_clt_c   = read_ntc_c(ECU_CLT_PIN);
   g_iat_c   = read_ntc_c(ECU_IAT_PIN);
+
+  // Sensor fault detection: NTC at rail (ADC saturated = disconnected or shorted).
+  // CLT sensor id = 2, IAT sensor id = 3 (matches ERR_ECU_SENSOR_FAULT arg0 convention).
+  static bool clt_fault = false, iat_fault = false;
+  if (g_clt_c <= -39.0f || g_clt_c >= 149.0f) {
+    if (!clt_fault) { clt_fault = true; error_raise_local(ERR_ECU_SENSOR_FAULT, ERR_SEV_WARNING, 2); }
+  } else if (clt_fault) { clt_fault = false; error_clear(ERR_ECU_SENSOR_FAULT); }
+  if (g_iat_c <= -39.0f || g_iat_c >= 149.0f) {
+    if (!iat_fault) { iat_fault = true; error_raise_local(ERR_ECU_SENSOR_FAULT, ERR_SEV_WARNING, 3); }
+  } else if (iat_fault) { iat_fault = false; /* clear only if CLT also OK */ }
 }
 
 // ---------------------------------------------------------------
@@ -351,7 +362,11 @@ static void inject_loop() {
     if (g_rpm > 100)  flags |= 0x08;
     if (g_rpm > 100 && g_pw_us > 0) {
       uint32_t window = 60000000UL / g_rpm;
-      if (g_pw_us > window * 95 / 100) flags |= 0x04;  // saturated
+      if (g_pw_us > window * 95 / 100) {
+        flags |= 0x04;  // saturated
+        error_raise_local(ERR_INJECTOR_SATURATED, ERR_SEV_WARNING,
+                          (uint8_t)(g_pw_us * 100 / window));
+      }
     }
     broadcast_ecu_data(flags);
   }

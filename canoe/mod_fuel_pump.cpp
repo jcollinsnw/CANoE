@@ -70,6 +70,7 @@
 #include "bus.h"
 #include "node_state.h"
 #include "mod_fuel_pump.h"
+#include "mod_error.h"
 
 #if USE_WIFI
 #include "webui.h"
@@ -192,10 +193,11 @@ static void emit_state(FpReason reason) {
 }
 
 static void emit_stall_alert() {
-  // BUZZER_CMD (0x104): [target_node_id, cmd, arg0]
-  // Broadcast target so the switch panel buzzer + Cardputer both react.
-  uint8_t d[3] = { CFG_TARGET_BROADCAST, BUZZER_SEQ_FUEL_PUMP_OFF, 0 };
-  bus_tx(CAN_ID_BUZZER_CMD, d, 3);
+  // Unified error event replaces the old direct BUZZER_CMD broadcast.
+  // EMERGENCY severity triggers the fuel-pump-off alarm tone on all receivers.
+  error_raise(ERR_FUEL_PUMP_STALL, ERR_SEV_EMERGENCY, 0xFF,
+              ERR_FLAG_ACTIVE | ERR_FLAG_AUDIBLE | ERR_FLAG_VISUAL | ERR_FLAG_LATCHING,
+              (uint8_t)FP_REASON_STALL);
 }
 
 static void enter_state(FpState s, FpReason reason) {
