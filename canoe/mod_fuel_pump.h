@@ -16,6 +16,11 @@ uint8_t fuel_pump_mode();
 // existed before COIL was added) when enabled.
 void    fuel_pump_set_safety_enabled(bool enabled);
 bool    fuel_pump_safety_enabled();
+// Coil voltage sense (folded in from the old mod_ignition). Returns the
+// hysteresis-debounced on/off state and the last sampled centivolts. Only
+// meaningful when IGN_COIL_ADC_PIN is defined in the node config.
+bool    fuel_pump_coil_on();
+int16_t fuel_pump_coil_cv();
 #else
 static inline void    fuel_pump_setup() {}
 static inline void    fuel_pump_loop()  {}
@@ -24,4 +29,6 @@ static inline void    fuel_pump_set_mode(uint8_t) {}
 static inline uint8_t fuel_pump_mode()  { return 0; }
 static inline void    fuel_pump_set_safety_enabled(bool) {}
 static inline bool    fuel_pump_safety_enabled() { return false; }
+static inline bool    fuel_pump_coil_on() { return false; }
+static inline int16_t fuel_pump_coil_cv() { return 0; }
 #endif

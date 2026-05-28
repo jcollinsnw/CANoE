@@ -44,26 +44,29 @@
 #define VBAT2_DIVIDER_RATIO  5.545f
 #define VBAT_SAMPLE_MS       1000
 
-// ---- Ignition coil voltage sensing ----
-// The accessory system runs continuously while the master battery (chassis-
-// ground) switch is on. That means the relay box is alive even when the key
-// is OUT of the car — which is what burned out the OEM fuel pump the first
-// time (boot rule turned R1 on, pump ran for hours against a closed float
-// valve while the car sat at a restaurant).
+// ---- Fuel pump safety ----
 //
-// Coil + is fed from the key switch via the dash ballast resistor (~9 V in
-// RUN, ~12 V during cranking, 0 V key-out). Reading that line gives a clean
-// "is the key actually in" signal that the relay node can use to gate the
-// fuel pump. Wire: coil + → 10kΩ → IGN_COIL_PIN → 2.2kΩ → GND (5.545 :1
-// divider, same as VBAT). 13 V ÷ 5.545 = 2.34 V at ADC, safely below 3.3 V.
-#define ENABLE_IGNITION
+// Coil voltage sensing (IGN_COIL_*) is handled inside mod_fuel_pump.cpp so
+// these defines belong to the fuel pump safety block, not a separate
+// ignition module. Wire: coil + → 10kΩ → IGN_COIL_ADC_PIN → 2.2kΩ → GND
+// (5.545:1 divider; 13 V → 2.34 V at ADC, safely below 3.3 V). The off-board
+// signal-conditioning PCB documented in assets/coil-interface-schematic.svg
+// adds the optocoupler for RPM_PIN plus the divider for IGN_COIL_ADC_PIN
+// on a single board that taps the coil between the relay box and the coil
+// wiring.
+//
+// The accessory system runs continuously while the master battery (chassis-
+// ground) switch is on, so the relay box is alive even key-out. That is
+// what burned out the OEM fuel pump the first time (boot rule turned R1 on,
+// pump ran for hours against a closed float valve while the car sat at a
+// restaurant). The coil + signal is 0 V key-out, ~9 V key-in-RUN, ~12 V
+// during cranking — a clean "is the key actually in" gate.
 #define IGN_COIL_ADC_PIN          39      // ADC1, input-only, unused on the relay node
 #define IGN_COIL_DIVIDER_RATIO    5.545f
 #define IGN_COIL_ON_THRESHOLD_CV  600     // centivolts; >6.00 V → "coil powered"
 #define IGN_COIL_OFF_THRESHOLD_CV 400     // centivolts; <4.00 V → "coil off" (hysteresis)
 #define IGN_COIL_SAMPLE_MS        200     // ADC poll interval
 
-// ---- Fuel pump safety ----
 // Multi-gate FSM. Each gate is an independent freshness check; the pump
 // is permitted to run only when ALL ENABLED gates are currently passing:
 //   bit 0 (mask 0x01) — RPM gate:  ENGINE_DATA (0x304) rpm >= threshold

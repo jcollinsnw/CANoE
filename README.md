@@ -57,8 +57,7 @@ Each module lives in `firmware/accessory_node/mod_*.cpp` and is compiled in only
 | [mpu6050](docs/modules/mpu6050.md) | `ENABLE_MPU6050` | MPU-6050 accelerometer / shake detection |
 | [dht22](docs/modules/dht22.md) | `ENABLE_DHT22` | AM2302 temperature/humidity sensor |
 | [rpm](docs/modules/rpm.md) | `ENABLE_RPM` | Engine RPM via optocoupler interrupt |
-| [ignition](docs/modules/ignition.md) | `ENABLE_IGNITION` | Coil + voltage ADC; broadcasts `IGNITION_DATA (0x310)` for "is the key in" detection |
-| [fuel_pump](docs/modules/fuel_pump.md) | `ENABLE_FUEL_PUMP_SAFETY` | Multi-gate fuel pump safety FSM (RPM + COIL gates, AND/OR composition) |
+| [fuel_pump](docs/modules/fuel_pump.md) | `ENABLE_FUEL_PUMP_SAFETY` | Multi-gate fuel pump safety FSM with on-board coil voltage ADC; broadcasts `IGNITION_DATA (0x310)` + `FUEL_PUMP_STATE (0x311)` |
 | [gps](docs/modules/gps.md) | `ENABLE_GPS` | GPS speed/heading via NMEA UART |
 | [wbo2](docs/modules/wbo2.md) | `ENABLE_WBO2` | Wideband O2 sensor analog read |
 | [ecu](docs/modules/ecu.md) | `ENABLE_ECU` | Dual-mode fuel controller (carb PI + TBI injection) |

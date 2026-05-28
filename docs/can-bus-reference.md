@@ -544,7 +544,7 @@ These frames are broadcast automatically by their respective modules — no quer
 | `0x301` | `ENV_DATA` | `[temp_d1_lo, temp_d1_hi, humi_d1_lo, humi_d1_hi]` — 0.1 °C / 0.1 % from DHT22 |
 | `0x302` | `IMU_DATA` | `[accel_x_lo, accel_x_hi, accel_y_lo, accel_y_hi, accel_z_lo, accel_z_hi]` — raw accelerometer |
 | `0x303` | `SHAKE_EVENT` | `[magnitude, axis_mask]` — emitted by viper_interface on shake detection |
-| `0x310` | `IGNITION_DATA` | `[coil_cv_lo, coil_cv_hi, ign_on]` — coil + voltage centivolts (int16 LE) + boolean from hysteresis thresholds. From `mod_ignition` on the relay node. Heartbeat every ~1 s + immediate on every on/off edge. |
+| `0x310` | `IGNITION_DATA` | `[coil_cv_lo, coil_cv_hi, ign_on]` — coil + voltage centivolts (int16 LE) + boolean from hysteresis thresholds. Broadcast by `mod_fuel_pump` on the relay node (coil ADC sampling lives inside that module). Heartbeat every ~1 s + immediate on every on/off edge. |
 | `0x311` | `FUEL_PUMP_STATE` | `[state, mode, reason, gates_ok]` — fuel pump FSM transition events. state: 0=PRIME 1=ARMED 2=RUNNING. mode: FuelPumpMode bitmask (0=OFF, 1=RPM, 2=COIL, 3=BOTH). reason: 0=none 1=boot 2=prime_done 3=gate_pass 4=stall 5=mode_change 6=re_enable. gates_ok: bit 0 = RPM gate currently passing, bit 1 = COIL gate. |
 
 ---

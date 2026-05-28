@@ -49,7 +49,6 @@
 #include "mod_ecu.h"
 #include "mod_rpm.h"
 #include "mod_fuel_pump.h"
-#include "mod_ignition.h"
 #include "mod_gps.h"
 #include "mod_serial_shell.h"
 #include "mod_mqtt.h"
@@ -305,9 +304,6 @@ void setup() {
 #ifdef ENABLE_RPM
   rpm_setup();
 #endif
-#ifdef ENABLE_IGNITION
-  ignition_setup();
-#endif
 #ifdef ENABLE_FUEL_PUMP_SAFETY
   fuel_pump_setup();
 #endif
@@ -397,9 +393,6 @@ void loop() {
 #endif
 #ifdef ENABLE_RPM
   rpm_loop();
-#endif
-#ifdef ENABLE_IGNITION
-  ignition_loop();
 #endif
 #ifdef ENABLE_FUEL_PUMP_SAFETY
   fuel_pump_loop();
